@@ -1,0 +1,150 @@
+export interface User {
+  id: string;
+  email: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  bio: string | null;
+  college: College | null;
+  course: string | null;
+  year: number | null;
+  isVerified: boolean;
+  interests: Interest[];
+  postCount?: number;
+  createdAt?: string;
+}
+
+export interface College {
+  id: string;
+  name: string;
+  shortName: string | null;
+  city: string | null;
+  state: string | null;
+  logoUrl: string | null;
+}
+
+export interface Interest {
+  id: string;
+  name: string;
+  category: string | null;
+}
+
+export interface Post {
+  id: string;
+  authorId: string;
+  content: string;
+  mediaUrl: string | null;
+  mediaType: 'IMAGE' | 'VIDEO' | 'NONE';
+  type: 'NORMAL' | 'CONFESSION' | 'POLL' | 'QUESTION';
+  visibility: 'PUBLIC' | 'COLLEGE_ONLY';
+  isAnonymous: boolean;
+  isLikedByMe?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  author: {
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+    college?: College | null;
+    course?: string | null;
+    year?: number | null;
+  };
+  _count: {
+    comments: number;
+    likes: number;
+  };
+}
+
+export interface Comment {
+  id: string;
+  postId: string;
+  authorId: string;
+  content: string;
+  isAnonymous: boolean;
+  createdAt: string;
+  author: {
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+  };
+  _count?: { replies: number };
+}
+
+export interface Match {
+  id: string;
+  partner: {
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+    bio: string | null;
+  };
+  type: string;
+  createdAt: string;
+}
+
+export interface Conversation {
+  id: string;
+  otherUser: {
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+  } | null;
+  lastMessage: {
+    content: string;
+    senderId: string;
+    createdAt: string;
+  } | null;
+  updatedAt: string;
+}
+
+export interface Message {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  content: string;
+  mediaUrl: string | null;
+  createdAt: string;
+  sender: {
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+  };
+}
+
+export interface Notification {
+  id: string;
+  recipientId: string;
+  actorId: string | null;
+  type: string;
+  postId: string | null;
+  commentId: string | null;
+  matchId: string | null;
+  isRead: boolean;
+  createdAt: string;
+  actor: {
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+  } | null;
+}
+
+export interface PaginatedResponse<T> {
+  nextCursor: string | null;
+  [key: string]: any;
+}
+
+export interface FeedResponse extends PaginatedResponse<any> {
+  posts: Post[];
+}
+
+export interface SearchResults {
+  users: User[];
+  posts: Post[];
+  colleges: College[];
+}

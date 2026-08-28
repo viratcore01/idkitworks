@@ -1,0 +1,363 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────
+
+enum PostType {
+  NORMAL
+  CONFESSION
+  POLL
+  QUESTION
+}
+
+enum Visibility {
+  PUBLIC
+  COLLEGE_ONLY
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  NONE
+}
+
+enum MatchIntent {
+  DATING
+  FRIENDS
+  COLLABORATORS
+  GAMING
+  MUSIC
+  PROJECTS
+}
+
+enum MatchStatus {
+  ACTIVE
+  UNMATCHED
+}
+
+enum NotificationType {
+  LIKE
+  COMMENT
+  COMMENT_REPLY
+  MATCH
+  NEW_MESSAGE
+  MENTION
+}
+
+enum ReportTargetType {
+  POST
+  COMMENT
+  USER
+  MESSAGE
+}
+
+enum ReportReason {
+  HARASSMENT
+  SEXUAL_CONTENT
+  HATE
+  THREAT
+  SPAM
+  IMPERSONATION
+  SCAM
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  DISMISSED
+}
+
+enum AdminAction {
+  DELETE_CONTENT
+  WARN
+  SUSPEND
+  BAN
+  RESTORE
+}
+
+// ─── MODELS ──────────────────────────────────────────────
+
+model College {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  shortName String?
+  city      String?
+  state     String?
+  logoUrl   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  users User[]
+
+  @@map("colleges")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  username      String   @unique
+  displayName   String   @map("display_name")
+  avatarUrl     String?  @map("avatar_url")
+  bio           String?
+  collegeId     String?  @map("college_id")
+  course        String?
+  year          Int?
+  isVerified    Boolean  @default(false) @map("is_verified")
+  isActive      Boolean  @default(true) @map("is_active")
+  role          String   @default("user")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  college          College?           @relation(fields: [collegeId], references: [id])
+  interests        UserInterest[]
+  posts            Post[]
+  comments         Comment[]
+  postLikes        PostLike[]
+  sentLikes        MatchLike[]        @relation("SentLikes")
+  receivedLikes    MatchLike[]        @relation("ReceivedLikes")
+  matchesA         Match[]            @relation("MatchUserA")
+  matchesB         Match[]            @relation("MatchUserB")
+  matchPreference  MatchPreference?
+  receivedNotifications Notification[] @relation("NotificationRecipient")
+  sentNotifications     Notification[] @relation("NotificationActor")
+  sentMessages     Message[]
+  conversations    ConversationMember[]
+  reports          Report[]           @relation("ReportReporter")
+  bannedReports    Report[]           @relation("ReportResolver")
+  blockedUsers     Block[]            @relation("BlockBlocker")
+  blockedBy        Block[]            @relation("BlockBlocked")
+  refreshTokens    RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Interest {
+  id       String @id @default(uuid())
+  name     String @unique
+  category String?
+
+  users UserInterest[]
+
+  @@map("interests")
+}
+
+model UserInterest {
+  userId     String @map("user_id")
+  interestId String @map("interest_id")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interest Interest @relation(fields: [interestId], references: [id], onDelete: Cascade)
+
+  @@id([userId, interestId])
+  @@map("user_interests")
+}
+
+model Post {
+  id          String    @id @default(uuid())
+  authorId    String    @map("author_id")
+  content     String
+  mediaUrl    String?   @map("media_url")
+  mediaType   MediaType @default(NONE) @map("media_type")
+  type        PostType  @default(NORMAL)
+  visibility  Visibility @default(PUBLIC)
+  isAnonymous Boolean   @default(false) @map("is_anonymous")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  author   User          @relation(fields: [authorId], references: [id])
+  comments Comment[]
+  likes    PostLike[]
+
+  @@index([authorId])
+  @@index([createdAt])
+  @@index([type])
+  @@map("posts")
+}
+
+model Comment {
+  id              String    @id @default(uuid())
+  postId          String    @map("post_id")
+  authorId        String    @map("author_id")
+  parentCommentId String?   @map("parent_comment_id")
+  content         String
+  isAnonymous     Boolean   @default(false) @map("is_anonymous")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  post          Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author        User      @relation(fields: [authorId], references: [id])
+  parentComment Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies       Comment[] @relation("CommentReplies")
+
+  @@index([postId])
+  @@map("comments")
+}
+
+model PostLike {
+  userId    String   @map("user_id")
+  postId    String   @map("post_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+  @@map("post_likes")
+}
+
+// ─── MATCHING ────────────────────────────────────────────
+
+model MatchPreference {
+  id                String      @id @default(uuid())
+  userId            String      @unique @map("user_id")
+  lookingFor        MatchIntent @default(DATING) @map("looking_for")
+  ageRangeMin       Int?        @map("age_range_min")
+  ageRangeMax       Int?        @map("age_range_max")
+  locationPreference String?    @map("location_preference")
+  collegePreference String?     @map("college_preference")
+  visibility        Boolean     @default(true)
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("match_preferences")
+}
+
+model MatchLike {
+  senderId   String   @map("sender_id")
+  receiverId String   @map("receiver_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  sender   User @relation("SentLikes", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReceivedLikes", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@id([senderId, receiverId])
+  @@map("match_likes")
+}
+
+model Match {
+  id        String      @id @default(uuid())
+  userA     String      @map("user_a")
+  userB     String      @map("user_b")
+  type      MatchIntent
+  status    MatchStatus @default(ACTIVE)
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  userAObj User @relation("MatchUserA", fields: [userA], references: [id])
+  userBObj User @relation("MatchUserB", fields: [userB], references: [id])
+
+  @@map("matches")
+}
+
+// ─── MESSAGING ───────────────────────────────────────────
+
+model Conversation {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  members  ConversationMember[]
+  messages Message[]
+}
+
+model ConversationMember {
+  conversationId String   @map("conversation_id")
+  userId         String   @map("user_id")
+  joinedAt       DateTime @default(now()) @map("joined_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@map("conversation_members")
+}
+
+model Message {
+  id             String    @id @default(uuid())
+  conversationId String    @map("conversation_id")
+  senderId       String    @map("sender_id")
+  content        String
+  mediaUrl       String?   @map("media_url")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+// ─── NOTIFICATIONS ───────────────────────────────────────
+
+model Notification {
+  id          String           @id @default(uuid())
+  recipientId String           @map("recipient_id")
+  actorId     String?          @map("actor_id")
+  type        NotificationType
+  postId      String?          @map("post_id")
+  commentId   String?          @map("comment_id")
+  matchId     String?          @map("match_id")
+  isRead      Boolean          @default(false) @map("is_read")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  recipient User @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor     User? @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([recipientId, isRead])
+  @@map("notifications")
+}
+
+// ─── REPORTS & BLOCKS ────────────────────────────────────
+
+model Report {
+  id          String           @id @default(uuid())
+  reporterId  String           @map("reporter_id")
+  targetType  ReportTargetType @map("target_type")
+  targetId    String           @map("target_id")
+  reason      ReportReason
+  description String?
+  status      ReportStatus     @default(PENDING)
+  resolverId  String?          @map("resolver_id")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  resolvedAt  DateTime?        @map("resolved_at")
+
+  reporter User  @relation("ReportReporter", fields: [reporterId], references: [id])
+  resolver User? @relation("ReportResolver", fields: [resolverId], references: [id])
+
+  @@index([status])
+  @@map("reports")
+}
+
+model Block {
+  blockerId  String   @map("blocker_id")
+  blockedId  String   @map("blocked_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  blocker User @relation("BlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlockBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@id([blockerId, blockedId])
+  @@map("blocks")
+}
