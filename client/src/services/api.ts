@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+// Production: absolute URL to the hosted API (Vercel serves only the SPA).
+// Dev: same-origin '/api' via the Vite proxy.
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE,
   timeout: 15000, // never hang forever on a dead network
   headers: { 'Content-Type': 'application/json' },
 });
