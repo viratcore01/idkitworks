@@ -96,7 +96,7 @@ export default function PostCard({ post, detailView = false }: Props) {
       )}
 
       {/* Actions */}
-      <div className="flex items-center gap-4 mt-4 pt-3 border-t-2 border-gray-100">
+      <div className="flex items-center gap-4 mt-4 pt-3 border-t-2 border-gray-300">
         <button
           onClick={() => likeMutation.mutate()}
           className={`flex items-center gap-1.5 font-display text-sm font-semibold transition-colors ${
@@ -109,23 +109,23 @@ export default function PostCard({ post, detailView = false }: Props) {
           {post._count.likes}
         </button>
 
-        <button
-          onClick={() =>
-            detailView
-              ? document.getElementById('post-comments')?.scrollIntoView({ behavior: 'smooth' })
-              : openPost()
-          }
-          className="flex items-center gap-1.5 font-display text-sm font-semibold text-gray-500 hover:text-nb-blue"
-        >
-          <MessageCircle size={18} strokeWidth={2.5} /> {post._count.comments}
-        </button>
-        {!detailView && <ChevronRight size={18} strokeWidth={2.5} className="ml-auto text-gray-400" />}
+        {!detailView && (
+          <>
+            <button
+              onClick={openPost}
+              className="flex items-center gap-1.5 font-display text-sm font-semibold text-gray-500 hover:text-nb-blue"
+            >
+              <MessageCircle size={18} strokeWidth={2.5} /> {post._count.comments}
+            </button>
+            <ChevronRight size={18} strokeWidth={2.5} className="ml-auto text-gray-400" />
+          </>
+        )}
       </div>
 
       {/* Comment previews — feed only, teases the discussion */}
       {!detailView && (post.topComments?.length || 0) > 0 && (
         <div
-          className="mt-3 pt-3 border-t-2 border-gray-100 space-y-2 cursor-pointer"
+          className="mt-3 pt-3 border-t-2 border-gray-300 space-y-2 cursor-pointer"
           onClick={openPost}
           role="link"
           aria-label="Open post to see all comments"

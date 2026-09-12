@@ -223,7 +223,8 @@ export default function SignupPage() {
             </button>
             <button
               onClick={() => setStep(4)}
-              className="nb-btn-orange flex-1 text-center"
+              disabled={!formData.collegeId}
+              className="nb-btn-orange flex-1 text-center disabled:opacity-50"
             >
               Next →
             </button>

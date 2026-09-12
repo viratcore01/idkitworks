@@ -27,7 +27,7 @@ export default function Sidebar() {
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
-              `nb-sidebar-link ${isActive ? 'active' : 'text-nb-black'}`
+              `nb-sidebar-link ${isActive ? 'active' : 'text-white/90 hover:text-nb-black'}`
             }
           >
             <item.Icon size={20} strokeWidth={2.5} />
@@ -41,7 +41,7 @@ export default function Sidebar() {
         <NavLink
           to={`/profile/${user?.username}`}
           className={({ isActive }) =>
-            `nb-sidebar-link ${isActive ? 'active' : 'text-nb-black'}`
+            `nb-sidebar-link ${isActive ? 'active' : 'text-white/90 hover:text-nb-black'}`
           }
         >
           {user?.avatarUrl ? (
@@ -68,7 +68,7 @@ export default function Sidebar() {
         <NavLink
           to="/settings"
           className={({ isActive }) =>
-            `nb-sidebar-link mt-1 ${isActive ? 'active' : 'text-nb-black'}`
+            `nb-sidebar-link mt-1 ${isActive ? 'active' : 'text-white/90 hover:text-nb-black'}`
           }
         >
           <Settings size={20} strokeWidth={2.5} />

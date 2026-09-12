@@ -4,7 +4,12 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import App from './App';
+import ErrorBoundary from '@/components/common/ErrorBoundary';
 import './index.css';
+
+if (import.meta.env.DEV) {
+  import('./utils/layoutAudit');
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,9 +25,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
         <Toaster
           position="top-center"
+          containerStyle={{
+            // Toasts must clear the fixed topbar (and iPhone notch) instead of sliding under it
+            top: 80,
+            zIndex: 100,
+          }}
           toastOptions={{
             style: {
               border: '3px solid #1a1a1a',
@@ -30,6 +42,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               fontFamily: '"DM Sans", sans-serif',
               fontWeight: 500,
               boxShadow: '4px 4px 0px 0px #1a1a1a',
+              maxWidth: 'calc(100vw - 2rem)',
             },
           }}
         />

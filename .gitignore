@@ -9,3 +9,4 @@ coverage/
 .turbo/
 .freebuff/
 client/*freebuff*
+dev.db

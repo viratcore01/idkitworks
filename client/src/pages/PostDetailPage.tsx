@@ -1,7 +1,8 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Ghost, MessageCircle, Reply } from 'lucide-react';
+import { ArrowLeft, Ghost, MessageCircle, Reply, X, MoreVertical, Pencil, Trash2, Check } from 'lucide-react';
+import toast from 'react-hot-toast';
 import api from '@/services/api';
 import PostCard from '@/components/feed/PostCard';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
@@ -10,13 +11,28 @@ import CommentRow from '@/components/feed/CommentRow';
 import { useAuthStore } from '@/store/auth.store';
 import { Post, Comment } from '@/types';
 
+/** "Name: first line" — the minimal reply chip text. */
+function replyChipText(c: Comment): string {
+  const who = c.isAnonymous || !c.author ? 'Anonymous Student' : c.author.displayName;
+  const firstLine = c.content.split('\n')[0].trim();
+  return `${who}: ${firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine}`;
+}
+
 export default function PostDetailPage() {
   const { postId } = useParams<{ postId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { isIncognito } = useAuthStore();
+  const { user, isIncognito } = useAuthStore();
   const [commentText, setCommentText] = useState('');
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const commentInputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const replyClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const goingBackRef = useRef(false);
 
   // Back button: return to where the user actually was (feed scroll, search, profile...),
@@ -46,14 +62,30 @@ export default function PostDetailPage() {
     queryKey: ['post-comments', postId],
     queryFn: ({ pageParam }) =>
       api
-        .get(`/posts/${postId}/comments`, { params: { cursor: pageParam, limit: 20 } })
+        .get(`/posts/${postId}/comments`, { params: { cursor: pageParam, limit: 50 } })
         .then((r) => r.data),
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,
     enabled: !!postId,
   });
 
-  const comments: Comment[] = commentsData?.pages.flatMap((p: any) => p.comments) || [];
+  // Nest: top-level comments with their replies attached.
+  const { threads, replyCount } = useMemo(() => {
+    const all: Comment[] = commentsData?.pages.flatMap((p: any) => p.comments) || [];
+    const byId = new Map<string, Comment & { replies: Comment[] }>();
+    for (const c of all) byId.set(c.id, { ...c, replies: [] });
+    const roots: (Comment & { replies: Comment[] })[] = [];
+    let replies = 0;
+    for (const c of byId.values()) {
+      if (c.parentCommentId && byId.has(c.parentCommentId)) {
+        byId.get(c.parentCommentId)!.replies.push(c);
+        replies++;
+      } else {
+        roots.push(c);
+      }
+    }
+    return { threads: roots, replyCount: replies };
+  }, [commentsData]);
 
   const commentMutation = useMutation({
     mutationFn: () =>
@@ -71,9 +103,73 @@ export default function PostDetailPage() {
     },
   });
 
-  // On mount: stash the feed's scroll position (passed via navigate state) for
-  // restoration when the user comes back, and jump this page to the top.
-  // If the user leaves via any path other than Back, drop the saved position.
+  const editMutation = useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) =>
+      api.patch(`/posts/comments/${id}`, { content }),
+    onSuccess: () => {
+      setEditingId(null);
+      setEditText('');
+      queryClient.invalidateQueries({ queryKey: ['post-comments', postId] });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+    },
+    onError: (e: any) => toast(e.response?.data?.error || 'Could not edit comment'),
+  });
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/posts/comments/${id}`),
+    onSuccess: () => {
+      toast('Comment deleted');
+      queryClient.invalidateQueries({ queryKey: ['post-comments', postId] });
+      queryClient.invalidateQueries({ queryKey: ['post', postId] });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+    },
+    onError: (e: any) => toast(e.response?.data?.error || 'Could not delete comment'),
+  });
+
+  /** Double-click a comment (or click a reply chip): focus the composer in reply mode. */
+  const startReply = (c: Comment) => {
+    setReplyTo(c);
+    commentInputRef.current?.focus();
+  };
+
+  /** Single-click a reply: jump to the message it replies to. Double-click still wins. */
+  const handleRowClick = (c: Comment) => {
+    if (!c.parentCommentId) return;
+    if (replyClickTimer.current) {
+      // Second click of a double-click — cancel the pending jump.
+      clearTimeout(replyClickTimer.current);
+      replyClickTimer.current = null;
+      return;
+    }
+    replyClickTimer.current = setTimeout(() => {
+      replyClickTimer.current = null;
+      jumpToComment(c.parentCommentId!);
+    }, 250);
+  };
+
+  /** Scroll to a comment and glow it for ~2s. */
+  const jumpToComment = (id: string) => {
+    const el = document.getElementById(`comment-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setHighlightId(id);
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    highlightTimer.current = setTimeout(() => setHighlightId(null), 2000);
+  };
+
+  // Close the 3-dot menu on any outside click
+  useEffect(() => {
+    if (!menuFor) return;
+    const close = () => setMenuFor(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [menuFor]);
+
+  // Focus the inline edit box when editing starts
+  useEffect(() => {
+    if (editingId) editInputRef.current?.focus();
+  }, [editingId]);
+
   useEffect(() => {
     const saved = (window.history.state?.usr as { scrollY?: number } | undefined)?.scrollY;
     if (typeof saved === 'number') {
@@ -82,6 +178,8 @@ export default function PostDetailPage() {
     window.scrollTo(0, 0);
     return () => {
       if (!goingBackRef.current) sessionStorage.removeItem('restore-scroll-y');
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      if (replyClickTimer.current) clearTimeout(replyClickTimer.current);
     };
   }, []);
 
@@ -100,6 +198,127 @@ export default function PostDetailPage() {
 
   const typedPost = post as Post;
 
+  const saveCommentEdit = () => {
+    if (editingId && editText.trim()) {
+      editMutation.mutate({ id: editingId, content: editText.trim() });
+    } else {
+      setEditingId(null);
+    }
+  };
+
+  const renderComment = (c: Comment & { replies?: Comment[] }, isReply = false) => {
+    const highlighted = highlightId === c.id;
+    const isOwn = !!user && c.authorId === user.id;
+    const isDeleted = !!(c as any).isDeleted;
+    const isEditing = editingId === c.id;
+
+    return (
+      <div key={c.id} id={`comment-${c.id}`} className={!isReply ? 'space-y-3' : ''}>
+        <div
+          className={`group relative rounded-nb px-2 py-1.5 -mx-2 transition-colors ${
+            highlighted ? 'comment-highlight' : ''
+          } ${isReply ? 'ml-9' : ''}`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div
+              className={`flex-1 min-w-0 cursor-default select-none ${isReply && !isEditing && !isDeleted ? 'hover:bg-nb-lime/20 rounded-nb px-1 -mx-1 transition-colors' : ''}`}
+              onClick={() => handleRowClick(c)}
+              onDoubleClick={() => {
+                if (replyClickTimer.current) {
+                  clearTimeout(replyClickTimer.current);
+                  replyClickTimer.current = null;
+                }
+                if (!isDeleted && !isEditing) startReply(c);
+              }}
+              title={isDeleted ? undefined : isReply ? 'Click to jump to the original · double-click to reply' : 'Double-click to reply'}
+            >
+              {isEditing ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={editInputRef}
+                    className="nb-input text-sm py-1.5 flex-1"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveCommentEdit();
+                      if (e.key === 'Escape') setEditingId(null);
+                    }}
+                  />
+                  <button onClick={saveCommentEdit} title="Save" className="text-nb-black hover:scale-110 transition-transform shrink-0">
+                    <Check size={16} strokeWidth={2.5} />
+                  </button>
+                  <button onClick={() => setEditingId(null)} title="Cancel" className="text-gray-500 hover:text-nb-red transition-colors shrink-0">
+                    <X size={16} strokeWidth={2.5} />
+                  </button>
+                </div>
+              ) : isDeleted ? (
+                <p className="font-body text-sm italic text-gray-500">This comment was deleted</p>
+              ) : (
+                // Non-interactive: single clicks must not navigate away, the row is a reply gesture
+                <CommentRow comment={c} clamped={false} edited={!!(c as any).editedAt} />
+              )}
+            </div>
+            {isOwn && !isDeleted && !isEditing ? (
+              <div className="relative shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuFor(menuFor === c.id ? null : c.id);
+                  }}
+                  className="text-gray-600 hover:text-nb-black p-0.5 opacity-70 hover:opacity-100 transition-opacity"
+                  title="Comment options"
+                >
+                  <MoreVertical size={14} strokeWidth={2.5} />
+                </button>
+                {menuFor === c.id && (
+                  <div
+                    className="absolute right-0 top-6 z-20 nb-card bg-white py-1 min-w-[140px]"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => {
+                        setEditingId(c.id);
+                        setEditText(c.content);
+                        setMenuFor(null);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm font-body hover:bg-nb-lime/30 text-left"
+                    >
+                      <Pencil size={14} strokeWidth={2.5} /> Edit
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMenuFor(null);
+                        deleteCommentMutation.mutate(c.id);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm font-body hover:bg-nb-red/20 text-nb-red text-left"
+                    >
+                      <Trash2 size={14} strokeWidth={2.5} /> Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => !isDeleted && startReply(c)}
+                className="text-gray-600 hover:text-nb-orange transition-colors shrink-0 pt-0.5 opacity-70 hover:opacity-100"
+                title="Reply"
+              >
+                <Reply size={14} strokeWidth={2.5} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Replies nested under the parent */}
+        {c.replies && c.replies.length > 0 && (
+          <div className="ml-9 space-y-1 border-l-nb-2 border-gray-200 pl-3">
+            {c.replies.map((r) => renderComment(r as Comment & { replies?: Comment[] }, true))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div>
       {/* Sticky back header */}
@@ -113,92 +332,61 @@ export default function PostDetailPage() {
       {/* The post */}
       <PostCard post={typedPost} detailView />
 
-      {/* Comments */}
-      <div className="mt-4" id="post-comments">
+      {/* Comments — own white surface so text reads on white, not on the doodle canvas */}
+      <div className="mt-4 nb-card bg-white p-4 sm:p-5" id="post-comments">
         <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2">
           <MessageCircle size={18} strokeWidth={2.5} /> Comments ({typedPost._count.comments})
         </h2>
 
         {commentsLoading ? (
           <LoadingSpinner size="sm" />
-        ) : comments.length === 0 ? (
-          <p className="font-body text-sm text-gray-500 py-4">No comments yet. Start the conversation.</p>
+        ) : threads.length === 0 ? (
+          <p className="font-body text-sm text-gray-500 py-4">
+            No comments yet. Double-click any comment to reply to it.
+          </p>
         ) : (
-          <div className="space-y-4">
-            {comments.map((c) => {
-              const isAnon = c.isAnonymous || !c.author;
-              return (
-                <div key={c.id}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <CommentRow comment={c} interactive />
-                    </div>
-                    <button
-                      onClick={() => setReplyTo(replyTo?.id === c.id ? null : c)}
-                      className="text-gray-400 hover:text-nb-orange transition-colors shrink-0 pt-0.5"
-                      title="Reply"
-                    >
-                      <Reply size={14} strokeWidth={2.5} />
-                    </button>
-                  </div>
-
-                  {/* One level of replies */}
-                  {replyTo?.id === c.id && (
-                    <div className="mt-2 ml-8 nb-card bg-white p-2.5 animate-slide-up">
-                      <p className="text-xs font-display font-semibold mb-1.5 text-gray-500">
-                        Replying to {isAnon ? 'Anonymous Student' : c.author!.displayName}
-                      </p>
-                      <div className="flex gap-2">
-                        <input
-                          autoFocus
-                          className="nb-input text-sm py-1.5 flex-1"
-                          placeholder="Write a reply..."
-                          value={commentText}
-                          onChange={(e) => setCommentText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && commentText.trim()) commentMutation.mutate();
-                          }}
-                        />
-                        <button
-                          onClick={() => commentText.trim() && commentMutation.mutate()}
-                          disabled={!commentText.trim() || commentMutation.isPending}
-                          className="nb-btn-orange text-sm px-3 disabled:opacity-50"
-                        >
-                          Reply
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {hasNextPage && (
-              <button
-                onClick={() => fetchNextPage()}
-                disabled={isFetchingNextPage}
-                className="nb-btn-ghost w-full text-center text-sm"
-              >
-                {isFetchingNextPage ? 'Loading...' : 'Load more comments'}
-              </button>
-            )}
-          </div>
+          <div className="space-y-4">{threads.map((c) => renderComment(c))}</div>
         )}
 
-        {/* Main comment box */}
-        <div className="mt-4 pt-4 border-t-2 border-gray-100">
+        {hasNextPage && (
+          <button
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+            className="nb-btn-ghost w-full text-center text-sm mt-4"
+          >
+            {isFetchingNextPage ? 'Loading...' : 'Load more comments'}
+          </button>
+        )}
+
+        {/* Composer */}
+        <div className="mt-4 pt-4 border-t-nb-2 border-gray-300">
           {replyTo && (
-            <p className="text-xs font-display font-semibold text-gray-500 mb-2">
-              Replying to {replyTo.isAnonymous || !replyTo.author ? 'Anonymous Student' : replyTo.author.displayName}{' '}
-              <button onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-nb-red ml-1">
-                cancel
+            <div className="mb-2 inline-flex items-center gap-1.5 max-w-full nb-badge bg-nb-lime text-nb-black">
+              <Reply size={12} strokeWidth={2.5} className="shrink-0" />
+              <span className="truncate">{replyChipText(replyTo)}</span>
+              <button
+                onClick={() => jumpToComment(replyTo.id)}
+                title="Jump to comment"
+                className="hover:scale-110 transition-transform shrink-0"
+              >
+                <MessageCircle size={12} strokeWidth={2.5} />
               </button>
-            </p>
+              <button onClick={() => setReplyTo(null)} title="Cancel reply" className="hover:text-nb-red shrink-0">
+                <X size={12} strokeWidth={2.5} />
+              </button>
+            </div>
           )}
           <div className="flex gap-2">
             <input
+              ref={commentInputRef}
               className="nb-input text-sm py-2 flex-1"
-              placeholder={isIncognito ? 'Commenting anonymously...' : 'Write a comment...'}
+              placeholder={
+                replyTo
+                  ? `Reply to ${replyTo.isAnonymous || !replyTo.author ? 'Anonymous Student' : replyTo.author!.displayName}...`
+                  : isIncognito
+                  ? 'Commenting anonymously...'
+                  : 'Write a comment... (double-click a comment to reply)'
+              }
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               onKeyDown={(e) => {
@@ -210,7 +398,15 @@ export default function PostDetailPage() {
               disabled={!commentText.trim() || commentMutation.isPending}
               className="nb-btn-orange text-sm px-3 py-1.5 disabled:opacity-50 inline-flex items-center gap-1"
             >
-              {isIncognito ? <Ghost size={16} strokeWidth={2.5} /> : <MessageCircle size={16} strokeWidth={2.5} />}
+              {replyTo ? (
+              <>
+                <Reply size={14} strokeWidth={2.5} /> Reply
+              </>
+              ) : isIncognito ? (
+                <Ghost size={16} strokeWidth={2.5} />
+              ) : (
+                <MessageCircle size={16} strokeWidth={2.5} />
+              )}
             </button>
           </div>
         </div>

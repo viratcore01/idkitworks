@@ -5,6 +5,15 @@ export default {
     extend: {
       colors: {
         cream: '#FFF8EE',
+        // Gray ramp darkened globally: the default Tailwind grays (400/500) washed out
+        // on the violet canvas and white cards. Same names, AA-compliant values.
+        gray: {
+          300: '#8A8F98',
+          400: '#5F6368',
+          500: '#4B5563',
+          600: '#374151',
+          700: '#1F2937',
+        },
         nb: {
           black: '#1a1a1a',
           /** Full-bleed violet canvas (reference: neobrutalism mockup) */
@@ -40,6 +49,14 @@ export default {
       borderWidth: {
         nb: '3px',
         'nb-2': '2px',
+      },
+      maxWidth: {
+        // Real width of the 16rem (w-64) sidebar — used by the desktop Topbar offset
+        sidebar: '16rem',
+      },
+      height: {
+        // Dynamic viewport height: correct on mobile browsers with collapsing toolbars
+        dvh: '100dvh',
       },
     },
   },

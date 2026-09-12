@@ -23,6 +23,19 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * PRODUCT RULE: the app is college-only. Every main-app page requires an
+ * assigned college — anyone without one is funneled to profile setup until
+ * they pick their college. Nothing else renders for them.
+ */
+function CollegeRoute({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated, isLoading } = useAuthStore();
+  if (isLoading) return <LoadingScreen />;
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (!user?.college) return <Navigate to="/setup-profile" replace />;
+  return <>{children}</>;
+}
+
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore();
   if (isLoading) return <LoadingScreen />;
@@ -58,8 +71,8 @@ export default function App() {
         <Route path="/signup" element={<SignupPage />} />
       </Route>
 
-      {/* Protected routes */}
-      <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+      {/* Main app: protected AND college-gated */}
+      <Route element={<CollegeRoute><AppLayout /></CollegeRoute>}>
         <Route path="/home" element={<HomePage />} />
         <Route path="/post/:postId" element={<PostDetailPage />} />
         <Route path="/matches" element={<MatchesPage />} />
@@ -70,7 +83,7 @@ export default function App() {
         <Route path="/search" element={<SearchPage />} />
       </Route>
 
-      {/* Profile setup */}
+      {/* Profile setup: authenticated users only (works with or without college) */}
       <Route path="/setup-profile" element={
         <ProtectedRoute><ProfileSetupPage /></ProtectedRoute>
       } />

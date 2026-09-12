@@ -11,5 +11,6 @@ router.post('/refresh', (req, res) => controller.refresh(req, res));
 router.post('/logout', (req, res) => controller.logout(req, res));
 router.get('/me', authMiddleware, (req, res) => controller.me(req, res));
 router.patch('/me', authMiddleware, (req, res) => controller.updateProfile(req, res));
+router.get('/me/completeness', authMiddleware, (req, res) => controller.completeness(req, res));
 
 export default router;

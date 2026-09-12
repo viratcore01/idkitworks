@@ -3,6 +3,8 @@ interface AvatarProps {
   name: string;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  /** Discord-style personalization: any hex color for the fallback tile */
+  color?: string | null;
 }
 
 const sizeClasses = {
@@ -11,7 +13,7 @@ const sizeClasses = {
   lg: 'w-16 h-16 text-xl',
 };
 
-export default function Avatar({ src, name, size = 'md', className = '' }: AvatarProps) {
+export default function Avatar({ src, name, size = 'md', className = '', color }: AvatarProps) {
   if (src) {
     return (
       <img
@@ -22,8 +24,11 @@ export default function Avatar({ src, name, size = 'md', className = '' }: Avata
     );
   }
 
+  const style = color && /^#[0-9A-Fa-f]{6}$/.test(color) ? { backgroundColor: color } : undefined;
+
   return (
     <div
+      style={style}
       className={`rounded-full border-nb-2 border-nb-black bg-nb-orange text-white font-bold flex items-center justify-center ${sizeClasses[size]} ${className}`}
     >
       {name?.[0]?.toUpperCase() || '?'}

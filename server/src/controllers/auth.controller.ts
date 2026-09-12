@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthService } from '../services/auth.service';
 import { AuthRequest } from '../types';
+import { sendError } from '../utils/http-error';
 
 const authService = new AuthService();
 
@@ -14,7 +15,7 @@ export class AuthController {
       res.status(201).json(result);
     } catch (error: any) {
       const status = error.message.includes('already') ? 409 : 400;
-      res.status(status).json({ error: error.message });
+      sendError(res, error, status);
     }
   }
 
@@ -24,7 +25,7 @@ export class AuthController {
       const result = await authService.login(email, password);
       res.json(result);
     } catch (error: any) {
-      res.status(401).json({ error: error.message });
+      sendError(res, error, 401);
     }
   }
 
@@ -34,7 +35,7 @@ export class AuthController {
       const result = await authService.refresh(refreshToken);
       res.json(result);
     } catch (error: any) {
-      res.status(401).json({ error: error.message });
+      sendError(res, error, 401);
     }
   }
 
@@ -44,7 +45,7 @@ export class AuthController {
       await authService.logout(refreshToken);
       res.json({ message: 'Logged out' });
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      sendError(res, error, 400);
     }
   }
 
@@ -53,7 +54,7 @@ export class AuthController {
       const user = await authService.getMe(req.user!.id);
       res.json(user);
     } catch (error: any) {
-      res.status(404).json({ error: error.message });
+      sendError(res, error, 404);
     }
   }
 
@@ -62,7 +63,16 @@ export class AuthController {
       const user = await authService.updateProfile(req.user!.id, req.body);
       res.json(user);
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  async completeness(req: AuthRequest, res: Response) {
+    try {
+      const result = await authService.getProfileCompleteness(req.user!.id);
+      res.json(result);
+    } catch (error: any) {
+      sendError(res, error, 400);
     }
   }
 }

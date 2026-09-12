@@ -26,14 +26,23 @@ export default function Topbar() {
   };
 
   return (
-    <div className="fixed top-0 left-0 right-0 h-16 bg-nb-black z-50 flex items-center px-4 lg:pl-68">
-      <Link to="/home" className="lg:hidden mr-4">
+    <div
+      className="fixed top-0 left-0 right-0 h-16 bg-nb-black z-[60] flex items-center gap-2 px-3 sm:px-4"
+      style={{ paddingLeft: 'max(0.75rem, env(safe-area-inset-left))' }}
+    >
+      {/* Desktop: reserve exactly the sidebar's width so content never hides under it */}
+      <div className="hidden lg:block w-64 shrink-0" aria-hidden="true">
+        <h1 className="text-2xl font-display font-bold text-white leading-none">
+          FREE<span className="text-nb-lime">BUFF</span>
+        </h1>
+      </div>
+      <Link to="/home" className="lg:hidden shrink-0">
         <h1 className="text-xl font-display font-bold text-white">
           FREE<span className="text-nb-lime">BUFF</span>
         </h1>
       </Link>
 
-      <form onSubmit={handleSearch} className="flex-1 max-w-md">
+      <form onSubmit={handleSearch} className="flex-1 min-w-0 max-w-md">
         <div className="relative">
           <input
             type="text"
@@ -46,7 +55,7 @@ export default function Topbar() {
         </div>
       </form>
 
-      <div className="flex items-center gap-2 ml-4">
+      <div className="flex items-center gap-2 shrink-0" style={{ marginRight: 'env(safe-area-inset-right)' }}>
         <button
           onClick={toggleIncognito}
           className={`nb-btn text-sm px-3 py-1.5 ${

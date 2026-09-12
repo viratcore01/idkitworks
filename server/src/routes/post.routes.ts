@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { PostController } from '../controllers/post.controller';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, collegeRequired } from '../middleware/auth';
 
 const router = Router();
 const controller = new PostController();
 
-router.use(authMiddleware);
+router.use(authMiddleware, collegeRequired);
 
 router.get('/', (req, res) => controller.getFeed(req, res));
 router.post('/', (req, res) => controller.create(req, res));
@@ -19,6 +19,7 @@ router.post('/:postId/like', (req, res) => controller.toggleLike(req, res));
 // Comments
 router.get('/:postId/comments', (req, res) => controller.getComments(req, res));
 router.post('/:postId/comments', (req, res) => controller.createComment(req, res));
+router.patch('/comments/:id', (req, res) => controller.editComment(req, res));
 router.delete('/comments/:id', (req, res) => controller.deleteComment(req, res));
 
 export default router;

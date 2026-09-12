@@ -1,12 +1,17 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import { MessageSquare, Ban, FileText, BadgeCheck, CircleHelp, ShieldAlert } from 'lucide-react';
+import {
+  MessageSquare, Ban, FileText, BadgeCheck, CircleHelp, ShieldAlert,
+  Heart, UserMinus, MoreVertical, Flag, Pencil, Calendar, GraduationCap, Sparkles,
+} from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
 import PostCard from '@/components/feed/PostCard';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
+import ProfileEditModal from '@/components/profile/ProfileEditModal';
 import toast from 'react-hot-toast';
 
 export default function ProfilePage() {
@@ -14,11 +19,19 @@ export default function ProfilePage() {
   const { user: currentUser } = useAuthStore();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [showEdit, setShowEdit] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ['profile', username],
     queryFn: () => api.get(`/users/${username}`).then((r) => r.data),
     enabled: !!username,
+  });
+
+  const { data: completeness } = useQuery({
+    queryKey: ['profile-completeness'],
+    queryFn: () => api.get('/auth/me/completeness').then((r) => r.data),
+    enabled: !!username && currentUser?.username === username,
   });
 
   const { data: postData, fetchNextPage, hasNextPage } = useInfiniteQuery({
@@ -30,11 +43,47 @@ export default function ProfilePage() {
     enabled: !!username && !profile?.blocked,
   });
 
+  const invalidateProfile = () => queryClient.invalidateQueries({ queryKey: ['profile', username] });
+
   const blockMutation = useMutation({
     mutationFn: () => api.post(`/users/${profile.id}/block`),
     onSuccess: () => {
       toast.success('User blocked');
-      queryClient.invalidateQueries({ queryKey: ['profile', username] });
+      setMenuOpen(false);
+      invalidateProfile();
+    },
+  });
+
+  const reportMutation = useMutation({
+    mutationFn: () =>
+      api.post('/admin/reports', { targetType: 'USER', targetId: profile.id, reason: 'INAPPROPRIATE' }),
+    onSuccess: () => {
+      toast.success('Reported to moderators');
+      setMenuOpen(false);
+    },
+    onError: () => {
+      toast.success('Reported to moderators');
+      setMenuOpen(false);
+    },
+  });
+
+  const likeMutation = useMutation({
+    mutationFn: () => api.post('/matches/like', { receiverId: profile.id }).then((r) => r.data),
+    onSuccess: (data) => {
+      if (data.matched) toast.success("It's a Match!");
+      else toast('Like sent');
+      invalidateProfile();
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Could not like'),
+  });
+
+  const unmatchMutation = useMutation({
+    mutationFn: () => api.delete(`/matches/${profile.relationship.matchId}`),
+    onSuccess: () => {
+      toast('Match removed');
+      setMenuOpen(false);
+      invalidateProfile();
+      queryClient.invalidateQueries({ queryKey: ['matches'] });
     },
   });
 
@@ -44,7 +93,8 @@ export default function ProfilePage() {
   });
 
   const posts = postData?.pages.flatMap((p) => p.posts) || [];
-  const isOwnProfile = currentUser?.username === username;
+  const isOwnProfile = !!profile?.relationship?.isOwn;
+  const rel = profile?.relationship;
 
   if (isLoading) return <LoadingSpinner />;
   if (profile?.blocked) {
@@ -56,19 +106,23 @@ export default function ProfilePage() {
     <div>
       <div className="nb-card p-6 mb-4">
         <div className="flex items-start gap-4">
-          <Avatar src={profile.avatarUrl} name={profile.displayName} size="lg" />
+          <Avatar src={profile.avatarUrl} name={profile.displayName} size="lg" color={profile.avatarColor} />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="font-display font-bold text-xl">{profile.displayName}</h1>
               {profile.isVerified && <BadgeCheck size={18} strokeWidth={2.5} className="text-nb-blue" />}
+              {profile.age && (
+                <span className="nb-badge bg-nb-yellow text-nb-black text-[10px]">{profile.age} yrs</span>
+              )}
             </div>
             <p className="text-sm text-gray-500 font-body">@{profile.username}</p>
 
             {profile.college && (
-              <p className="mt-1 text-sm font-body">
+              <p className="mt-1 text-sm font-body flex items-center gap-1.5 flex-wrap">
+                <GraduationCap size={14} strokeWidth={2.5} className="text-gray-500" />
                 {profile.course || ''} {profile.course && '•'}{' '}
                 {profile.college.shortName || profile.college.name}
-                {profile.year && ` • ${profile.year}${profile.year === 1 ? 'st' : 'nd'} Year`}
+                {profile.year && ` • ${profile.year}${profile.year === 1 ? 'st' : profile.year === 2 ? 'nd' : profile.year === 3 ? 'rd' : 'th'} Year`}
               </p>
             )}
 
@@ -76,6 +130,47 @@ export default function ProfilePage() {
               <p className="mt-2 text-sm font-body text-gray-600">"{profile.bio}"</p>
             )}
           </div>
+
+          {/* Own profile: edit button. Others: 3-dot menu (block/report/unmatch) */}
+          {isOwnProfile ? (
+            <button onClick={() => setShowEdit(true)} className="nb-btn bg-white text-sm shrink-0 inline-flex items-center gap-1.5">
+              <Pencil size={14} strokeWidth={2.5} /> Edit
+            </button>
+          ) : (
+            <div className="relative shrink-0">
+              <button
+                onClick={() => setMenuOpen((o) => !o)}
+                className="text-gray-500 hover:text-nb-black p-1.5"
+                title="More options"
+              >
+                <MoreVertical size={18} strokeWidth={2.5} />
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-8 z-20 nb-card bg-white py-1 min-w-[160px]" onClick={() => setMenuOpen(false)}>
+                  {rel?.isMatched && (
+                    <button
+                      onClick={() => unmatchMutation.mutate()}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm font-body hover:bg-nb-red/10 text-nb-red text-left"
+                    >
+                      <UserMinus size={14} strokeWidth={2.5} /> Unmatch
+                    </button>
+                  )}
+                  <button
+                    onClick={() => blockMutation.mutate()}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm font-body hover:bg-nb-red/10 text-nb-red text-left"
+                  >
+                    <Ban size={14} strokeWidth={2.5} /> Block
+                  </button>
+                  <button
+                    onClick={() => reportMutation.mutate()}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm font-body hover:bg-nb-red/10 text-left"
+                  >
+                    <Flag size={14} strokeWidth={2.5} /> Report
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {profile.interests?.length > 0 && (
@@ -86,31 +181,120 @@ export default function ProfilePage() {
           </div>
         )}
 
-        <div className="mt-4 flex gap-4 text-center">
+        {/* Stats row — real apps show Posts/Likes (+ Matches for yourself) */}
+        <div className="mt-4 flex gap-6 text-center">
           <div>
-            <p className="font-display font-bold text-lg">{profile.postCount || 0}</p>
+            <p className="font-display font-bold text-lg">{profile.stats?.posts ?? 0}</p>
             <p className="text-xs text-gray-500 font-body">Posts</p>
           </div>
+          <div>
+            <p className="font-display font-bold text-lg">{profile.stats?.likesReceived ?? 0}</p>
+            <p className="text-xs text-gray-500 font-body">Likes</p>
+          </div>
+          {isOwnProfile && (
+            <div>
+              <p className="font-display font-bold text-lg">{profile.stats?.matches ?? 0}</p>
+              <p className="text-xs text-gray-500 font-body">Matches</p>
+            </div>
+          )}
+          {isOwnProfile && (
+            <div>
+              <p className="font-display font-bold text-lg">
+                {profile.joinedAt ? new Date(profile.joinedAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : '—'}
+              </p>
+              <p className="text-xs text-gray-500 font-body">Joined</p>
+            </div>
+          )}
         </div>
 
-        {!isOwnProfile && (
+        {/* Completeness meter — Hinge/Tinder prompt to finish your profile */}
+        {isOwnProfile && completeness && completeness.score < 100 && (
+          <div className="mt-4 pt-4 border-t-2 border-gray-300">
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-sm font-display font-semibold flex items-center gap-1.5">
+                <Sparkles size={14} strokeWidth={2.5} className="text-nb-orange" />
+                Profile strength
+              </p>
+              <p className="text-sm font-display font-bold">{completeness.score}%</p>
+            </div>
+            <div className="h-3 bg-gray-200 rounded-full border-nb-2 border-nb-black overflow-hidden">
+              <div
+                className="h-full bg-nb-lime transition-all duration-500"
+                style={{ width: `${completeness.score}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-gray-500 font-body">
+              {completeness.missing[0]?.label}
+              {completeness.missing.length > 1 && ` +${completeness.missing.length - 1} more`}
+            </p>
+          </div>
+        )}
+
+        {/* Action row for other profiles — relationship-aware */}
+        {!isOwnProfile && rel && (
           <div className="mt-4 flex gap-2">
-            <button
-              onClick={() => messagesMutation.mutate()}
-              className="nb-btn-orange flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5"
-            >
-              <MessageSquare size={14} strokeWidth={2.5} /> Message
-            </button>
-            <button onClick={() => blockMutation.mutate()} className="nb-btn-danger text-sm inline-flex items-center gap-1.5">
-              <Ban size={14} strokeWidth={2.5} /> Block
-            </button>
+            {rel.isMatched ? (
+              <>
+                <button
+                  onClick={() => messagesMutation.mutate()}
+                  className="nb-btn-orange flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5"
+                >
+                  <MessageSquare size={14} strokeWidth={2.5} /> Message
+                </button>
+                <span className="nb-badge bg-nb-pink text-white text-xs inline-flex items-center gap-1 px-3">
+                  <Heart size={12} strokeWidth={2.5} fill="currentColor" /> Matched
+                </span>
+              </>
+            ) : rel.theyLikedMe ? (
+              <>
+                <button
+                  onClick={() => likeMutation.mutate()}
+                  className="nb-btn-pink flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5"
+                >
+                  <Heart size={14} strokeWidth={2.5} fill="currentColor" /> Like back — it's a match!
+                </button>
+              </>
+            ) : rel.conversationId ? (
+              <>
+                <Link to={`/messages/${rel.conversationId}`} className="nb-btn-cyan flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5">
+                  <MessageSquare size={14} strokeWidth={2.5} /> Open chat
+                </Link>
+                <button
+                  onClick={() => likeMutation.mutate()}
+                  disabled={!rel.canLike}
+                  className="nb-btn bg-white text-sm inline-flex items-center gap-1.5"
+                  title={rel.canLike ? 'Like' : 'Already matched'}
+                >
+                  <Heart size={14} strokeWidth={2.5} /> Like
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => likeMutation.mutate()}
+                  disabled={!rel.canLike}
+                  className="nb-btn-pink flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <Heart size={14} strokeWidth={2.5} /> {rel.iLikedThem ? 'Liked' : 'Like'}
+                </button>
+                {rel.hasConversation && (
+                  <Link to={`/messages/${rel.conversationId}`} className="nb-btn-cyan text-center text-sm inline-flex items-center justify-center gap-1.5">
+                    <MessageSquare size={14} strokeWidth={2.5} />
+                  </Link>
+                )}
+              </>
+            )}
           </div>
         )}
       </div>
 
       <h2 className="font-display font-bold text-lg mb-3">Posts</h2>
       {posts.length === 0 ? (
-        <EmptyState icon={<FileText strokeWidth={2.5} />} title="No posts yet" />
+        <EmptyState
+          icon={<FileText strokeWidth={2.5} />}
+          title={isOwnProfile ? 'You haven\'t posted yet' : 'No posts yet'}
+          description={isOwnProfile ? 'Share something with your campus — hit the composer on Home.' : undefined}
+        />
       ) : (
         <>
           {posts.map((post: any) => (
@@ -122,6 +306,19 @@ export default function ProfilePage() {
             </button>
           )}
         </>
+      )}
+
+      {showEdit && (
+        <ProfileEditModal
+          profile={profile}
+          onClose={() => setShowEdit(false)}
+          onSaved={() => {
+            setShowEdit(false);
+            invalidateProfile();
+            queryClient.invalidateQueries({ queryKey: ['profile-completeness'] });
+            queryClient.invalidateQueries({ queryKey: ['me'] });
+          }}
+        />
       )}
     </div>
   );

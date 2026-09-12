@@ -1,16 +1,17 @@
 import { Response } from 'express';
 import { MessageService } from '../services/message.service';
 import { AuthRequest } from '../types';
+import { sendError } from '../utils/http-error';
 
 const service = new MessageService();
 
 export class MessageController {
   async getConversations(req: AuthRequest, res: Response) {
     try {
-      const convos = await service.getConversations(req.user!.id);
+      const convos = await service.getConversations(req.user!.id, req.user!.collegeId);
       res.json(convos);
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      sendError(res, error, 400);
     }
   }
 
@@ -19,7 +20,7 @@ export class MessageController {
       const conv = await service.getOrCreateConversation(req.user!.id, req.body.userId);
       res.json(conv);
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      sendError(res, error, 400);
     }
   }
 
@@ -34,13 +35,16 @@ export class MessageController {
       );
       res.json(result);
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      sendError(res, error, 400);
     }
   }
 
   async sendMessage(req: AuthRequest, res: Response) {
     try {
       const { content, mediaUrl } = req.body;
+      if (!content?.trim()) {
+        return res.status(400).json({ error: 'Message cannot be empty' });
+      }
       const message = await service.sendMessage(
         req.params.conversationId as string,
         req.user!.id,
@@ -49,7 +53,35 @@ export class MessageController {
       );
       res.status(201).json(message);
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      sendError(res, error, 400);
+    }
+  }
+
+  async editMessage(req: AuthRequest, res: Response) {
+    try {
+      const { content } = req.body;
+      const message = await service.editMessage(
+        req.params.conversationId as string,
+        req.params.messageId as string,
+        req.user!.id,
+        content,
+      );
+      res.json(message);
+    } catch (error: any) {
+      sendError(res, error, 400);
+    }
+  }
+
+  async deleteMessage(req: AuthRequest, res: Response) {
+    try {
+      const result = await service.deleteMessage(
+        req.params.conversationId as string,
+        req.params.messageId as string,
+        req.user!.id,
+      );
+      res.json(result);
+    } catch (error: any) {
+      sendError(res, error, 400);
     }
   }
 }

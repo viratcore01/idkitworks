@@ -31,6 +31,7 @@ interface AuthTokens {
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    collegeId: string | null;
     isProfileSetup: boolean;
   };
 }
@@ -49,6 +50,8 @@ function createAuthResponse(user: any, accessToken: string, refreshToken: string
       username: user.username,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      // College gate key: the client needs it immediately after login
+      collegeId: user.collegeId ?? null,
       isProfileSetup: !!(user.collegeId && user.course),
     },
   };
@@ -56,6 +59,16 @@ function createAuthResponse(user: any, accessToken: string, refreshToken: string
 
 export class AuthService {
   async signup(input: SignupInput): Promise<AuthTokens> {
+    // Type guards: malformed JSON bodies must never reach Prisma (engine errors leak paths).
+    if (
+      typeof input?.email !== 'string' || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email) ||
+      typeof input?.username !== 'string' || !/^[a-zA-Z0-9_]{3,20}$/.test(input.username) ||
+      typeof input?.displayName !== 'string' || input.displayName.trim().length < 2 ||
+      typeof input?.password !== 'string' || input.password.length < 6 ||
+      typeof input?.collegeId !== 'string' || !input.collegeId
+    ) {
+      const e: any = new Error('Invalid signup details'); e.status = 400; throw e;
+    }
     const existingUser = await prisma.user.findFirst({
       where: { OR: [{ email: input.email }, { username: input.username }] },
     });
@@ -86,7 +99,6 @@ export class AuthService {
             }
           : undefined,
       },
-      include: { college: true },
     });
 
     const payload = createPayload(user);
@@ -105,6 +117,9 @@ export class AuthService {
   }
 
   async login(email: string, password: string): Promise<AuthTokens> {
+    if (typeof email !== 'string' || typeof password !== 'string') {
+      const e: any = new Error('Invalid email or password'); e.status = 401; throw e;
+    }
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user || !user.isActive) {
@@ -183,6 +198,7 @@ export class AuthService {
       avatarUrl: user.avatarUrl,
       bio: user.bio,
       college: user.college,
+      collegeId: user.collegeId,
       course: user.course,
       year: user.year,
       isVerified: user.isVerified,
@@ -197,27 +213,93 @@ export class AuthService {
     displayName?: string;
     bio?: string;
     avatarUrl?: string;
+    avatarColor?: string;
     collegeId?: string;
     course?: string;
     year?: number;
+    gender?: string;
+    dateOfBirth?: string;
     interestIds?: string[];
   }) {
-    // If updating interests, replace all
+    // ── Server-side validation (real apps never trust the client) ──
+    const update: any = {};
+
+    if (data.displayName !== undefined) {
+      const name = data.displayName.trim();
+      if (name.length < 2 || name.length > 50) throw new Error('Name must be 2-50 characters');
+      update.displayName = name;
+    }
+    if (data.bio !== undefined) {
+      const bio = data.bio.trim();
+      if (bio.length > 300) throw new Error('Bio must be under 300 characters');
+      update.bio = bio;
+    }
+    if (data.course !== undefined) {
+      const course = data.course.trim();
+      if (course.length > 50) throw new Error('Course must be under 50 characters');
+      update.course = course;
+    }
+    if (data.year !== undefined) {
+      const yr = Number(data.year);
+      if (![1, 2, 3, 4, 5].includes(yr)) throw new Error('Invalid year');
+      update.year = yr;
+    }
+    if (data.gender !== undefined) {
+      if (!['MALE', 'FEMALE', 'OTHER', 'UNKNOWN'].includes(data.gender)) throw new Error('Invalid gender');
+      update.gender = data.gender;
+    }
+    if (data.dateOfBirth !== undefined && data.dateOfBirth !== null && data.dateOfBirth !== '') {
+      const dob = new Date(data.dateOfBirth);
+      if (isNaN(dob.getTime())) throw new Error('Invalid date of birth');
+      const age = (Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000);
+      if (age < 16) throw new Error('You must be at least 16 to use Freebuff');
+      if (age > 100) throw new Error('Invalid date of birth');
+      update.dateOfBirth = dob;
+    }
+    if (data.avatarColor !== undefined) {
+      // Discord-style picker: preset palette only
+      if (!/^#[0-9A-Fa-f]{6}$/.test(data.avatarColor)) throw new Error('Invalid avatar color');
+      update.avatarColor = data.avatarColor;
+    }
+    if (data.avatarUrl !== undefined && data.avatarUrl !== null) {
+      const url = data.avatarUrl.trim();
+      if (url && !/^https:\/\//.test(url)) throw new Error('Avatar URL must be https');
+      update.avatarUrl = url || null;
+    }
+    if (data.collegeId !== undefined && data.collegeId !== null) {
+      if (data.collegeId) {
+        const college = await prisma.college.findUnique({ where: { id: data.collegeId } });
+        if (!college) throw new Error('College not found');
+      }
+
+      // PRODUCT RULE: college is the isolation boundary. Once assigned, it cannot
+      // be changed — otherwise a user could carry old-college posts, matches and
+      // chats into a new college's feed. (Support/super-admin can override.)
+      const current = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
+      if (current?.collegeId && current.collegeId !== data.collegeId) {
+        const e: any = new Error('Your college is already set. Contact support to change it.'); e.status = 403; throw e;
+      }
+      update.collegeId = data.collegeId || null;
+    }
+
+    // If updating interests, replace all (validate they exist)
+    let interestConnect: any;
     if (data.interestIds) {
+      if (data.interestIds.length > 15) throw new Error('Pick at most 15 interests');
+      if (data.interestIds.length) {
+        const found = await prisma.interest.findMany({ where: { id: { in: data.interestIds } } });
+        if (found.length !== data.interestIds.length) throw new Error('One or more interests not found');
+        interestConnect = data.interestIds.map((interestId) => ({ interestId }));
+      }
       await prisma.userInterest.deleteMany({ where: { userId } });
     }
 
     const user = await prisma.user.update({
       where: { id: userId },
       data: {
-        ...(data.displayName !== undefined && { displayName: data.displayName }),
-        ...(data.bio !== undefined && { bio: data.bio }),
-        ...(data.avatarUrl !== undefined && { avatarUrl: data.avatarUrl }),
-        ...(data.collegeId !== undefined && { collegeId: data.collegeId }),
-        ...(data.course !== undefined && { course: data.course }),
-        ...(data.year !== undefined && { year: data.year }),
+        ...update,
         ...(data.interestIds && {
-          interests: { create: data.interestIds.map((interestId) => ({ interestId })) },
+          interests: { create: interestConnect || [] },
         }),
       },
       include: {
@@ -231,11 +313,50 @@ export class AuthService {
       username: user.username,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      avatarColor: user.avatarColor,
       bio: user.bio,
       college: user.college,
       course: user.course,
       year: user.year,
+      gender: user.gender,
+      dateOfBirth: user.dateOfBirth,
+      age: user.dateOfBirth
+        ? Math.floor((Date.now() - user.dateOfBirth.getTime()) / (365.25 * 24 * 3600 * 1000))
+        : null,
       interests: user.interests.map((ui) => ui.interest),
     };
+  }
+
+  /** Which fields a user still needs to fill — powers the completeness meter. */
+  async getProfileCompleteness(userId: string) {
+    const u = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        avatarUrl: true,
+        avatarColor: true,
+        bio: true,
+        course: true,
+        year: true,
+        gender: true,
+        dateOfBirth: true,
+        collegeId: true,
+        interests: { select: { interestId: true } },
+        matchPreference: { select: { id: true } },
+      },
+    });
+    if (!u) throw new Error('User not found');
+
+    const checks = [
+      { key: 'college', done: !!u.collegeId, weight: 20, label: 'Add your college' },
+      { key: 'bio', done: !!(u.bio && u.bio.length >= 10), weight: 15, label: 'Write a bio (10+ chars)' },
+      { key: 'photo', done: !!u.avatarUrl, weight: 20, label: 'Add a profile photo' },
+      { key: 'interests', done: u.interests.length >= 3, weight: 15, label: 'Pick 3+ interests' },
+      { key: 'dob', done: !!u.dateOfBirth, weight: 15, label: 'Add your birth date' },
+      { key: 'gender', done: !!u.gender && u.gender !== 'UNKNOWN', weight: 10, label: 'Set your gender' },
+      { key: 'prefs', done: !!u.matchPreference, weight: 5, label: 'Set discovery preferences' },
+    ];
+    const score = checks.reduce((sum, c) => sum + (c.done ? c.weight : 0), 0);
+    const missing = checks.filter((c) => !c.done).map((c) => ({ key: c.key, label: c.label, weight: c.weight }));
+    return { score, missing };
   }
 }

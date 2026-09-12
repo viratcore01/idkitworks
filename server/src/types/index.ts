@@ -5,6 +5,8 @@ export interface AuthUser {
   email: string;
   username: string;
   role: string;
+  /** Resolved from the live DB on every request (NOT from the token) so college changes apply instantly. */
+  collegeId: string | null;
 }
 
 export interface AuthRequest extends Request {

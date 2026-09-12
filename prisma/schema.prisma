@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─── MODELS ──────────────────────────────────────────────
@@ -34,6 +35,9 @@ model User {
   collegeId     String?  @map("college_id")
   course        String?
   year          Int?
+  gender        String?  @default("UNKNOWN")
+  dateOfBirth   DateTime? @map("date_of_birth")
+  avatarColor   String?  @map("avatar_color")
   isVerified    Boolean  @default(false) @map("is_verified")
   isActive      Boolean  @default(true) @map("is_active")
   role          String   @default("user")
@@ -127,6 +131,7 @@ model Comment {
   content         String
   isAnonymous     Boolean   @default(false) @map("is_anonymous")
   createdAt       DateTime  @default(now()) @map("created_at")
+  editedAt        DateTime? @map("edited_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
 
@@ -159,6 +164,7 @@ model MatchPreference {
   lookingFor         String   @default("DATING") @map("looking_for")
   ageRangeMin        Int?     @map("age_range_min")
   ageRangeMax        Int?     @map("age_range_max")
+  genderPreference   String   @default("EVERYONE") @map("gender_preference")
   locationPreference String?  @map("location_preference")
   collegePreference  String?  @map("college_preference")
   visibility         Boolean  @default(true)
@@ -172,12 +178,14 @@ model MatchPreference {
 model MatchLike {
   senderId   String   @map("sender_id")
   receiverId String   @map("receiver_id")
+  action     String   @default("LIKE") // LIKE | PASS — passes resurface after PASS_RESURFACE_DAYS
   createdAt  DateTime @default(now()) @map("created_at")
 
   sender   User @relation("SentLikes", fields: [senderId], references: [id], onDelete: Cascade)
   receiver User @relation("ReceivedLikes", fields: [receiverId], references: [id], onDelete: Cascade)
 
   @@id([senderId, receiverId])
+  @@index([senderId, action, createdAt])
   @@map("match_likes")
 }
 
@@ -186,12 +194,17 @@ model Match {
   userA     String   @map("user_a")
   userB     String   @map("user_b")
   type      String
-  status    String   @default("ACTIVE")
+  status    String   @default("ACTIVE") // ACTIVE | ENDED (unmatched)
   createdAt DateTime @default(now()) @map("created_at")
+  endedAt   DateTime? @map("ended_at")
+  endedBy   String?  @map("ended_by")
 
   userAObj User @relation("MatchUserA", fields: [userA], references: [id])
   userBObj User @relation("MatchUserB", fields: [userB], references: [id])
 
+  @@unique([userA, userB])
+  @@index([userA, status])
+  @@index([userB, status])
   @@map("matches")
 }
 
@@ -224,6 +237,7 @@ model Message {
   content        String
   mediaUrl       String?   @map("media_url")
   createdAt      DateTime  @default(now()) @map("created_at")
+  editedAt       DateTime? @map("edited_at")
   deletedAt      DateTime? @map("deleted_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

@@ -120,6 +120,20 @@ body {
   }
 }
 
+/* ── Cross-device resilience ───────────────────────────────
+   1. iOS Safari zooms the page when an input's font-size is <16px.
+      Force 16px on form controls on small screens so focus never zooms.
+   2. Long words (URLs, handles) must never blow out flex/grid cards. */
+@media (max-width: 640px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+.font-body, p, h1, h2, h3, span {
+  overflow-wrap: break-word;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;
@@ -153,4 +167,14 @@ body {
 
 .animate-pop {
   animation: pop 0.2s ease-out;
+}
+
+/* Flash highlight when jumping to a comment (e.g. from a reply) */
+@keyframes commentGlow {
+  0% { background-color: rgba(200, 241, 105, 0.55); box-shadow: 0 0 0 3px rgba(200, 241, 105, 0.55); }
+  100% { background-color: transparent; box-shadow: 0 0 0 3px transparent; }
+}
+
+.comment-highlight {
+  animation: commentGlow 2s ease-out forwards;
 }

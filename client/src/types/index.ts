@@ -62,9 +62,12 @@ export interface Comment {
   id: string;
   postId: string;
   authorId: string;
+  parentCommentId?: string | null;
   content: string;
   isAnonymous: boolean;
   createdAt: string;
+  editedAt?: string | null;
+  isDeleted?: boolean;
   author: {
     id: string;
     username: string;
@@ -110,6 +113,8 @@ export interface Message {
   content: string;
   mediaUrl: string | null;
   createdAt: string;
+  editedAt?: string | null;
+  isDeleted?: boolean;
   sender: {
     id: string;
     username: string;

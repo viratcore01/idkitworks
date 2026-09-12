@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { NotificationService } from '../services/notification.service';
 import { AuthRequest } from '../types';
+import { sendError } from '../utils/http-error';
 
 const service = new NotificationService();
 
@@ -12,10 +13,11 @@ export class NotificationController {
         req.user!.id,
         limit ? parseInt(limit as string) : undefined,
         cursor as string,
+        req.user!.collegeId,
       );
       res.json(result);
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      sendError(res, error, 400);
     }
   }
 
@@ -24,16 +26,16 @@ export class NotificationController {
       const result = await service.markAllRead(req.user!.id);
       res.json(result);
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      sendError(res, error, 400);
     }
   }
 
   async getUnreadCount(req: AuthRequest, res: Response) {
     try {
-      const result = await service.getUnreadCount(req.user!.id);
+      const result = await service.getUnreadCount(req.user!.id, req.user!.collegeId);
       res.json(result);
     } catch (error: any) {
-      res.status(400).json({ error: error.message });
+      sendError(res, error, 400);
     }
   }
 }

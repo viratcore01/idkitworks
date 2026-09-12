@@ -6,24 +6,30 @@ import { formatDistanceToNow } from '@/utils/date';
 
 /**
  * One comment line used in the feed previews and the post detail page.
- * Set `interactive` to enable profile links and full text (detail page);
- * previews use the clipped, non-navigating variant.
+ * `interactive`: author name/avatar link to the profile.
+ * `clamped`: clip content to one line (feed previews).
+ * `edited`: show an "edited" tag (detail page only).
  */
 export default function CommentRow({
   comment,
   interactive = false,
+  clamped = !interactive,
+  edited = false,
 }: {
   comment: Comment;
   interactive?: boolean;
+  clamped?: boolean;
+  edited?: boolean;
 }) {
   const isAnon = comment.isAnonymous || !comment.author;
   const name = isAnon ? 'Anonymous Student' : comment.author!.displayName;
   const body = (
     <>
       <span className="font-display font-semibold text-nb-black">{name}</span>{' '}
-      <span className={`font-body text-gray-600 ${interactive ? '' : 'line-clamp-1'}`}>
+      <span className={`font-body text-gray-600 ${clamped ? 'line-clamp-1' : ''}`}>
         {comment.content}
       </span>
+      {edited && <span className="text-[10px] italic text-gray-500 ml-1">· edited</span>}
     </>
   );
 
@@ -45,7 +51,7 @@ export default function CommentRow({
       <p className="text-xs leading-relaxed min-w-0 pt-0.5">
         {isAnon || !interactive ? body : <Link to={`/profile/${comment.author!.username}`} className="hover:text-nb-orange" onClick={(e) => e.stopPropagation()}>{body}</Link>}
       </p>
-      <span className="text-[10px] text-gray-400 shrink-0 pt-1">{formatDistanceToNow(comment.createdAt)}</span>
+      <span className="text-[10px] text-gray-500 shrink-0 pt-1">{formatDistanceToNow(comment.createdAt)}</span>
     </div>
   );
 }

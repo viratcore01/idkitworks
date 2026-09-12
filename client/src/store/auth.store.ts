@@ -14,9 +14,10 @@ interface AuthState {
   logout: () => Promise<void>;
   fetchMe: () => Promise<void>;
   updateProfile: (data: any) => Promise<void>;
+  applyCollegeChange: (college: User['college']) => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
   isAuthenticated: false,
@@ -31,6 +32,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
     set({ user: data.user, isAuthenticated: true });
+    // Login response carries only collegeId — fetch the full profile (with the
+    // college object) so the college gate evaluates correctly immediately.
+    try { await get().fetchMe(); } catch {}
   },
 
   signup: async (payload) => {
@@ -38,6 +42,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
     set({ user: data.user, isAuthenticated: true });
+    try { await get().fetchMe(); } catch {}
   },
 
   logout: async () => {
@@ -50,21 +55,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   fetchMe: async () => {
     const token = localStorage.getItem('accessToken');
     if (!token) {
-      // Auto-login as test user
-      try {
-        const { data } = await api.post('/auth/login', {
-          email: 'virat@freebuff.app',
-          password: 'password123',
-        });
-        localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
-        set({ user: data.user, isAuthenticated: true, isLoading: false });
-        // Fetch full profile
-        const { data: profile } = await api.get('/auth/me');
-        set({ user: profile, isAuthenticated: true, isLoading: false });
-      } catch {
-        set({ isLoading: false });
-      }
+      // No backdoor: unauthenticated visitors go to login like a real app.
+      set({ isLoading: false });
       return;
     }
     try {
@@ -80,4 +72,10 @@ export const useAuthStore = create<AuthState>((set) => ({
     const { data } = await api.patch('/auth/me', profileData);
     set((s) => ({ user: s.user ? { ...s.user, ...data } : null }));
   },
+
+  /**
+   * PRODUCT RULE: college-only app. The main-app gate keys off user.college,
+   * so the store keeps it in sync whenever a college change comes back.
+   */
+  applyCollegeChange: (college) => set((s) => (s.user ? { user: { ...s.user, college } } : {})),
 }));

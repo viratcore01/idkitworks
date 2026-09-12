@@ -21,6 +21,7 @@ async function main() {
         email: 'virat@freebuff.app', passwordHash, username: 'viratcore01',
         displayName: 'Virat Shishodia', collegeId: ipec?.id, course: 'CSE', year: 2,
         bio: 'Building things that matter. Coffee > Sleep.',
+        gender: 'MALE', dateOfBirth: new Date('2004-03-15'),
       },
     }),
     prisma.user.upsert({
@@ -30,6 +31,7 @@ async function main() {
         email: 'priya@freebuff.app', passwordHash, username: 'priya_sharma',
         displayName: 'Priya Sharma', collegeId: ipec?.id, course: 'ECE', year: 3,
         bio: 'Analog circuits by day, Bollywood dance by night.',
+        gender: 'FEMALE', dateOfBirth: new Date('2003-07-22'),
       },
     }),
     prisma.user.upsert({
@@ -39,6 +41,7 @@ async function main() {
         email: 'arnav@freebuff.app', passwordHash, username: 'arnav_dev',
         displayName: 'Arnav Gupta', collegeId: ipec?.id, course: 'CSE', year: 2,
         bio: 'Full-stack dev. Currently mass-producing side projects.',
+        gender: 'MALE', dateOfBirth: new Date('2004-11-02'),
       },
     }),
     prisma.user.upsert({
@@ -48,6 +51,7 @@ async function main() {
         email: 'ishita@freebuff.app', passwordHash, username: 'ishita_codes',
         displayName: 'Ishita Singh', collegeId: ipec?.id, course: 'CSE', year: 4,
         bio: 'Final year. Interned at a startup. Surviving placement season.',
+        gender: 'FEMALE', dateOfBirth: new Date('2002-01-30'),
       },
     }),
     prisma.user.upsert({
@@ -57,6 +61,7 @@ async function main() {
         email: 'rohit@freebuff.app', passwordHash, username: 'rohit_k',
         displayName: 'Rohit Kumar', collegeId: ipec?.id, course: 'ECE', year: 2,
         bio: 'I sleep 4 hours a day and still top my class. Just kidding, I don\'t top.',
+        gender: 'MALE', dateOfBirth: new Date('2004-09-08'),
       },
     }),
     prisma.user.upsert({
@@ -66,6 +71,7 @@ async function main() {
         email: 'sneha@freebuff.app', passwordHash, username: 'sneha_travels',
         displayName: 'Sneha Agarwal', collegeId: dtu?.id, course: 'IT', year: 3,
         bio: 'Weekend backpacker. 12 states in 2 years.',
+        gender: 'FEMALE', dateOfBirth: new Date('2003-05-11'),
       },
     }),
   ]);

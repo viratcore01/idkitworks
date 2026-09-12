@@ -7,13 +7,16 @@ import api from '@/services/api';
 import toast from 'react-hot-toast';
 
 export default function ProfileSetupPage() {
-  const { user, updateProfile } = useAuthStore();
+  const { user, updateProfile, fetchMe } = useAuthStore();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     collegeId: user?.college?.id || '',
     course: user?.course || '',
     year: user?.year || 1,
     bio: user?.bio || '',
+    gender: (user as any)?.gender || 'UNKNOWN',
+    dateOfBirth: '',
+    avatarColor: '#FF6B35',
     interestIds: user?.interests?.map((i) => i.id) || [],
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -30,9 +33,16 @@ export default function ProfileSetupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // PRODUCT RULE: college-only app — setup cannot be completed without one
+    if (!formData.collegeId) {
+      toast.error('Please select your college to continue');
+      return;
+    }
     setIsLoading(true);
     try {
       await updateProfile(formData);
+      // Refresh the user so the college gate re-evaluates immediately
+      await fetchMe();
       toast.success('Profile updated!');
       navigate('/home');
     } catch (err: any) {
@@ -110,6 +120,52 @@ export default function ProfileSetupPage() {
               value={formData.bio}
               onChange={(e) => setFormData((d) => ({ ...d, bio: e.target.value }))}
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block font-display text-sm font-semibold mb-1.5">Birth date *</label>
+              <input
+                type="date"
+                className="nb-input text-sm"
+                required
+                max={new Date(Date.now() - 16 * 365.25 * 24 * 3600 * 1000).toISOString().slice(0, 10)}
+                value={formData.dateOfBirth}
+                onChange={(e) => setFormData((d) => ({ ...d, dateOfBirth: e.target.value }))}
+              />
+              <p className="text-[10px] text-gray-500 mt-1">Must be 16+. Only your age is shown.</p>
+            </div>
+            <div>
+              <label className="block font-display text-sm font-semibold mb-1.5">Gender *</label>
+              <select
+                className="nb-input text-sm"
+                required
+                value={formData.gender}
+                onChange={(e) => setFormData((d) => ({ ...d, gender: e.target.value }))}
+              >
+                <option value="FEMALE">Female</option>
+                <option value="MALE">Male</option>
+                <option value="OTHER">Other</option>
+                <option value="UNKNOWN">Prefer not to say</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-display text-sm font-semibold mb-2">Avatar color</label>
+            <div className="flex gap-2 flex-wrap">
+              {['#FF6B35', '#FF69B4', '#FFD700', '#00D4AA', '#4B9CD3', '#9B59B6', '#2ECC71', '#FF4757', '#8C7AE6', '#FFA3DD'].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setFormData((d) => ({ ...d, avatarColor: c }))}
+                  className={`w-7 h-7 rounded-full border-nb-2 transition-transform ${
+                    formData.avatarColor === c ? 'border-nb-black scale-110' : 'border-transparent'
+                  }`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
           </div>
 
           <div>

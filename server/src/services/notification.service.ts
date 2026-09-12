@@ -1,10 +1,15 @@
 import { prisma } from '../config/prisma';
 
 export class NotificationService {
-  async getNotifications(userId: string, limit = 20, cursor?: string) {
+  async getNotifications(userId: string, limit = 20, cursor?: string, viewerCollegeId?: string | null) {
+    const take = Math.min(Math.max(limit, 1), 50);
     const notifications = await prisma.notification.findMany({
-      where: { recipientId: userId },
-      take: limit + 1,
+      where: {
+        recipientId: userId,
+        // PRODUCT RULE: college-only — never surface an actor from another college.
+        ...(viewerCollegeId && { actor: { collegeId: viewerCollegeId } }),
+      },
+      take: take + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       orderBy: { createdAt: 'desc' },
       include: {
@@ -12,8 +17,8 @@ export class NotificationService {
       },
     });
 
-    const hasMore = notifications.length > limit;
-    const data = hasMore ? notifications.slice(0, limit) : notifications;
+    const hasMore = notifications.length > take;
+    const data = hasMore ? notifications.slice(0, take) : notifications;
 
     return {
       notifications: data,
@@ -29,9 +34,14 @@ export class NotificationService {
     return { message: 'All notifications marked as read' };
   }
 
-  async getUnreadCount(userId: string) {
+  async getUnreadCount(userId: string, viewerCollegeId?: string | null) {
     const count = await prisma.notification.count({
-      where: { recipientId: userId, isRead: false },
+      where: {
+        recipientId: userId,
+        isRead: false,
+        // Keep the badge consistent with the filtered list
+        ...(viewerCollegeId && { actor: { collegeId: viewerCollegeId } }),
+      },
     });
     return { count };
   }
