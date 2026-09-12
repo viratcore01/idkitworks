@@ -1,4 +1,4 @@
-# FREEBUFF — Scale & Load Playbook
+# SKOLA — Scale & Load Playbook
 
 How this system behaves under heavy load (lakhs of users), what the hard limits are,
 and the exact levers to pull when something bends. Read this before an launch push.

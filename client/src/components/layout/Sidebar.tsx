@@ -16,7 +16,7 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="mb-6 px-2">
         <h1 className="text-2xl font-display font-bold text-white">
-          FREE<span className="text-nb-lime">BUFF</span>
+          SKO<span className="text-nb-lime">LA</span>
         </h1>
       </div>
 

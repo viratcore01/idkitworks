@@ -4,7 +4,7 @@ import { prisma } from '../config/prisma';
 import { AuthRequest, AuthUser } from '../types';
 
 /**
- * PRODUCT RULE: Freebuff is hyperlocal and college-only.
+ * PRODUCT RULE: Skola is hyperlocal and college-only.
  * collegeId is always resolved from the LIVE database, never from the JWT,
  * so a user who switches college is re-scoped on their very next request.
  */

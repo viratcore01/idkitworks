@@ -18,7 +18,7 @@ async function main() {
       where: { username: 'viratcore01' },
       update: {},
       create: {
-        email: 'virat@freebuff.app', passwordHash, username: 'viratcore01',
+        email: 'virat@skola.app', passwordHash, username: 'viratcore01',
         displayName: 'Virat Shishodia', collegeId: ipec?.id, course: 'CSE', year: 2,
         bio: 'Building things that matter. Coffee > Sleep.',
         gender: 'MALE', dateOfBirth: new Date('2004-03-15'),
@@ -28,7 +28,7 @@ async function main() {
       where: { username: 'priya_sharma' },
       update: {},
       create: {
-        email: 'priya@freebuff.app', passwordHash, username: 'priya_sharma',
+        email: 'priya@skola.app', passwordHash, username: 'priya_sharma',
         displayName: 'Priya Sharma', collegeId: ipec?.id, course: 'ECE', year: 3,
         bio: 'Analog circuits by day, Bollywood dance by night.',
         gender: 'FEMALE', dateOfBirth: new Date('2003-07-22'),
@@ -38,7 +38,7 @@ async function main() {
       where: { username: 'arnav_dev' },
       update: {},
       create: {
-        email: 'arnav@freebuff.app', passwordHash, username: 'arnav_dev',
+        email: 'arnav@skola.app', passwordHash, username: 'arnav_dev',
         displayName: 'Arnav Gupta', collegeId: ipec?.id, course: 'CSE', year: 2,
         bio: 'Full-stack dev. Currently mass-producing side projects.',
         gender: 'MALE', dateOfBirth: new Date('2004-11-02'),
@@ -48,7 +48,7 @@ async function main() {
       where: { username: 'ishita_codes' },
       update: {},
       create: {
-        email: 'ishita@freebuff.app', passwordHash, username: 'ishita_codes',
+        email: 'ishita@skola.app', passwordHash, username: 'ishita_codes',
         displayName: 'Ishita Singh', collegeId: ipec?.id, course: 'CSE', year: 4,
         bio: 'Final year. Interned at a startup. Surviving placement season.',
         gender: 'FEMALE', dateOfBirth: new Date('2002-01-30'),
@@ -58,7 +58,7 @@ async function main() {
       where: { username: 'rohit_k' },
       update: {},
       create: {
-        email: 'rohit@freebuff.app', passwordHash, username: 'rohit_k',
+        email: 'rohit@skola.app', passwordHash, username: 'rohit_k',
         displayName: 'Rohit Kumar', collegeId: ipec?.id, course: 'ECE', year: 2,
         bio: 'I sleep 4 hours a day and still top my class. Just kidding, I don\'t top.',
         gender: 'MALE', dateOfBirth: new Date('2004-09-08'),
@@ -68,7 +68,7 @@ async function main() {
       where: { username: 'sneha_travels' },
       update: {},
       create: {
-        email: 'sneha@freebuff.app', passwordHash, username: 'sneha_travels',
+        email: 'sneha@skola.app', passwordHash, username: 'sneha_travels',
         displayName: 'Sneha Agarwal', collegeId: dtu?.id, course: 'IT', year: 3,
         bio: 'Weekend backpacker. 12 states in 2 years.',
         gender: 'FEMALE', dateOfBirth: new Date('2003-05-11'),

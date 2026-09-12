@@ -33,12 +33,12 @@ export default function Topbar() {
       {/* Desktop: reserve exactly the sidebar's width so content never hides under it */}
       <div className="hidden lg:block w-64 shrink-0" aria-hidden="true">
         <h1 className="text-2xl font-display font-bold text-white leading-none">
-          FREE<span className="text-nb-lime">BUFF</span>
+          SKO<span className="text-nb-lime">LA</span>
         </h1>
       </div>
       <Link to="/home" className="lg:hidden shrink-0">
         <h1 className="text-xl font-display font-bold text-white">
-          FREE<span className="text-nb-lime">BUFF</span>
+          SKO<span className="text-nb-lime">LA</span>
         </h1>
       </Link>
 

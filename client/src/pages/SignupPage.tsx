@@ -42,7 +42,7 @@ export default function SignupPage() {
     setIsLoading(true);
     try {
       await signup(formData);
-      toast.success('Welcome to Freebuff!');
+      toast.success('Welcome to Skola!');
       navigate('/home');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Signup failed');
@@ -276,7 +276,7 @@ export default function SignupPage() {
               {isLoading ? (
                 <><Hourglass size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Creating...</>
               ) : (
-                <><PartyPopper size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Join Freebuff</>
+                <><PartyPopper size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Join Skola</>
               )}
             </button>
           </div>

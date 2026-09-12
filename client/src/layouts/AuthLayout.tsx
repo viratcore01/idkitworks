@@ -9,7 +9,7 @@ export default function AuthLayout() {
         <div className="text-center mb-8">
           <div className="inline-block">
             <h1 className="text-5xl font-display font-bold text-nb-black tracking-tight">
-              FREE<span className="text-nb-orange">BUFF</span>
+              SKO<span className="text-nb-orange">LA</span>
             </h1>
             <div className="flex items-center gap-2 mt-1">
               <div className="h-1 flex-1 bg-nb-lime rounded-full" />

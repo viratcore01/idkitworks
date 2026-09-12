@@ -1,5 +1,5 @@
 {
-  "name": "student-network",
+  "name": "skola",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",

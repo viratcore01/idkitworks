@@ -32,7 +32,7 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, St
               onClick={() => window.location.reload()}
               className="nb-btn-orange w-full text-sm inline-flex items-center justify-center gap-1.5"
             >
-              <RotateCcw size={14} strokeWidth={2.5} /> Reload Freebuff
+              <RotateCcw size={14} strokeWidth={2.5} /> Reload Skola
             </button>
           </div>
         </div>

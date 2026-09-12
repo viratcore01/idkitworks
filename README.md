@@ -1,4 +1,4 @@
-# ⚡ FREEBUFF — Student Social Network
+# ⚡ SKOLA — Student Social Network
 
 A student-only social network where students can scroll posts, interact, discover people, find matches, post confessions, and switch into anonymous/Incognito mode.
 

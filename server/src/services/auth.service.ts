@@ -252,7 +252,7 @@ export class AuthService {
       const dob = new Date(data.dateOfBirth);
       if (isNaN(dob.getTime())) throw new Error('Invalid date of birth');
       const age = (Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000);
-      if (age < 16) throw new Error('You must be at least 16 to use Freebuff');
+      if (age < 16) throw new Error('You must be at least 16 to use Skola');
       if (age > 100) throw new Error('Invalid date of birth');
       update.dateOfBirth = dob;
     }
