@@ -1,23 +1,22 @@
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth.store';
+import { Home, Heart, Bell, Settings } from 'lucide-react';
 
 const navItems = [
-  { to: '/home', icon: '🏠', label: 'Home' },
-  { to: '/confessions', icon: '👻', label: 'Confessions' },
-  { to: '/matches', icon: '❤️', label: 'Find Match' },
-  { to: '/messages', icon: '💬', label: 'Messages' },
-  { to: '/notifications', icon: '🔔', label: 'Notifications' },
+  { to: '/home', Icon: Home, label: 'Home' },
+  { to: '/matches', Icon: Heart, label: 'Find Match' },
+  { to: '/notifications', Icon: Bell, label: 'Notifications' },
 ];
 
 export default function Sidebar() {
   const { user } = useAuthStore();
 
   return (
-    <div className="h-full bg-nb-beige border-r-nb border-nb-black p-4 flex flex-col">
+    <div className="h-full bg-nb-black p-4 flex flex-col">
       {/* Logo */}
       <div className="mb-6 px-2">
-        <h1 className="text-2xl font-display font-bold text-nb-black">
-          FREE<span className="text-nb-orange">BUFF</span>
+        <h1 className="text-2xl font-display font-bold text-white">
+          FREE<span className="text-nb-lime">BUFF</span>
         </h1>
       </div>
 
@@ -31,7 +30,7 @@ export default function Sidebar() {
               `nb-sidebar-link ${isActive ? 'active' : 'text-nb-black'}`
             }
           >
-            <span className="text-xl">{item.icon}</span>
+            <item.Icon size={20} strokeWidth={2.5} />
             <span className="font-display text-sm">{item.label}</span>
           </NavLink>
         ))}
@@ -52,7 +51,7 @@ export default function Sidebar() {
               className="w-8 h-8 nb-avatar"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-nb-orange border-nb-2 border-nb-black flex items-center justify-center text-white text-sm font-bold">
+            <div className="w-8 h-8 rounded-full bg-nb-orange border-nb-2 border-white flex items-center justify-center text-white text-sm font-bold">
               {user?.displayName?.[0]?.toUpperCase() || '?'}
             </div>
           )}
@@ -72,7 +71,7 @@ export default function Sidebar() {
             `nb-sidebar-link mt-1 ${isActive ? 'active' : 'text-nb-black'}`
           }
         >
-          <span className="text-xl">⚙️</span>
+          <Settings size={20} strokeWidth={2.5} />
           <span className="font-display text-sm">Settings</span>
         </NavLink>
       </div>

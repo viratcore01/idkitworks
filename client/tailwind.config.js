@@ -7,6 +7,10 @@ export default {
         cream: '#FFF8EE',
         nb: {
           black: '#1a1a1a',
+          /** Full-bleed violet canvas (reference: neobrutalism mockup) */
+          canvas: '#8C7AE6',
+          lime: '#C8F169',
+          bubblegum: '#FFA3DD',
           orange: '#FF6B35',
           pink: '#FF69B4',
           yellow: '#FFD700',
@@ -15,7 +19,6 @@ export default {
           green: '#2ECC71',
           red: '#FF4757',
           purple: '#9B59B6',
-          beige: '#FFF8EE',
         },
       },
       fontFamily: {

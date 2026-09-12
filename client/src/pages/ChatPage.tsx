@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Zap } from 'lucide-react';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
@@ -83,7 +84,7 @@ export default function ChatPage() {
             disabled={!message.trim()}
             className="nb-btn-orange disabled:opacity-50"
           >
-            ⚡
+            <Zap size={18} strokeWidth={2.5} fill="currentColor" />
           </button>
         </div>
       </div>

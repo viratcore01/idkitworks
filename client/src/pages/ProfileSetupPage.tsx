@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Sparkles, PartyPopper, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
@@ -32,7 +33,7 @@ export default function ProfileSetupPage() {
     setIsLoading(true);
     try {
       await updateProfile(formData);
-      toast.success('Profile updated! 🎉');
+      toast.success('Profile updated!');
       navigate('/home');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Update failed');
@@ -42,11 +43,13 @@ export default function ProfileSetupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-nb-beige flex items-center justify-center p-4">
+    <div className="min-h-screen nb-canvas-surface flex items-center justify-center p-4">
       <div className="w-full max-w-lg">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-display font-bold text-nb-black">
-            Complete Your Profile ✨
+            <span className="inline-flex items-center gap-2">
+              <Sparkles size={24} strokeWidth={2.5} className="text-nb-orange" /> Complete Your Profile
+            </span>
           </h1>
           <p className="mt-2 font-body text-sm text-gray-500">
             Let people know where you study and what you're into
@@ -127,7 +130,7 @@ export default function ProfileSetupPage() {
                   className={`nb-tag cursor-pointer transition-all ${
                     formData.interestIds.includes(i.id)
                       ? 'bg-nb-orange text-white'
-                      : 'bg-nb-yellow'
+                      : 'bg-white'
                   }`}
                 >
                   {i.name}
@@ -141,7 +144,11 @@ export default function ProfileSetupPage() {
             disabled={isLoading}
             className="nb-btn-orange w-full text-center disabled:opacity-50"
           >
-            {isLoading ? '⏳ Saving...' : '🎉 Complete Setup'}
+            {isLoading ? (
+              <><Hourglass size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Saving...</>
+            ) : (
+              <><PartyPopper size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Complete Setup</>
+            )}
           </button>
         </form>
       </div>

@@ -60,6 +60,18 @@ export class PostService {
         },
         _count: { select: { comments: true, likes: true } },
         likes: { where: { userId }, select: { userId: true } },
+        comments: {
+          where: { deletedAt: null, parentCommentId: null },
+          take: 3,
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            content: true,
+            isAnonymous: true,
+            createdAt: true,
+            author: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+          },
+        },
       },
     });
 
@@ -71,6 +83,7 @@ export class PostService {
         ...post,
         isLikedByMe: post.likes.length > 0,
         likes: undefined,
+        topComments: post.comments,
       })),
       nextCursor: hasMore ? data[data.length - 1].id : null,
     };

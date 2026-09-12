@@ -54,6 +54,8 @@ export interface Post {
     comments: number;
     likes: number;
   };
+  /** Newest top-level comments, attached to feed posts for inline previews */
+  topComments?: Comment[];
 }
 
 export interface Comment {
@@ -68,7 +70,7 @@ export interface Comment {
     username: string;
     displayName: string;
     avatarUrl: string | null;
-  };
+  } | null;
   _count?: { replies: number };
 }
 

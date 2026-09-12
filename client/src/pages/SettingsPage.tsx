@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Settings, Save, Hourglass, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import toast from 'react-hot-toast';
 
@@ -14,7 +15,7 @@ export default function SettingsPage() {
     setIsSaving(true);
     try {
       await updateProfile({ displayName, bio });
-      toast.success('Profile updated! ⚡');
+      toast.success('Profile updated!');
     } catch {
       toast.error('Failed to update');
     } finally {
@@ -29,7 +30,9 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <h1 className="font-display font-bold text-2xl text-nb-black mb-6">⚙️ Settings</h1>
+      <h1 className="font-display font-bold text-2xl text-nb-black mb-6 flex items-center gap-2">
+        <Settings size={22} strokeWidth={2.5} /> Settings
+      </h1>
 
       {/* Edit Profile */}
       <div className="nb-card p-6 mb-4">
@@ -57,7 +60,11 @@ export default function SettingsPage() {
             disabled={isSaving}
             className="nb-btn-orange text-sm disabled:opacity-50"
           >
-            {isSaving ? '⏳ Saving...' : '💾 Save Changes'}
+            {isSaving ? (
+              <><Hourglass size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Saving...</>
+            ) : (
+              <><Save size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Save Changes</>
+            )}
           </button>
         </div>
       </div>
@@ -74,8 +81,8 @@ export default function SettingsPage() {
       {/* Danger Zone */}
       <div className="nb-card p-6 border-nb-red">
         <h2 className="font-display font-bold text-lg text-nb-red mb-4">Danger Zone</h2>
-        <button onClick={handleLogout} className="nb-btn-danger text-sm">
-          🚪 Logout
+        <button onClick={handleLogout} className="nb-btn-danger text-sm inline-flex items-center gap-1.5">
+          <LogOut size={14} strokeWidth={2.5} /> Logout
         </button>
       </div>
     </div>

@@ -1,5 +1,4 @@
 import { prisma } from '../config/prisma';
-import { Prisma } from '@prisma/client';
 
 export class SearchService {
   async search(query: string, userId: string) {
@@ -11,8 +10,8 @@ export class SearchService {
         where: {
           isActive: true,
           OR: [
-            { username: { contains: q, mode: 'insensitive' } },
-            { displayName: { contains: q, mode: 'insensitive' } },
+            { username: { contains: q } },
+            { displayName: { contains: q } },
           ],
         },
         take: 10,
@@ -24,7 +23,7 @@ export class SearchService {
       prisma.post.findMany({
         where: {
           deletedAt: null,
-          content: { contains: q, mode: 'insensitive' },
+          content: { contains: q },
         },
         take: 10,
         orderBy: { createdAt: 'desc' },
@@ -36,7 +35,7 @@ export class SearchService {
         },
       }),
       prisma.college.findMany({
-        where: { name: { contains: q, mode: 'insensitive' } },
+        where: { name: { contains: q } },
         take: 5,
       }),
     ]);

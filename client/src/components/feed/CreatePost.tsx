@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Ghost, Zap } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
 import toast from 'react-hot-toast';
@@ -27,7 +28,7 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
       setContent('');
       setIsAnonymous(false);
       queryClient.invalidateQueries({ queryKey: ['feed'] });
-      toast.success(type === 'CONFESSION' ? 'Confession posted! 👻' : 'Posted! ⚡');
+      toast.success(type === 'CONFESSION' ? 'Confession posted!' : 'Posted!');
     },
     onError: () => toast.error('Failed to post'),
   });
@@ -46,8 +47,8 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
           </div>
         )}
         {effectiveAnonymous && (
-          <div className="w-10 h-10 rounded-full bg-nb-purple border-nb-2 border-nb-black flex items-center justify-center text-white text-lg shrink-0">
-            👻
+          <div className="w-10 h-10 rounded-full bg-nb-purple border-nb-2 border-nb-black flex items-center justify-center text-white shrink-0">
+            <Ghost size={20} strokeWidth={2.5} />
           </div>
         )}
 
@@ -74,12 +75,13 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
                     effectiveAnonymous ? 'bg-nb-purple text-white' : 'bg-gray-100'
                   }`}
                 >
-                  👻 {effectiveAnonymous ? 'Anonymous' : 'Anonymous'}
+                  <Ghost size={12} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />
+                  Anonymous
                 </button>
               )}
               {effectiveAnonymous && (
-                <span className="text-xs font-body text-nb-purple font-semibold">
-                  Posting as 👻 Anonymous Student
+                <span className="text-xs font-body text-nb-purple font-semibold inline-flex items-center gap-1">
+                  <Ghost size={12} strokeWidth={2.5} /> Posting as Anonymous Student
                 </span>
               )}
             </div>
@@ -89,7 +91,13 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
               disabled={!content.trim() || mutation.isPending}
               className="nb-btn-orange text-sm px-4 py-1.5 disabled:opacity-50"
             >
-              {mutation.isPending ? '...' : type === 'CONFESSION' ? '👻 Confess' : '⚡ Post'}
+              {mutation.isPending ? (
+                '...'
+              ) : type === 'CONFESSION' ? (
+                <><Ghost size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Confess</>
+              ) : (
+                <><Zap size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Post</>
+              )}
             </button>
           </div>
         </div>

@@ -9,6 +9,9 @@
   --nb-yellow: #FFD700;
   --nb-cyan: #00D4AA;
   --nb-cream: #FFF8EE;
+  --nb-canvas: #8C7AE6;
+  --nb-lime: #C8F169;
+  --nb-bubblegum: #FFA3DD;
 }
 
 * {
@@ -18,7 +21,7 @@
 body {
   margin: 0;
   font-family: 'DM Sans', sans-serif;
-  background-color: var(--nb-cream);
+  background-color: var(--nb-canvas);
   color: var(--nb-black);
   -webkit-font-smoothing: antialiased;
 }
@@ -38,7 +41,7 @@ body {
   }
 
   .nb-btn {
-    @apply px-5 py-2.5 border-nb border-nb-black rounded-nb shadow-nb font-display font-semibold
+    @apply px-5 py-2.5 border-nb border-nb-black rounded-full shadow-nb font-display font-semibold
            transition-all duration-100 cursor-pointer select-none active:shadow-nb-active active:translate-x-[2px] active:translate-y-[2px];
   }
 
@@ -54,6 +57,10 @@ body {
     @apply nb-btn bg-nb-cyan text-white hover:bg-nb-cyan/90;
   }
 
+  .nb-btn-lime {
+    @apply nb-btn bg-nb-lime text-nb-black hover:bg-nb-lime/80;
+  }
+
   .nb-btn-yellow {
     @apply nb-btn bg-nb-yellow text-nb-black hover:bg-nb-yellow/90;
   }
@@ -67,8 +74,8 @@ body {
   }
 
   .nb-input {
-    @apply w-full px-4 py-2.5 border-nb border-nb-black rounded-nb bg-white font-body
-           focus:outline-none focus:ring-2 focus:ring-nb-orange focus:ring-offset-2
+    @apply w-full px-4 py-2.5 border-nb border-nb-black rounded-full bg-white font-body
+           focus:outline-none focus:ring-2 focus:ring-nb-lime focus:ring-offset-2
            placeholder:text-gray-400;
   }
 
@@ -78,7 +85,7 @@ body {
   }
 
   .nb-tag {
-    @apply nb-badge bg-nb-yellow;
+    @apply nb-badge bg-nb-lime;
   }
 
   .nb-avatar {
@@ -95,7 +102,21 @@ body {
   }
 
   .nb-sidebar-link.active {
-    @apply bg-nb-orange text-white border-nb-black shadow-nb-sm;
+    @apply bg-nb-lime text-nb-black border-nb-black shadow-nb-sm;
+  }
+
+  /* Full-bleed canvas: violet base with soft colour glows and a repeating
+     neo-brutalist doodle tile (sparkles, circles, plus signs) so large
+     areas of background read as designed, not flat. */
+  .nb-canvas-surface {
+    background-color: var(--nb-canvas);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='210' height='210'%3E%3Cg fill='none' stroke='%231a1a1a' stroke-opacity='0.20' stroke-width='3'%3E%3Ccircle cx='158' cy='42' r='9'/%3E%3Cpath d='M24 138h12M30 132v12'/%3E%3Cpath d='M96 176q6-8 12 0t12 0'/%3E%3C/g%3E%3Cpath fill='%23ffffff' fill-opacity='0.92' d='M42 26l4 12 12 4-12 4-4 12-4-12-12-4 12-4z'/%3E%3Cpath fill='%23C8F169' fill-opacity='0.95' d='M148 112l3.2 9.6 9.6 3.2-9.6 3.2-3.2 9.6-3.2-9.6-9.6-3.2 9.6-3.2z'/%3E%3Cpath fill='%23FFD700' fill-opacity='0.95' d='M92 70l2.8 8.4 8.4 2.8-8.4 2.8-2.8 8.4-2.8-8.4-8.4-2.8 8.4-2.8z'/%3E%3Ccircle cx='186' cy='182' r='4' fill='%23FFA3DD' fill-opacity='0.95'/%3E%3C/svg%3E"),
+      radial-gradient(circle at 8% 4%, rgba(255, 163, 221, 0.5), rgba(255, 163, 221, 0) 32%),
+      radial-gradient(circle at 94% 92%, rgba(200, 241, 105, 0.45), rgba(200, 241, 105, 0) 34%),
+      radial-gradient(circle at 85% 8%, rgba(255, 214, 0, 0.22), rgba(255, 214, 0, 0) 26%);
+    background-size: 210px 210px, auto, auto, auto;
+    background-repeat: repeat, no-repeat, no-repeat, no-repeat;
+    background-attachment: fixed;
   }
 }
 
@@ -111,7 +132,7 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--nb-black);
   border-radius: 100px;
-  border: 2px solid var(--nb-cream);
+  border: 2px solid var(--nb-canvas);
 }
 
 /* Animations */

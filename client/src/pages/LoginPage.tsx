@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Zap, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import toast from 'react-hot-toast';
 
@@ -15,7 +16,7 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       await login(email, password);
-      toast.success('Welcome back! ⚡');
+      toast.success('Welcome back!');
       navigate('/home');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Login failed');
@@ -27,7 +28,7 @@ export default function LoginPage() {
   return (
     <div>
       <h2 className="font-display font-bold text-2xl text-nb-black mb-1">
-        Welcome back 👋
+        Welcome back
       </h2>
       <p className="font-body text-sm text-gray-500 mb-6">
         Sign in to see what's happening at your college
@@ -63,7 +64,11 @@ export default function LoginPage() {
           disabled={isLoading}
           className="nb-btn-orange w-full text-center disabled:opacity-50"
         >
-          {isLoading ? '⏳ Signing in...' : '⚡ Sign In'}
+          {isLoading ? (
+            <><Hourglass size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Signing in...</>
+          ) : (
+            <><Zap size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Sign In</>
+          )}
         </button>
       </form>
 

@@ -12,14 +12,14 @@ export default function AppLayout() {
 
   if (isSetupNeeded) {
     return (
-      <div className="min-h-screen bg-nb-beige">
+      <div className="min-h-screen nb-canvas-surface">
         <Outlet />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-nb-beige">
+    <div className="min-h-screen nb-canvas-surface">
       <Topbar />
       <div className="flex">
         {/* Desktop sidebar */}

@@ -3,84 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
-}
-
-// ─── ENUMS ───────────────────────────────────────────────
-
-enum PostType {
-  NORMAL
-  CONFESSION
-  POLL
-  QUESTION
-}
-
-enum Visibility {
-  PUBLIC
-  COLLEGE_ONLY
-}
-
-enum MediaType {
-  IMAGE
-  VIDEO
-  NONE
-}
-
-enum MatchIntent {
-  DATING
-  FRIENDS
-  COLLABORATORS
-  GAMING
-  MUSIC
-  PROJECTS
-}
-
-enum MatchStatus {
-  ACTIVE
-  UNMATCHED
-}
-
-enum NotificationType {
-  LIKE
-  COMMENT
-  COMMENT_REPLY
-  MATCH
-  NEW_MESSAGE
-  MENTION
-}
-
-enum ReportTargetType {
-  POST
-  COMMENT
-  USER
-  MESSAGE
-}
-
-enum ReportReason {
-  HARASSMENT
-  SEXUAL_CONTENT
-  HATE
-  THREAT
-  SPAM
-  IMPERSONATION
-  SCAM
-  OTHER
-}
-
-enum ReportStatus {
-  PENDING
-  REVIEWED
-  RESOLVED
-  DISMISSED
-}
-
-enum AdminAction {
-  DELETE_CONTENT
-  WARN
-  SUSPEND
-  BAN
-  RESTORE
 }
 
 // ─── MODELS ──────────────────────────────────────────────
@@ -173,16 +97,16 @@ model UserInterest {
 }
 
 model Post {
-  id          String    @id @default(uuid())
-  authorId    String    @map("author_id")
+  id          String   @id @default(uuid())
+  authorId    String   @map("author_id")
   content     String
-  mediaUrl    String?   @map("media_url")
-  mediaType   MediaType @default(NONE) @map("media_type")
-  type        PostType  @default(NORMAL)
-  visibility  Visibility @default(PUBLIC)
-  isAnonymous Boolean   @default(false) @map("is_anonymous")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  mediaUrl    String?  @map("media_url")
+  mediaType   String   @default("NONE") @map("media_type")
+  type        String   @default("NORMAL")
+  visibility  String   @default("PUBLIC")
+  isAnonymous Boolean  @default(false) @map("is_anonymous")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
   author   User          @relation(fields: [authorId], references: [id])
@@ -230,15 +154,15 @@ model PostLike {
 // ─── MATCHING ────────────────────────────────────────────
 
 model MatchPreference {
-  id                String      @id @default(uuid())
-  userId            String      @unique @map("user_id")
-  lookingFor        MatchIntent @default(DATING) @map("looking_for")
-  ageRangeMin       Int?        @map("age_range_min")
-  ageRangeMax       Int?        @map("age_range_max")
-  locationPreference String?    @map("location_preference")
-  collegePreference String?     @map("college_preference")
-  visibility        Boolean     @default(true)
-  updatedAt         DateTime    @updatedAt @map("updated_at")
+  id                 String   @id @default(uuid())
+  userId             String   @unique @map("user_id")
+  lookingFor         String   @default("DATING") @map("looking_for")
+  ageRangeMin        Int?     @map("age_range_min")
+  ageRangeMax        Int?     @map("age_range_max")
+  locationPreference String?  @map("location_preference")
+  collegePreference  String?  @map("college_preference")
+  visibility         Boolean  @default(true)
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -258,12 +182,12 @@ model MatchLike {
 }
 
 model Match {
-  id        String      @id @default(uuid())
-  userA     String      @map("user_a")
-  userB     String      @map("user_b")
-  type      MatchIntent
-  status    MatchStatus @default(ACTIVE)
-  createdAt DateTime    @default(now()) @map("created_at")
+  id        String   @id @default(uuid())
+  userA     String   @map("user_a")
+  userB     String   @map("user_b")
+  type      String
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now()) @map("created_at")
 
   userAObj User @relation("MatchUserA", fields: [userA], references: [id])
   userBObj User @relation("MatchUserB", fields: [userB], references: [id])
@@ -312,17 +236,17 @@ model Message {
 // ─── NOTIFICATIONS ───────────────────────────────────────
 
 model Notification {
-  id          String           @id @default(uuid())
-  recipientId String           @map("recipient_id")
-  actorId     String?          @map("actor_id")
-  type        NotificationType
-  postId      String?          @map("post_id")
-  commentId   String?          @map("comment_id")
-  matchId     String?          @map("match_id")
-  isRead      Boolean          @default(false) @map("is_read")
-  createdAt   DateTime         @default(now()) @map("created_at")
+  id          String    @id @default(uuid())
+  recipientId String    @map("recipient_id")
+  actorId     String?   @map("actor_id")
+  type        String
+  postId      String?   @map("post_id")
+  commentId   String?   @map("comment_id")
+  matchId     String?   @map("match_id")
+  isRead      Boolean   @default(false) @map("is_read")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
-  recipient User @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  recipient User  @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
   actor     User? @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([recipientId, isRead])
@@ -332,16 +256,16 @@ model Notification {
 // ─── REPORTS & BLOCKS ────────────────────────────────────
 
 model Report {
-  id          String           @id @default(uuid())
-  reporterId  String           @map("reporter_id")
-  targetType  ReportTargetType @map("target_type")
-  targetId    String           @map("target_id")
-  reason      ReportReason
+  id          String    @id @default(uuid())
+  reporterId  String    @map("reporter_id")
+  targetType  String    @map("target_type")
+  targetId    String    @map("target_id")
+  reason      String
   description String?
-  status      ReportStatus     @default(PENDING)
-  resolverId  String?          @map("resolver_id")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  resolvedAt  DateTime?        @map("resolved_at")
+  status      String    @default("PENDING")
+  resolverId  String?   @map("resolver_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  resolvedAt  DateTime? @map("resolved_at")
 
   reporter User  @relation("ReportReporter", fields: [reporterId], references: [id])
   resolver User? @relation("ReportResolver", fields: [resolverId], references: [id])

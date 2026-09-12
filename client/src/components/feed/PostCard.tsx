@@ -1,39 +1,27 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuthStore } from '@/store/auth.store';
+import { Ghost, MessageCircle, Heart, ChevronRight } from 'lucide-react';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
-import toast from 'react-hot-toast';
 import { Post } from '@/types';
 import { formatDistanceToNow } from '@/utils/date';
+import CommentRow from '@/components/feed/CommentRow';
 
 interface Props {
   post: Post;
+  /** Post detail page: hides inline previews (comments render below) and keeps inline reply box */
+  detailView?: boolean;
 }
 
-export default function PostCard({ post }: Props) {
-  const [showComments, setShowComments] = useState(false);
-  const [commentText, setCommentText] = useState('');
-  const { user, isIncognito } = useAuthStore();
+export default function PostCard({ post, detailView = false }: Props) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const openPost = () => navigate(`/post/${post.id}`, { state: { scrollY: window.scrollY } });
 
   const likeMutation = useMutation({
     mutationFn: () => api.post(`/posts/${post.id}/like`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['feed'] }),
-  });
-
-  const commentMutation = useMutation({
-    mutationFn: () =>
-      api.post(`/posts/${post.id}/comments`, {
-        content: commentText,
-        isAnonymous: isIncognito,
-      }),
-    onSuccess: () => {
-      setCommentText('');
-      queryClient.invalidateQueries({ queryKey: ['feed'] });
-      toast.success('Commented! 💬');
-    },
   });
 
   const authorName = post.isAnonymous ? 'Anonymous Student' : post.author.displayName;
@@ -45,8 +33,8 @@ export default function PostCard({ post }: Props) {
       {/* Header */}
       <div className="flex items-start gap-3">
         {post.isAnonymous ? (
-          <div className="w-10 h-10 rounded-full bg-nb-purple border-nb-2 border-nb-black flex items-center justify-center text-white text-lg shrink-0">
-            👻
+          <div className="w-10 h-10 rounded-full bg-nb-purple border-nb-2 border-nb-black flex items-center justify-center text-white shrink-0">
+            <Ghost size={20} strokeWidth={2.5} />
           </div>
         ) : (
           <Link to={`/profile/${post.author.username}`}>
@@ -66,7 +54,9 @@ export default function PostCard({ post }: Props) {
               )}
             </span>
             {post.type === 'CONFESSION' && (
-              <span className="nb-badge bg-nb-purple text-white text-[10px]">👻 CONFESS</span>
+              <span className="nb-badge bg-nb-purple text-white text-[10px] inline-flex items-center gap-1">
+                <Ghost size={12} strokeWidth={2.5} /> CONFESS
+              </span>
             )}
           </div>
           {!post.isAnonymous && post.author.college && (
@@ -84,7 +74,12 @@ export default function PostCard({ post }: Props) {
       </div>
 
       {/* Content */}
-      <div className="mt-3">
+      <div
+        className="mt-3"
+        onClick={detailView ? undefined : openPost}
+        role={detailView ? undefined : 'link'}
+        aria-label={detailView ? undefined : 'Open post'}
+      >
         <p className="font-body text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
       </div>
 
@@ -109,45 +104,40 @@ export default function PostCard({ post }: Props) {
           }`}
         >
           <span className={post.isLikedByMe ? 'animate-pop' : ''}>
-            {post.isLikedByMe ? '❤️' : '🤍'}
+            <Heart size={18} strokeWidth={2.5} className={post.isLikedByMe ? 'fill-current' : ''} />
           </span>
           {post._count.likes}
         </button>
 
         <button
-          onClick={() => setShowComments(!showComments)}
+          onClick={() =>
+            detailView
+              ? document.getElementById('post-comments')?.scrollIntoView({ behavior: 'smooth' })
+              : openPost()
+          }
           className="flex items-center gap-1.5 font-display text-sm font-semibold text-gray-500 hover:text-nb-blue"
         >
-          💬 {post._count.comments}
+          <MessageCircle size={18} strokeWidth={2.5} /> {post._count.comments}
         </button>
+        {!detailView && <ChevronRight size={18} strokeWidth={2.5} className="ml-auto text-gray-400" />}
       </div>
 
-      {/* Comment input */}
-      {showComments && (
-        <div className="mt-3 pt-3 border-t-2 border-gray-100 animate-slide-up">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              className="nb-input text-sm py-2 flex-1"
-              placeholder={isIncognito ? 'Commenting anonymously...' : 'Write a comment...'}
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && commentText.trim()) {
-                  commentMutation.mutate();
-                }
-              }}
-            />
-            <button
-              onClick={() => {
-                if (commentText.trim()) commentMutation.mutate();
-              }}
-              disabled={!commentText.trim()}
-              className="nb-btn-orange text-sm px-3 py-1.5 disabled:opacity-50"
-            >
-              {isIncognito ? '👻' : '💬'}
-            </button>
-          </div>
+      {/* Comment previews — feed only, teases the discussion */}
+      {!detailView && (post.topComments?.length || 0) > 0 && (
+        <div
+          className="mt-3 pt-3 border-t-2 border-gray-100 space-y-2 cursor-pointer"
+          onClick={openPost}
+          role="link"
+          aria-label="Open post to see all comments"
+        >
+          {post.topComments!.map((c) => (
+            <CommentRow key={c.id} comment={c} />
+          ))}
+          {post._count.comments > post.topComments!.length && (
+            <p className="text-xs font-display font-semibold text-gray-400 hover:text-nb-orange transition-colors">
+              View all {post._count.comments} comments
+            </p>
+          )}
         </div>
       )}
     </div>

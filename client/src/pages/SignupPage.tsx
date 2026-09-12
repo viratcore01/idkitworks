@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Rocket, PartyPopper, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
@@ -41,7 +42,7 @@ export default function SignupPage() {
     setIsLoading(true);
     try {
       await signup(formData);
-      toast.success('Welcome to Freebuff! 🎉');
+      toast.success('Welcome to Freebuff!');
       navigate('/home');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Signup failed');
@@ -62,7 +63,9 @@ export default function SignupPage() {
   return (
     <div>
       <h2 className="font-display font-bold text-2xl text-nb-black mb-1">
-        Create Account 🚀
+        <span className="inline-flex items-center gap-2">
+          <Rocket size={22} strokeWidth={2.5} className="text-nb-orange" /> Create Account
+        </span>
       </h2>
       <p className="font-body text-sm text-gray-500 mb-4">
         Step {step} of 4
@@ -252,7 +255,7 @@ export default function SignupPage() {
                   className={`nb-tag cursor-pointer transition-all ${
                     formData.interestIds.includes(i.id)
                       ? 'bg-nb-orange text-white'
-                      : 'bg-nb-yellow hover:bg-nb-yellow/80'
+                      : 'bg-white hover:bg-gray-50'
                   }`}
                 >
                   {i.name}
@@ -269,7 +272,11 @@ export default function SignupPage() {
               disabled={isLoading}
               className="nb-btn-cyan flex-1 text-center disabled:opacity-50"
             >
-              {isLoading ? '⏳ Creating...' : '🎉 Join Freebuff'}
+              {isLoading ? (
+                <><Hourglass size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Creating...</>
+              ) : (
+                <><PartyPopper size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Join Freebuff</>
+              )}
             </button>
           </div>
         </div>

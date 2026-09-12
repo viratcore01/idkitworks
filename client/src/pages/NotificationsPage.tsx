@@ -1,27 +1,28 @@
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Bell, Heart, MessageCircle, Reply, PartyPopper, Mail, Megaphone, AtSign } from 'lucide-react';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
 import { formatDistanceToNow } from '@/utils/date';
-import { MOCK_NOTIFICATIONS } from '@/data/mock';
 
-const typeIcons: Record<string, string> = {
-  LIKE: '❤️',
-  COMMENT: '💬',
-  COMMENT_REPLY: '↩️',
-  MATCH: '🎉',
-  NEW_MESSAGE: '✉️',
-  MENTION: '📢',
+const typeIcons: Record<string, React.ReactNode> = {
+  LIKE: <Heart size={20} strokeWidth={2.5} className="text-nb-red" />,
+  COMMENT: <MessageCircle size={20} strokeWidth={2.5} className="text-nb-blue" />,
+  COMMENT_REPLY: <Reply size={20} strokeWidth={2.5} className="text-nb-blue" />,
+  MATCH: <PartyPopper size={20} strokeWidth={2.5} className="text-nb-pink" />,
+  NEW_MESSAGE: <Mail size={20} strokeWidth={2.5} className="text-nb-cyan" />,
+  MENTION: <AtSign size={20} strokeWidth={2.5} className="text-nb-purple" />,
 };
 
 export default function NotificationsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => api.get('/notifications').then((r) => r.data),
-    retry: false,
   });
 
   const markReadMutation = useMutation({
@@ -29,14 +30,14 @@ export default function NotificationsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
-  const notifications = data?.notifications?.length ? data.notifications : MOCK_NOTIFICATIONS;
+  const notifications = data?.notifications || [];
 
   const getNotificationText = (type: string, actorName: string) => {
     switch (type) {
       case 'LIKE': return `${actorName} liked your post`;
       case 'COMMENT': return `${actorName} commented on your post`;
       case 'COMMENT_REPLY': return `${actorName} replied to your comment`;
-      case 'MATCH': return `🎉 You matched with ${actorName}!`;
+      case 'MATCH': return `You matched with ${actorName}!`;
       case 'NEW_MESSAGE': return `${actorName} sent you a message`;
       default: return `${actorName} interacted with you`;
     }
@@ -45,7 +46,9 @@ export default function NotificationsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="font-display font-bold text-2xl text-nb-black">🔔 Notifications</h1>
+        <h1 className="font-display font-bold text-2xl text-nb-black flex items-center gap-2">
+          <Bell size={22} strokeWidth={2.5} /> Notifications
+        </h1>
         <button
           onClick={() => markReadMutation.mutate()}
           className="nb-badge bg-nb-cyan text-white cursor-pointer"
@@ -58,20 +61,20 @@ export default function NotificationsPage() {
         <LoadingSpinner />
       ) : !notifications.length ? (
         <EmptyState
-          icon="🔔"
-          title="No notifications yet"
-          description="When someone interacts with you, you'll see it here."
+          icon={<Bell strokeWidth={2.5} />}
+          title="Nothing yet"
+          description="When someone likes your post, comments, or matches with you — it'll show up here."
         />
       ) : (
-        <div className="space-y-2">
-          {notifications.map((notif: any) => (
+        <div className="space-y-2">          {notifications.map((notif: any) => (
             <div
               key={notif.id}
+              onClick={() => notif.postId && navigate(`/post/${notif.postId}`)}
               className={`nb-card p-4 flex items-center gap-3 ${
-                !notif.isRead ? 'border-l-4 border-l-nb-orange bg-orange-50/50' : ''
-              }`}
+                !notif.isRead ? 'border-l-4 border-l-nb-lime bg-lime-50' : ''
+              } ${notif.postId ? 'cursor-pointer' : ''}`}
             >
-              <span className="text-xl">{typeIcons[notif.type] || '📌'}</span>
+              <span className="shrink-0">{typeIcons[notif.type] || <Megaphone size={20} strokeWidth={2.5} className="text-gray-400" />}</span>
               {notif.actor && (
                 <Avatar src={notif.actor.avatarUrl} name={notif.actor.displayName} size="sm" />
               )}

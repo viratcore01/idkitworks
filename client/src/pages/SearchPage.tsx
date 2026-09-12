@@ -1,44 +1,42 @@
 import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { Search, Heart, MessageCircle, Users, FileText, GraduationCap, CircleHelp, SearchX } from 'lucide-react';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
-import { MOCK_SEARCH } from '@/data/mock';
 
 export default function SearchPage() {
   const [searchParams] = useSearchParams();
   const q = searchParams.get('q') || '';
 
-  const { data: apiData, isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['search', q],
     queryFn: () => api.get(`/search?q=${encodeURIComponent(q)}`).then((r) => r.data),
     enabled: !!q,
-    retry: false,
   });
-
-  const data = apiData?.users?.length ? apiData : (q ? MOCK_SEARCH : null);
 
   return (
     <div>
-      <h1 className="font-display font-bold text-2xl text-nb-black mb-4">
-        🔍 Search {q && `for "${q}"`}
+      <h1 className="font-display font-bold text-2xl text-nb-black mb-4 flex items-center gap-2">
+        <Search size={22} strokeWidth={2.5} /> Search {q && `for "${q}"`}
       </h1>
 
       {!q ? (
         <EmptyState
-          icon="🔍"
+          icon={<Search strokeWidth={2.5} />}
           title="Search for people, posts, or colleges"
-          description="Use the search bar above to find what you're looking for."
+          description="Use the search bar at the top to find students, posts, or your college."
         />
       ) : isLoading ? (
         <LoadingSpinner />
       ) : (
         <div className="space-y-6">
-          {/* People */}
           {data?.users?.length > 0 && (
             <section>
-              <h2 className="font-display font-bold text-lg mb-3">👥 People</h2>
+              <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2">
+                <Users size={18} strokeWidth={2.5} /> People
+              </h2>
               <div className="space-y-2">
                 {data.users.map((user: any) => (
                   <Link
@@ -59,10 +57,11 @@ export default function SearchPage() {
             </section>
           )}
 
-          {/* Posts */}
           {data?.posts?.length > 0 && (
             <section>
-              <h2 className="font-display font-bold text-lg mb-3">📝 Posts</h2>
+              <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2">
+                <FileText size={18} strokeWidth={2.5} /> Posts
+              </h2>
               <div className="space-y-2">
                 {data.posts.map((post: any) => (
                   <div key={post.id} className="nb-card p-4">
@@ -71,8 +70,12 @@ export default function SearchPage() {
                     </p>
                     <p className="font-body text-sm mt-1 line-clamp-3">{post.content}</p>
                     <div className="mt-2 flex gap-3 text-xs text-gray-400">
-                      <span>❤️ {post._count.likes}</span>
-                      <span>💬 {post._count.comments}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <Heart size={12} strokeWidth={2.5} className={post._count.likes > 0 ? 'text-nb-red fill-current' : ''} /> {post._count.likes}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <MessageCircle size={12} strokeWidth={2.5} /> {post._count.comments}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -80,10 +83,11 @@ export default function SearchPage() {
             </section>
           )}
 
-          {/* Colleges */}
           {data?.colleges?.length > 0 && (
             <section>
-              <h2 className="font-display font-bold text-lg mb-3">🏫 Colleges</h2>
+              <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2">
+                <GraduationCap size={18} strokeWidth={2.5} /> Colleges
+              </h2>
               <div className="space-y-2">
                 {data.colleges.map((college: any) => (
                   <div key={college.id} className="nb-card p-4">
@@ -95,11 +99,11 @@ export default function SearchPage() {
             </section>
           )}
 
-          {(!data?.users?.length && !data?.posts?.length && !data?.colleges?.length) && (
+          {!data?.users?.length && !data?.posts?.length && !data?.colleges?.length && (
             <EmptyState
-              icon="🤔"
-              title="No results found"
-              description={`Nothing found for "${q}". Try a different search.`}
+              icon={<SearchX strokeWidth={2.5} />}
+              title="No results"
+              description={`Nothing matched "${q}". Try a different search.`}
             />
           )}
         </div>

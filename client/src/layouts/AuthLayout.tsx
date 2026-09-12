@@ -1,8 +1,9 @@
 import { Outlet } from 'react-router-dom';
+import { Zap, GraduationCap } from 'lucide-react';
 
 export default function AuthLayout() {
   return (
-    <div className="min-h-screen bg-nb-beige flex items-center justify-center p-4">
+    <div className="min-h-screen nb-canvas-surface flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Brand */}
         <div className="text-center mb-8">
@@ -11,13 +12,15 @@ export default function AuthLayout() {
               FREE<span className="text-nb-orange">BUFF</span>
             </h1>
             <div className="flex items-center gap-2 mt-1">
-              <div className="h-1 flex-1 bg-nb-orange rounded-full" />
-              <span className="text-xs font-display font-semibold text-nb-black">⚡</span>
-              <div className="h-1 flex-1 bg-nb-orange rounded-full" />
+              <div className="h-1 flex-1 bg-nb-lime rounded-full" />
+              <Zap size={14} strokeWidth={2.5} className="text-nb-lime" fill="currentColor" />
+              <div className="h-1 flex-1 bg-nb-lime rounded-full" />
             </div>
           </div>
           <p className="mt-3 font-body text-sm text-gray-600">
-            The social network for students. 🎓
+            <span className="inline-flex items-center gap-1">
+              The social network for students. <GraduationCap size={16} strokeWidth={2.5} className="inline text-nb-black" />
+            </span>
           </p>
         </div>
 
@@ -29,7 +32,7 @@ export default function AuthLayout() {
         {/* Footer */}
         <div className="mt-6 text-center">
           <p className="text-xs font-body text-gray-400">
-            Made with ⚡ for students, by students
+            Made with <Zap size={11} strokeWidth={2.5} className="inline mx-0.5 -mt-0.5 text-nb-orange" fill="currentColor" /> for students, by students
           </p>
         </div>
       </div>
