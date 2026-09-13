@@ -1,12 +1,32 @@
 import { prisma } from '../config/prisma';
+import { publish } from '../config/bus';
 
 /** Pass memory: passed profiles resurface after this many days (Tinder-style). */
 const PASS_RESURFACE_DAYS = 30;
+
+/** True when the user has no photos at all — deck & swipes are locked. */
+async function needsPhotoGate(userId: string): Promise<boolean> {
+  const count = await prisma.userPhoto.count({ where: { userId } });
+  return count === 0;
+}
 /** Deck page size: swipe through ~a page, then fetch the next. */
 const DECK_PAGE_SIZE = 20;
 /** Like cap per rolling window — spam/scraper protection (Tinder-style). */
 const LIKE_CAP = 100;
 const LIKE_WINDOW_HOURS = 12;
+
+/** Real-app requirement (Tinder/Bumble/Hinge): no photo, no dating pool. */
+function photoGateResponse(page: number) {
+  return {
+    gated: true,
+    code: 'PROFILE_PHOTO_REQUIRED',
+    reason: 'Add a profile photo to start matching — real people only.',
+    users: [],
+    page,
+    hasMore: false,
+    totalRemaining: 0,
+  };
+}
 
 function ageFrom(dob: Date | null): number | null {
   if (!dob) return null;
@@ -35,6 +55,13 @@ export class MatchService {
       return { users: [], page, hasMore: false, totalRemaining: 0 };
     }
 
+    // PHOTO GATE: without at least one photo the deck stays locked —
+    // matching is for real people, not empty circles.
+    const viewerPhotoCount = await prisma.userPhoto.count({ where: { userId } });
+    if (viewerPhotoCount === 0) {
+      return photoGateResponse(page);
+    }
+
     const pref = viewer.matchPreference;
 
     // Everyone this user has already LIKEd or PASSed (within the resurface window)
@@ -60,8 +87,9 @@ export class MatchService {
       excludeIds.add(b.blockedId);
     }
 
-    // Apply the viewer's preferences (with sane fallbacks so the deck is never empty by default)
-    const ageMin = pref?.ageRangeMin ?? 18;
+    // Apply the viewer's preferences (with sane fallbacks so the deck is never empty by default).
+    // Floor is the app's minimum age (16) — otherwise 16-17 year olds get an empty deck AND become invisible.
+    const ageMin = pref?.ageRangeMin ?? 16;
     const ageMax = pref?.ageRangeMax ?? 60;
     const today = new Date();
     const dobUpper = new Date(today.getFullYear() - ageMin, today.getMonth(), today.getDate());
@@ -75,6 +103,9 @@ export class MatchService {
       // the pool beyond the viewer's own college.
       collegeId: viewer.collegeId,
       dateOfBirth: { gte: dobLower, lte: dobUpper },
+      // Only show people who have at least one photo — a photo-less card is
+      // useless in a swipe deck (and every real app hides them).
+      photos: { some: {} },
     };
 
     const wantedGender = pref?.genderPreference || 'EVERYONE';
@@ -101,6 +132,7 @@ export class MatchService {
         dateOfBirth: true,
         college: { select: { id: true, name: true, shortName: true } },
         interests: { include: { interest: true } },
+        photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' } },
       },
     });
 
@@ -110,6 +142,7 @@ export class MatchService {
         username: u.username,
         displayName: u.displayName,
         avatarUrl: u.avatarUrl,
+        photos: u.photos.map((p) => ({ id: p.id, slot: p.slot })),
         bio: u.bio,
         course: u.course,
         year: u.year,
@@ -137,6 +170,14 @@ export class MatchService {
       prisma.user.findUnique({ where: { id: receiverId }, select: { collegeId: true, isActive: true } }),
     ]);
     if (!receiver || !receiver.isActive) throw new Error('User not available');
+
+    // PHOTO GATE: swiping requires your own photo — same rule as the deck.
+    if (await needsPhotoGate(senderId)) {
+      const e: any = new Error('Add a profile photo before matching — real people only.');
+      e.status = 403;
+      e.code = 'PROFILE_PHOTO_REQUIRED';
+      throw e;
+    }
 
     // PRODUCT RULE: college-only. Swiping across colleges is impossible —
     // even a guessed userId from another college gets a clean rejection.
@@ -214,6 +255,9 @@ export class MatchService {
           ] as any,
         });
 
+        // Realtime: let both users know instantly (badges, match modals)
+        publish('match:new', { matchId: match.id, userIds: [senderId, receiverId] });
+
         return { matched: true, match };
       }
 
@@ -252,8 +296,8 @@ export class MatchService {
         userBObj: { collegeId: viewer.collegeId },
       },
       include: {
-        userAObj: { select: { id: true, username: true, displayName: true, avatarUrl: true, bio: true } },
-        userBObj: { select: { id: true, username: true, displayName: true, avatarUrl: true, bio: true } },
+        userAObj: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true, bio: true } },
+        userBObj: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true, bio: true } },
       },
       orderBy: { createdAt: 'desc' },
       skip: page * take,
@@ -315,9 +359,9 @@ export class MatchService {
     genderPreference?: string;
     collegePreference?: string;
   }) {
-    // Clamp inputs — server is the source of truth
-    const ageMin = data.ageRangeMin != null ? Math.min(Math.max(Math.round(data.ageRangeMin), 18), 99) : undefined;
-    const ageMax = data.ageRangeMax != null ? Math.min(Math.max(Math.round(data.ageRangeMax), 18), 99) : undefined;
+    // Clamp inputs — server is the source of truth (floor 16 = app minimum age)
+    const ageMin = data.ageRangeMin != null ? Math.min(Math.max(Math.round(data.ageRangeMin), 16), 99) : undefined;
+    const ageMax = data.ageRangeMax != null ? Math.min(Math.max(Math.round(data.ageRangeMax), 16), 99) : undefined;
     const lookingFor = ['DATING', 'FRIENDS', 'BOTH'].includes(data.lookingFor || '') ? data.lookingFor : undefined;
     const genderPref = ['EVERYONE', 'MALE', 'FEMALE', 'OTHER'].includes(data.genderPreference || '') ? data.genderPreference : undefined;
     // PRODUCT RULE: college isolation is not a preference — ignore any client value.

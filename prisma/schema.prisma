@@ -38,6 +38,7 @@ model User {
   gender        String?  @default("UNKNOWN")
   dateOfBirth   DateTime? @map("date_of_birth")
   avatarColor   String?  @map("avatar_color")
+  avatarPhotoId String?  @unique @map("avatar_photo_id")
   isVerified    Boolean  @default(false) @map("is_verified")
   isActive      Boolean  @default(true) @map("is_active")
   role          String   @default("user")
@@ -63,8 +64,28 @@ model User {
   blockedUsers     Block[]            @relation("BlockBlocker")
   blockedBy        Block[]            @relation("BlockBlocked")
   refreshTokens    RefreshToken[]
+  photos           UserPhoto[]
+  avatarPhoto      UserPhoto?         @relation("UserAvatarPhoto", fields: [avatarPhotoId], references: [id])
 
   @@map("users")
+}
+
+// ─── PHOTOS ──────────────────────────────────────────────
+// Gallery photos stored as bytes in Postgres (no external storage needed).
+// slot 0 = profile picture · slots 1-3 = extra gallery photos for matching.
+model UserPhoto {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  data      Bytes
+  mimeType  String   @map("mime_type")
+  slot      Int      @default(0) // 0 = profile pic, 1-3 = gallery
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  avatarOfUser  User?     @relation("UserAvatarPhoto")
+
+  @@index([userId, slot])
+  @@map("user_photos")
 }
 
 model RefreshToken {

@@ -1,5 +1,8 @@
+import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth.store';
+import { getSocket } from '@/services/realtime';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import MobileNav from '@/components/layout/MobileNav';
@@ -7,6 +10,34 @@ import MobileNav from '@/components/layout/MobileNav';
 export default function AppLayout() {
   const { user } = useAuthStore();
   const location = useLocation();
+  const queryClient = useQueryClient();
+
+  // Global realtime badges: incoming messages/matches/notifications refresh the
+  // relevant queries instantly — no polling required for live counts.
+  useEffect(() => {
+    if (!user) return;
+    const socket = getSocket();
+    if (!socket) return;
+    const onNotify = () => {
+      queryClient.invalidateQueries({ queryKey: ['unread-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    };
+    const onMsg = () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    };
+    const onMatch = () => {
+      queryClient.invalidateQueries({ queryKey: ['matches'] });
+      queryClient.invalidateQueries({ queryKey: ['match-stats'] });
+    };
+    socket.on('notification-new', onNotify);
+    socket.on('message-notify', onMsg);
+    socket.on('match-new', onMatch);
+    return () => {
+      socket.off('notification-new', onNotify);
+      socket.off('message-notify', onMsg);
+      socket.off('match-new', onMatch);
+    };
+  }, [user, queryClient]);
 
   const isSetupNeeded = user && !user.college && !user.course && location.pathname !== '/setup-profile';
 

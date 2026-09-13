@@ -4,6 +4,9 @@ export interface User {
   username: string;
   displayName: string;
   avatarUrl: string | null;
+  avatarPhotoId?: string | null;
+  avatarColor?: string | null;
+  photos?: { id: string; slot: number }[];
   bio: string | null;
   college: College | null;
   course: string | null;
@@ -46,6 +49,8 @@ export interface Post {
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    avatarPhotoId?: string | null;
+    avatarColor?: string | null;
     college?: College | null;
     course?: string | null;
     year?: number | null;
@@ -73,6 +78,8 @@ export interface Comment {
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    avatarPhotoId?: string | null;
+    avatarColor?: string | null;
   } | null;
   _count?: { replies: number };
 }
@@ -84,6 +91,8 @@ export interface Match {
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    avatarPhotoId?: string | null;
+    avatarColor?: string | null;
     bio: string | null;
   };
   type: string;
@@ -97,6 +106,8 @@ export interface Conversation {
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    avatarPhotoId?: string | null;
+    avatarColor?: string | null;
   } | null;
   lastMessage: {
     content: string;
@@ -120,6 +131,8 @@ export interface Message {
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    avatarPhotoId?: string | null;
+    avatarColor?: string | null;
   };
 }
 
@@ -138,6 +151,8 @@ export interface Notification {
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    avatarPhotoId?: string | null;
+    avatarColor?: string | null;
   } | null;
 }
 

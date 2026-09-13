@@ -1,12 +1,14 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Heart, MessageSquare, X, HeartCrack, SearchX, MessageSquareOff, SlidersHorizontal, PartyPopper, UserMinus, RotateCcw, Zap } from 'lucide-react';
+import { Search, Heart, MessageSquare, X, HeartCrack, SearchX, MessageSquareOff, SlidersHorizontal, PartyPopper, UserMinus, RotateCcw, Zap, Camera, ImageOff, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '@/services/api';
+import { useAuthStore } from '@/store/auth.store';
 import Avatar from '@/components/common/Avatar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
 import { formatDistanceToNow } from '@/utils/date';
+import { photoSrc } from '@/utils/photo';
 import toast from 'react-hot-toast';
 
 type View = 'discover' | 'matches' | 'chat';
@@ -23,8 +25,10 @@ export default function MatchesPage() {
   const [deckPage, setDeckPage] = useState(0);
   const [matchBanner, setMatchBanner] = useState<{ name: string; username: string } | null>(null);
   const [showPrefs, setShowPrefs] = useState(false);
-  const [prefs, setPrefs] = useState({ genderPreference: 'EVERYONE', ageRangeMin: 18, ageRangeMax: 60 });
+  const [prefs, setPrefs] = useState({ genderPreference: 'EVERYONE', ageRangeMin: 16, ageRangeMax: 60 });
+  const [photoIdx, setPhotoIdx] = useState(0);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { data: deck, isLoading: loadingDiscover } = useQuery({
     queryKey: ['match-discover', deckPage],
@@ -52,6 +56,19 @@ export default function MatchesPage() {
   const currentIndex = 0; // each action moves to the next card; page refetch gives a fresh deck
   const currentUser = users[currentIndex];
   const matches = matchesData?.matches || [];
+
+  // Reset the photo carousel whenever a new card comes up
+  useEffect(() => {
+    setPhotoIdx(0);
+  }, [currentUser?.id]);
+
+  /** All displayable photos of the current card: stored slots first, then avatarUrl. */
+  const cardPhotos: string[] = currentUser
+    ? [
+        ...(currentUser.photos || []).map((p: any) => photoSrc(p.id)),
+        currentUser.avatarUrl || null,
+      ].filter(Boolean as any)
+    : [];
 
   const refreshAll = () => {
     queryClient.invalidateQueries({ queryKey: ['match-discover'] });
@@ -112,7 +129,7 @@ export default function MatchesPage() {
     if (savedPrefs) {
       setPrefs({
         genderPreference: savedPrefs.genderPreference || 'EVERYONE',
-        ageRangeMin: savedPrefs.ageRangeMin || 18,
+        ageRangeMin: savedPrefs.ageRangeMin || 16,
         ageRangeMax: savedPrefs.ageRangeMax || 60,
       });
     }
@@ -203,7 +220,7 @@ export default function MatchesPage() {
             </label>
             <div className="flex items-center gap-3 mb-1">
               <input
-                type="range" min={18} max={99} value={prefs.ageRangeMin}
+                type="range" min={16} max={99} value={prefs.ageRangeMin}
                 onChange={(e) => setPrefs((p) => ({ ...p, ageRangeMin: Math.min(Number(e.target.value), p.ageRangeMax - 1) }))}
                 className="flex-1 accent-nb-orange"
               />
@@ -211,7 +228,7 @@ export default function MatchesPage() {
             </div>
             <div className="flex items-center gap-3 mb-5">
               <input
-                type="range" min={18} max={99} value={prefs.ageRangeMax}
+                type="range" min={16} max={99} value={prefs.ageRangeMax}
                 onChange={(e) => setPrefs((p) => ({ ...p, ageRangeMax: Math.max(Number(e.target.value), p.ageRangeMin + 1) }))}
                 className="flex-1 accent-nb-orange"
               />
@@ -230,7 +247,25 @@ export default function MatchesPage() {
 
       {view === 'discover' && (
         <>
-          {loadingDiscover ? (
+          {deck?.gated ? (
+            /* PHOTO GATE — real apps (Tinder/Bumble/Hinge) all require a photo first */
+            <div className="nb-card p-8 max-w-md mx-auto text-center">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-nb-lime border-nb-3 border-nb-black flex items-center justify-center">
+                <Camera size={28} strokeWidth={2.5} />
+              </div>
+              <h2 className="font-display font-bold text-xl mb-2">Add a photo to start matching</h2>
+              <p className="text-sm font-body text-gray-600 mb-5">
+                Matching is for real people — every profile shows at least one photo.
+                Add yours and your deck unlocks instantly.
+              </p>
+              <button
+                onClick={() => navigate(`/profile/${useAuthStore.getState().user?.username || ''}`)}
+                className="nb-btn-orange text-sm inline-flex items-center gap-1.5"
+              >
+                <Camera size={14} strokeWidth={2.5} /> Add your photos
+              </button>
+            </div>
+          ) : loadingDiscover ? (
             <LoadingSpinner />
           ) : !currentUser ? (
             <EmptyState
@@ -246,11 +281,58 @@ export default function MatchesPage() {
               }
             />
           ) : (
-            <div className="nb-card p-6 max-w-md mx-auto">
+            <div className="nb-card p-6 max-w-md mx-auto relative">
+              {/* Pass — top corner, like every real swipe app */}
+              <button
+                onClick={() => actionMutation.mutate({ receiverId: currentUser.id, action: 'pass' })}
+                disabled={actionMutation.isPending}
+                className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white border-nb-2 border-nb-black flex items-center justify-center hover:bg-nb-red hover:text-white transition-colors z-10"
+                title="Pass"
+              >
+                <X size={18} strokeWidth={2.5} />
+              </button>
+
               <div className="text-center">
-                <div className="mb-4">
-                  <Avatar src={currentUser.avatarUrl} name={currentUser.displayName} size="lg" className="mx-auto" />
-                </div>
+                {/* Photo carousel — profile pic + up to 3 extra photos */}
+                {cardPhotos.length > 0 ? (
+                  <div className="relative mb-4">
+                    <div className="nb-card overflow-hidden !p-0">
+                      <img
+                        src={cardPhotos[photoIdx]}
+                        alt={currentUser.displayName}
+                        className="w-full aspect-[4/5] object-cover"
+                      />
+                    </div>
+                    {cardPhotos.length > 1 && (
+                      <>
+                        <button
+                          onClick={() => setPhotoIdx((i) => (i - 1 + cardPhotos.length) % cardPhotos.length)}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 border-nb-2 border-nb-black flex items-center justify-center"
+                          title="Previous photo"
+                        >
+                          <ChevronLeft size={16} strokeWidth={2.5} />
+                        </button>
+                        <button
+                          onClick={() => setPhotoIdx((i) => (i + 1) % cardPhotos.length)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/90 border-nb-2 border-nb-black flex items-center justify-center"
+                          title="Next photo"
+                        >
+                          <ChevronRight size={16} strokeWidth={2.5} />
+                        </button>
+                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
+                          {cardPhotos.map((_, i) => (
+                            <span key={i} className={`w-2 h-2 rounded-full border border-nb-black ${i === photoIdx ? 'bg-nb-lime' : 'bg-white'}`} />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mb-4">
+                    <Avatar src={currentUser.avatarUrl} name={currentUser.displayName} size="xl" className="mx-auto" />
+                  </div>
+                )}
+
                 <h2 className="font-display font-bold text-xl">{currentUser.displayName}</h2>
                 <p className="text-sm text-gray-500 font-body">@{currentUser.username}</p>
 
@@ -272,24 +354,15 @@ export default function MatchesPage() {
                   </div>
                 )}
 
-                <div className="flex gap-3 mt-6">
-                  <button
-                    onClick={() => actionMutation.mutate({ receiverId: currentUser.id, action: 'pass' })}
-                    disabled={actionMutation.isPending}
-                    className="nb-btn-ghost flex-1 text-center text-lg"
-                    title="Pass"
-                  >
-                    <X size={20} strokeWidth={2.5} />
-                  </button>
-                  <button
-                    onClick={() => actionMutation.mutate({ receiverId: currentUser.id, action: 'like' })}
-                    disabled={actionMutation.isPending}
-                    className="nb-btn-pink flex-1 flex items-center justify-center"
-                    title="Like"
-                  >
-                    <Heart size={20} strokeWidth={2.5} />
-                  </button>
-                </div>
+                {/* Like — the single big centered action */}
+                <button
+                  onClick={() => actionMutation.mutate({ receiverId: currentUser.id, action: 'like' })}
+                  disabled={actionMutation.isPending}
+                  className="nb-btn-pink w-16 h-16 mx-auto mt-6 !p-0 flex items-center justify-center rounded-full"
+                  title="Like"
+                >
+                  <Heart size={26} strokeWidth={2.5} fill="currentColor" />
+                </button>
 
                 {deck && (
                   <p className="mt-4 text-[11px] text-gray-500 font-body">
@@ -318,7 +391,7 @@ export default function MatchesPage() {
                 const conv = (conversations || []).find((c: any) => c.otherUser?.id === match.partner.id);
                 return (
                   <div key={match.id} className="nb-card-hover p-4 flex items-center gap-3">
-                    <Avatar src={match.partner.avatarUrl} name={match.partner.displayName} />
+                    <Avatar src={match.partner.avatarUrl} photoId={match.partner.avatarPhotoId} color={match.partner.avatarColor} name={match.partner.displayName} />
                     <div className="flex-1 min-w-0">
                       <p className="font-display font-semibold text-sm">{match.partner.displayName}</p>
                       <p className="text-xs text-gray-500 truncate">{match.partner.bio || 'No bio yet'}</p>
@@ -366,7 +439,7 @@ export default function MatchesPage() {
                 >
                   {conv.otherUser && (
                     <>
-                      <Avatar src={conv.otherUser.avatarUrl} name={conv.otherUser.displayName} />
+                      <Avatar src={conv.otherUser.avatarUrl} photoId={conv.otherUser.avatarPhotoId} color={conv.otherUser.avatarColor} name={conv.otherUser.displayName} />
                       <div className="flex-1 min-w-0">
                         <p className="font-display font-semibold text-sm">{conv.otherUser.displayName}</p>
                         <p className="text-xs text-gray-500 truncate font-body">

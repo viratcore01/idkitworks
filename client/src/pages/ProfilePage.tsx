@@ -106,7 +106,7 @@ export default function ProfilePage() {
     <div>
       <div className="nb-card p-6 mb-4">
         <div className="flex items-start gap-4">
-          <Avatar src={profile.avatarUrl} name={profile.displayName} size="lg" color={profile.avatarColor} />
+          <Avatar src={profile.avatarUrl} photoId={profile.photos?.find((p: any) => p.slot === 0)?.id} name={profile.displayName} size="lg" color={profile.avatarColor} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="font-display font-bold text-xl">{profile.displayName}</h1>

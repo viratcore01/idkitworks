@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { X, Save, Hourglass, Image as ImageIcon, Calendar } from 'lucide-react';
+import { X, Save, Hourglass, Camera, Plus, Calendar } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
+import { photoSrc } from '@/utils/photo';
 import toast from 'react-hot-toast';
 
 const AVATAR_COLORS = [
@@ -17,6 +18,9 @@ const GENDERS = [
   { value: 'UNKNOWN', label: 'Prefer not to say' },
 ];
 
+const MAX_PHOTOS = 4;
+const MAX_MB = 5;
+
 export default function ProfileEditModal({ profile, onClose, onSaved }: {
   profile: any;
   onClose: () => void;
@@ -25,15 +29,15 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
   const [form, setForm] = useState({
     displayName: profile.displayName || '',
     bio: profile.bio || '',
-    avatarUrl: profile.avatarUrl || '',
     avatarColor: profile.avatarColor || AVATAR_COLORS[0],
     gender: profile.gender || 'UNKNOWN',
     dateOfBirth: profile.dateOfBirth ? String(profile.dateOfBirth).slice(0, 10) : '',
-    collegeId: profile.college?.id || '',
     course: profile.course || '',
     year: profile.year || 1,
     interestIds: (profile.interests || []).map((i: any) => i.id),
   });
+  const [slots, setSlots] = useState<{ id: string; slot: number }[]>(profile.photos || []);
+  const [busySlot, setBusySlot] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const { data: interests } = useQuery({
@@ -41,17 +45,56 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
     queryFn: () => api.get('/users/interests').then((r) => r.data),
   });
 
+  const profilePic = slots.find((s) => s.slot === 0) || null;
+
   // Client mirrors of server rules — instant feedback, server still enforces
   const validate = (): string | null => {
     if (form.displayName.trim().length < 2 || form.displayName.trim().length > 50) return 'Name must be 2-50 characters';
     if (form.bio.length > 300) return 'Bio must be under 300 characters';
-    if (form.avatarUrl && !/^https:\/\//.test(form.avatarUrl.trim())) return 'Photo URL must start with https://';
     if (form.dateOfBirth) {
       const age = (Date.now() - new Date(form.dateOfBirth).getTime()) / (365.25 * 24 * 3600 * 1000);
       if (age < 16) return 'You must be at least 16';
       if (age > 100) return 'Invalid birth date';
     }
     return null;
+  };
+
+  const refreshSlots = async () => {
+    const { data } = await api.get('/auth/me');
+    setSlots(data.photos || []);
+  };
+
+  const handleUpload = async (slot: number, file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return toast.error('Pick an image file');
+    if (file.size > MAX_MB * 1024 * 1024) return toast.error(`Image must be under ${MAX_MB} MB`);
+    setBusySlot(slot);
+    try {
+      const fd = new FormData();
+      fd.append('photo', file);
+      fd.append('slot', String(slot));
+      await api.post('/users/me/photos', fd);
+      await refreshSlots();
+      toast.success(slot === 0 ? 'Profile picture updated' : 'Photo added');
+      onSaved();
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Upload failed');
+    } finally {
+      setBusySlot(null);
+    }
+  };
+
+  const handleDelete = async (photo: { id: string; slot: number }) => {
+    setBusySlot(photo.slot);
+    try {
+      await api.delete(`/users/me/photos/${photo.id}`);
+      await refreshSlots();
+      onSaved();
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Could not remove');
+    } finally {
+      setBusySlot(null);
+    }
   };
 
   const handleSave = async () => {
@@ -61,7 +104,6 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
     try {
       await api.patch('/auth/me', {
         ...form,
-        avatarUrl: form.avatarUrl.trim() || null,
         dateOfBirth: form.dateOfBirth || null,
       });
       toast.success('Profile updated');
@@ -83,21 +125,66 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
           </button>
         </div>
 
-        {/* Avatar preview + photo URL + color picker */}
+        {/* Photos: profile pic + 3 extra — exactly what matching shows */}
+        <label className="block font-display text-sm font-semibold mb-2">
+          Photos <span className="font-normal text-gray-500">(up to {MAX_PHOTOS} — first one is your profile pic)</span>
+        </label>
+        <div className="grid grid-cols-4 gap-2 mb-1">
+          {Array.from({ length: MAX_PHOTOS }).map((_, slot) => {
+            const photo = slots.find((s) => s.slot === slot) || null;
+            const src = photo ? photoSrc(photo.id) : null;
+            return (
+              <div key={slot} className="relative">
+                {photo && (
+                  <button
+                    onClick={() => handleDelete(photo)}
+                    disabled={busySlot === slot}
+                    className="absolute -top-1.5 -right-1.5 z-10 w-5 h-5 rounded-full bg-nb-red text-white border-nb-2 border-nb-black flex items-center justify-center"
+                    title="Remove photo"
+                  >
+                    <X size={11} strokeWidth={3} />
+                  </button>
+                )}
+                <label
+                  className={`block cursor-pointer ${busySlot === slot ? 'opacity-50 pointer-events-none' : ''}`}
+                  title={slot === 0 ? 'Profile picture' : `Photo ${slot + 1}`}
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      handleUpload(slot, e.target.files?.[0]);
+                      e.currentTarget.value = '';
+                    }}
+                  />
+                  {src ? (
+                    <img
+                      src={src}
+                      alt=""
+                      className={`w-full aspect-square object-cover nb-avatar !rounded-lg ${slot === 0 ? 'ring-2 ring-nb-orange ring-offset-2' : ''}`}
+                    />
+                  ) : (
+                    <div className={`w-full aspect-square rounded-lg border-nb-2 border-dashed border-gray-400 bg-nb-cream flex flex-col items-center justify-center text-gray-500 hover:border-nb-orange hover:text-nb-orange transition-colors ${slot === 0 ? 'ring-2 ring-nb-orange ring-offset-2' : ''}`}>
+                      {slot === 0 ? <Camera size={18} strokeWidth={2.5} /> : <Plus size={16} strokeWidth={2.5} />}
+                      <span className="text-[9px] font-display font-semibold mt-0.5">
+                        {slot === 0 ? 'Profile pic' : 'Add'}
+                      </span>
+                    </div>
+                  )}
+                </label>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-[11px] text-gray-500 font-body mb-4">
+          People in Match see all your photos. JPG / PNG / WebP · max {MAX_MB} MB.
+        </p>
+
         <div className="flex items-center gap-4 mb-5">
-          <Avatar src={form.avatarUrl || null} name={form.displayName} size="lg" color={form.avatarColor} />
+          <Avatar photoId={profilePic?.id} name={form.displayName} size="lg" color={form.avatarColor} />
           <div className="flex-1 min-w-0">
-            <label className="block font-display text-xs font-semibold mb-1 flex items-center gap-1">
-              <ImageIcon size={12} strokeWidth={2.5} /> Photo URL (https)
-            </label>
-            <input
-              type="url"
-              className="nb-input text-sm py-1.5"
-              placeholder="https://example.com/me.jpg"
-              value={form.avatarUrl}
-              onChange={(e) => setForm((f) => ({ ...f, avatarUrl: e.target.value }))}
-            />
-            <label className="block font-display text-xs font-semibold mt-2 mb-1">Avatar color</label>
+            <label className="block font-display text-xs font-semibold mb-1">Avatar color</label>
             <div className="flex gap-1.5 flex-wrap">
               {AVATAR_COLORS.map((c) => (
                 <button

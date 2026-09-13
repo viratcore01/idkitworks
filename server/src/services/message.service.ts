@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma';
+import { publish } from '../config/bus';
 
 export class MessageService {
   async getOrCreateConversation(userId: string, otherUserId: string) {
@@ -67,7 +68,7 @@ export class MessageService {
           include: {
             members: {
               include: {
-                user: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+                user: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true } },
               },
             },
             messages: { orderBy: { createdAt: 'desc' }, take: 1 },
@@ -111,7 +112,7 @@ export class MessageService {
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       orderBy: { createdAt: 'desc' },
       include: {
-        sender: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+        sender: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true } },
       },
     });
 
@@ -144,8 +145,11 @@ export class MessageService {
       where: { id: messageId },
       data: { content, editedAt: new Date() },
       include: {
-        sender: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+        sender: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true } },
       },
+    }).then((updated) => {
+      publish('message:new', { conversationId, message: updated, recipientIds: [] });
+      return updated;
     });
   }
 
@@ -161,6 +165,7 @@ export class MessageService {
       where: { id: messageId },
       data: { deletedAt: new Date(), content: '' },
     });
+    publish('message:updated', { conversationId, messageId });
     return { deleted: true };
   }
 
@@ -193,7 +198,7 @@ export class MessageService {
     const message = await prisma.message.create({
       data: { conversationId, senderId, content: trimmed, mediaUrl },
       include: {
-        sender: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+        sender: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true } },
       },
     });
 
@@ -209,6 +214,10 @@ export class MessageService {
         type: 'NEW_MESSAGE' as const,
       })),
     });
+
+    // Realtime push: both the conversation room and the recipients' personal
+    // rooms (covers unread badges / lists even when the thread isn't open).
+    publish('message:new', { conversationId, message, recipientIds: otherMembers.map((m) => m.userId) });
 
     return message;
   }

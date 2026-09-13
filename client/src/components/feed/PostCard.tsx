@@ -38,7 +38,7 @@ export default function PostCard({ post, detailView = false }: Props) {
           </div>
         ) : (
           <Link to={`/profile/${post.author.username}`}>
-            <Avatar src={post.author.avatarUrl} name={post.author.displayName} />
+            <Avatar src={post.author.avatarUrl} photoId={post.author.avatarPhotoId} name={post.author.displayName} />
           </Link>
         )}
 

@@ -1,14 +1,65 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Glasses, Bell } from 'lucide-react';
+import { Search, Glasses, Bell, X, Users, FileText } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
+import Avatar from '@/components/common/Avatar';
+import { bestAvatarSrc, photoSrc } from '@/utils/photo';
 
 export default function Topbar() {
   const { user, isIncognito, toggleIncognito } = useAuthStore();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [debounced, setDebounced] = useState('');
+  const [dropOpen, setDropOpen] = useState(false);
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+
+  // Live search: debounce keystrokes, then hit the smart search endpoint
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(searchQuery.trim()), 250);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  const { data: live, isFetching: liveFetching } = useQuery({
+    queryKey: ['live-search', debounced],
+    queryFn: () => api.get(`/search?q=${encodeURIComponent(debounced)}`).then((r) => r.data),
+    enabled: dropOpen && debounced.length > 0,
+    staleTime: 15_000,
+  });
+
+  // Click outside closes the dropdown
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) setDropOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  const liveUsers = (dropOpen && debounced.length > 0 && live?.users) || [];
+  const livePosts = (dropOpen && debounced.length > 0 && live?.posts) || [];
+  const showDrop = dropOpen && debounced.length > 0;
+
+  const goUser = (username: string) => {
+    setDropOpen(false);
+    setSearchQuery('');
+    navigate(`/profile/${username}`);
+  };
+
+  const goPost = (postId: string) => {
+    setDropOpen(false);
+    setSearchQuery('');
+    navigate(`/post/${postId}`);
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      setDropOpen(false);
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
 
   const { data: unreadData } = useQuery({
     queryKey: ['unread-notifications'],
@@ -17,13 +68,6 @@ export default function Topbar() {
   });
 
   const unreadCount = unreadData?.count || 0;
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
-    }
-  };
 
   return (
     <div
@@ -43,15 +87,90 @@ export default function Topbar() {
       </Link>
 
       <form onSubmit={handleSearch} className="flex-1 min-w-0 max-w-md">
-        <div className="relative">
+        <div className="relative" ref={searchBoxRef}>
           <input
             type="text"
-            placeholder="Search people, posts, colleges..."
+            placeholder="Search people, posts..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="nb-input py-2 text-sm pl-10"
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setDropOpen(true);
+            }}
+            onFocus={() => setDropOpen(true)}
+            className="nb-input py-2 text-sm pl-10 pr-8"
           />
           <Search size={16} strokeWidth={2.5} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => { setSearchQuery(''); setDropOpen(false); }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-nb-black"
+              title="Clear"
+            >
+              <X size={14} strokeWidth={2.5} />
+            </button>
+          )}
+
+          {/* Live results dropdown — smart search as you type */}
+          {showDrop && (
+            <div className="absolute top-full left-0 right-0 mt-2 nb-card bg-white max-h-[70vh] overflow-y-auto z-[70]">
+              {liveFetching && !live ? (
+                <p className="p-4 text-sm text-gray-500 font-body">Searching…</p>
+              ) : liveUsers.length === 0 && livePosts.length === 0 ? (
+                <p className="p-4 text-sm text-gray-500 font-body">
+                  No matches for “{debounced}” — press Enter for full search.
+                </p>
+              ) : (
+                <>
+                  {liveUsers.length > 0 && (
+                    <div className="py-1">
+                      <p className="px-3 pt-1.5 pb-1 text-[10px] font-display font-bold uppercase tracking-wide text-gray-400 flex items-center gap-1">
+                        <Users size={11} strokeWidth={2.5} /> People
+                      </p>
+                      {liveUsers.map((u: any) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => goUser(u.username)}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-nb-cream text-left"
+                        >
+                          <Avatar src={u.avatarUrl} photoId={u.avatarPhotoId} color={u.avatarColor} name={u.displayName} size="sm" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-display font-semibold truncate">{u.displayName}</p>
+                            <p className="text-[11px] text-gray-500 truncate">@{u.username}{u.course ? ` • ${u.course}` : ''}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {livePosts.length > 0 && (
+                    <div className="py-1 border-t-2 border-gray-200">
+                      <p className="px-3 pt-1.5 pb-1 text-[10px] font-display font-bold uppercase tracking-wide text-gray-400 flex items-center gap-1">
+                        <FileText size={11} strokeWidth={2.5} /> Posts
+                      </p>
+                      {livePosts.slice(0, 4).map((p: any) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => goPost(p.id)}
+                          className="w-full px-3 py-2 hover:bg-nb-cream text-left"
+                        >
+                          <p className="text-xs font-body text-gray-700 line-clamp-1">{p.content}</p>
+                          <p className="text-[10px] text-gray-400 font-body">by {p.author.displayName}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    className="w-full px-3 py-2 text-xs font-display font-semibold text-nb-orange border-t-2 border-gray-200 hover:bg-nb-cream text-left"
+                  >
+                    See all results for “{debounced}” →
+                  </button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </form>
 
@@ -77,8 +196,8 @@ export default function Topbar() {
         </Link>
 
         <Link to={`/profile/${user?.username}`}>
-          {user?.avatarUrl ? (
-            <img src={user.avatarUrl} alt="" className="w-9 h-9 nb-avatar !border-white" />
+          {bestAvatarSrc(user) ? (
+            <img src={bestAvatarSrc(user)!} alt="" className="w-9 h-9 nb-avatar !border-white" />
           ) : (
             <div className="w-9 h-9 rounded-full bg-nb-orange border-nb-2 border-white flex items-center justify-center text-white text-sm font-bold">
               {user?.displayName?.[0]?.toUpperCase() || '?'}

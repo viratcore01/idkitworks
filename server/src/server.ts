@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { env } from './config/env';
 import { prisma } from './config/prisma';
+import { subscribe } from './config/bus';
 
 // Routes
 import authRoutes from './routes/auth.routes';
@@ -137,6 +138,21 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     /* connection cleanup is automatic */
   });
+});
+
+// ── Domain events → Socket.IO rooms (REST gets realtime push too) ──
+subscribe('message:new', ({ conversationId, message, recipientIds = [] }: any) => {
+  if (conversationId) io.to(`conversation:${conversationId}`).emit('new-message', message);
+  for (const uid of recipientIds) io.to(`user:${uid}`).emit('message-notify', { conversationId });
+});
+subscribe('message:updated', ({ conversationId }: any) => {
+  if (conversationId) io.to(`conversation:${conversationId}`).emit('message-updated', { conversationId });
+});
+subscribe('match:new', ({ userIds = [] }: any) => {
+  for (const uid of userIds) io.to(`user:${uid}`).emit('match-new', {});
+});
+subscribe('notification:new', ({ userIds = [] }: any) => {
+  for (const uid of userIds) io.to(`user:${uid}`).emit('notification-new', {});
 });
 
 // ── 404 for unknown API routes ──

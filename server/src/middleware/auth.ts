@@ -4,6 +4,38 @@ import { prisma } from '../config/prisma';
 import { AuthRequest, AuthUser } from '../types';
 
 /**
+ * Auth for image-serving routes: <img> tags can't send Authorization headers,
+ * so the access token may arrive as ?t=<accessToken> instead of the header.
+ * Same checks as authMiddleware — live DB user, active account.
+ */
+export async function photoAuth(req: AuthRequest, res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  let token: string | undefined;
+  if (header && header.startsWith('Bearer ')) token = header.split(' ')[1];
+  if (!token && typeof req.query.t === 'string') token = req.query.t;
+  if (!token) return res.status(401).json({ error: 'No token provided' });
+
+  try {
+    const payload = verifyAccessToken(token);
+    const dbUser = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { isActive: true, collegeId: true },
+    });
+    if (!dbUser || !dbUser.isActive) return res.status(401).json({ error: 'Account unavailable' });
+    req.user = {
+      id: payload.userId,
+      email: payload.email,
+      username: payload.username,
+      role: payload.role,
+      collegeId: dbUser.collegeId,
+    };
+    next();
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
+/**
  * PRODUCT RULE: Skola is hyperlocal and college-only.
  * collegeId is always resolved from the LIVE database, never from the JWT,
  * so a user who switches college is re-scoped on their very next request.

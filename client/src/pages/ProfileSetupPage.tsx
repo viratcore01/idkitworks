@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, PartyPopper, Hourglass } from 'lucide-react';
+import { Sparkles, PartyPopper, Hourglass, Camera, Plus, X } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
+import { photoSrc } from '@/utils/photo';
 import toast from 'react-hot-toast';
 
 export default function ProfileSetupPage() {
@@ -20,6 +21,43 @@ export default function ProfileSetupPage() {
     interestIds: user?.interests?.map((i) => i.id) || [],
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [slots, setSlots] = useState<{ id: string; slot: number }[]>(
+    ((user as any)?.photos as any) || [],
+  );
+  const [busySlot, setBusySlot] = useState<number | null>(null);
+
+  /** Photos unlock matching — upload right here so new users aren't gated later. */
+  const handleUpload = async (slot: number, file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return toast.error('Pick an image file');
+    if (file.size > 5 * 1024 * 1024) return toast.error('Image must be under 5 MB');
+    setBusySlot(slot);
+    try {
+      const fd = new FormData();
+      fd.append('photo', file);
+      fd.append('slot', String(slot));
+      await api.post('/users/me/photos', fd);
+      const { data } = await api.get('/auth/me');
+      setSlots(data.photos || []);
+      toast.success(slot === 0 ? 'Profile picture set' : 'Photo added');
+    } catch (e: any) {
+      toast.error(e.response?.data?.error || 'Upload failed');
+    } finally {
+      setBusySlot(null);
+    }
+  };
+
+  const handleRemove = async (photo: { id: string; slot: number }) => {
+    setBusySlot(photo.slot);
+    try {
+      await api.delete(`/users/me/photos/${photo.id}`);
+      setSlots((s) => s.filter((p) => p.id !== photo.id));
+    } catch {
+      /* non-fatal */
+    } finally {
+      setBusySlot(null);
+    }
+  };
 
   const { data: colleges } = useQuery({
     queryKey: ['colleges'],
@@ -149,6 +187,52 @@ export default function ProfileSetupPage() {
                 <option value="UNKNOWN">Prefer not to say</option>
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block font-display text-sm font-semibold mb-2">
+              Photos <span className="font-normal text-gray-500">(first one unlocks matching)</span>
+            </label>
+            <div className="grid grid-cols-4 gap-2 mb-1">
+              {Array.from({ length: 4 }).map((_, slot) => {
+                const photo = slots.find((s) => s.slot === slot) || null;
+                const src = photo ? photoSrc(photo.id) : null;
+                return (
+                  <div key={slot} className="relative">
+                    {photo && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(photo)}
+                        className="absolute -top-1.5 -right-1.5 z-10 w-5 h-5 rounded-full bg-nb-red text-white border-nb-2 border-nb-black flex items-center justify-center"
+                        title="Remove"
+                      >
+                        <X size={11} strokeWidth={3} />
+                      </button>
+                    )}
+                    <label className={`block cursor-pointer ${busySlot === slot ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          handleUpload(slot, e.target.files?.[0]);
+                          e.currentTarget.value = '';
+                        }}
+                      />
+                      {src ? (
+                        <img src={src} alt="" className={`w-full aspect-square object-cover nb-avatar !rounded-lg ${slot === 0 ? 'ring-2 ring-nb-orange ring-offset-2' : ''}`} />
+                      ) : (
+                        <div className={`w-full aspect-square rounded-lg border-nb-2 border-dashed border-gray-400 bg-white flex flex-col items-center justify-center text-gray-500 hover:border-nb-orange hover:text-nb-orange transition-colors ${slot === 0 ? 'ring-2 ring-nb-orange ring-offset-2' : ''}`}>
+                          {slot === 0 ? <Camera size={16} strokeWidth={2.5} /> : <Plus size={14} strokeWidth={2.5} />}
+                          <span className="text-[9px] font-display font-semibold mt-0.5">{slot === 0 ? 'Profile pic' : 'Add'}</span>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-gray-500 font-body mb-1">JPG / PNG / WebP · max 5 MB each.</p>
           </div>
 
           <div>

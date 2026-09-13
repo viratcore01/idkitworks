@@ -5,6 +5,7 @@ import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
+import { formatDistanceToNow } from '@/utils/date';
 
 export default function SearchPage() {
   const [searchParams] = useSearchParams();
@@ -44,11 +45,12 @@ export default function SearchPage() {
                     to={`/profile/${user.username}`}
                     className="nb-card-hover p-3 flex items-center gap-3 block"
                   >
-                    <Avatar src={user.avatarUrl} name={user.displayName} />
-                    <div>
+                    <Avatar src={user.avatarUrl} photoId={user.avatarPhotoId} color={user.avatarColor} name={user.displayName} />
+                    <div className="min-w-0">
                       <p className="font-display font-semibold text-sm">{user.displayName}</p>
-                      <p className="text-xs text-gray-500">
-                        @{user.username} {user.college && `• ${user.college.shortName || user.college.name}`}
+                      <p className="text-xs text-gray-500 truncate">
+                        @{user.username} {user.course && `• ${user.course}`}
+                        {user.college && ` • ${user.college.shortName || user.college.name}`}
                       </p>
                     </div>
                   </Link>
@@ -64,9 +66,9 @@ export default function SearchPage() {
               </h2>
               <div className="space-y-2">
                 {data.posts.map((post: any) => (
-                  <div key={post.id} className="nb-card p-4">
-                    <p className="text-sm text-gray-500 font-body">
-                      by {post.author.displayName}
+                  <Link key={post.id} to={`/post/${post.id}`} className="nb-card-hover p-4 block">
+                    <p className="text-xs text-gray-500 font-body">
+                      {post.isAnonymous ? 'Anonymous' : `by ${post.author.displayName}`} · {formatDistanceToNow(post.createdAt)}
                     </p>
                     <p className="font-body text-sm mt-1 line-clamp-3">{post.content}</p>
                     <div className="mt-2 flex gap-3 text-xs text-gray-400">
@@ -77,7 +79,7 @@ export default function SearchPage() {
                         <MessageCircle size={12} strokeWidth={2.5} /> {post._count.comments}
                       </span>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </section>

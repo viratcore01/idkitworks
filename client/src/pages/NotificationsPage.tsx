@@ -76,7 +76,7 @@ export default function NotificationsPage() {
             >
               <span className="shrink-0">{typeIcons[notif.type] || <Megaphone size={20} strokeWidth={2.5} className="text-gray-400" />}</span>
               {notif.actor && (
-                <Avatar src={notif.actor.avatarUrl} name={notif.actor.displayName} size="sm" />
+                <Avatar src={notif.actor.avatarUrl} photoId={notif.actor.avatarPhotoId} name={notif.actor.displayName} size="sm" />
               )}
               <div className="flex-1 min-w-0">
                 <p className="font-body text-sm">

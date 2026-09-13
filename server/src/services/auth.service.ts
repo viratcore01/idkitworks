@@ -31,6 +31,7 @@ interface AuthTokens {
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    avatarColor: string | null;
     collegeId: string | null;
     isProfileSetup: boolean;
   };
@@ -50,6 +51,7 @@ function createAuthResponse(user: any, accessToken: string, refreshToken: string
       username: user.username,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      avatarColor: user.avatarColor,
       // College gate key: the client needs it immediately after login
       collegeId: user.collegeId ?? null,
       isProfileSetup: !!(user.collegeId && user.course),
@@ -181,11 +183,12 @@ export class AuthService {
   async getMe(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        college: true,
-        interests: { include: { interest: true } },
-        _count: { select: { posts: true } },
-      },
+    include: {
+      college: true,
+      interests: { include: { interest: true } },
+      photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' } },
+      _count: { select: { posts: true } },
+    },
     });
 
     if (!user) throw new Error('User not found');
@@ -196,6 +199,8 @@ export class AuthService {
       username: user.username,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      avatarColor: user.avatarColor,
+      photos: user.photos.map((p) => ({ id: p.id, slot: p.slot })),
       bio: user.bio,
       college: user.college,
       collegeId: user.collegeId,
@@ -305,6 +310,7 @@ export class AuthService {
       include: {
         college: true,
         interests: { include: { interest: true } },
+        photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' } },
       },
     });
 
@@ -314,6 +320,7 @@ export class AuthService {
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       avatarColor: user.avatarColor,
+      photos: user.photos.map((p) => ({ id: p.id, slot: p.slot })),
       bio: user.bio,
       college: user.college,
       course: user.course,
@@ -334,6 +341,7 @@ export class AuthService {
       select: {
         avatarUrl: true,
         avatarColor: true,
+        photos: { select: { id: true } },
         bio: true,
         course: true,
         year: true,
@@ -349,7 +357,7 @@ export class AuthService {
     const checks = [
       { key: 'college', done: !!u.collegeId, weight: 20, label: 'Add your college' },
       { key: 'bio', done: !!(u.bio && u.bio.length >= 10), weight: 15, label: 'Write a bio (10+ chars)' },
-      { key: 'photo', done: !!u.avatarUrl, weight: 20, label: 'Add a profile photo' },
+      { key: 'photo', done: !!u.avatarUrl || u.photos.length > 0, weight: 20, label: 'Add a profile photo' },
       { key: 'interests', done: u.interests.length >= 3, weight: 15, label: 'Pick 3+ interests' },
       { key: 'dob', done: !!u.dateOfBirth, weight: 15, label: 'Add your birth date' },
       { key: 'gender', done: !!u.gender && u.gender !== 'UNKNOWN', weight: 10, label: 'Set your gender' },

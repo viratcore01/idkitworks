@@ -13,7 +13,7 @@ export class NotificationService {
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       orderBy: { createdAt: 'desc' },
       include: {
-        actor: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+        actor: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true } },
       },
     });
 

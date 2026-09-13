@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Zap, MoreVertical, Pencil, Trash2, X, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
+import { getSocket, joinConversation } from '@/services/realtime';
 import Avatar from '@/components/common/Avatar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import { formatDistanceToNow } from '@/utils/date';
@@ -54,6 +55,7 @@ export default function ChatPage() {
       setMessage('');
       invalidate();
     },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Could not send — check your connection'),
   });
 
   const editMutation = useMutation({
@@ -76,6 +78,35 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [data?.messages?.length]);
+
+  // Realtime: join the room, merge incoming messages instantly. Polling above
+  // stays as the safety net for edits/deletes and any missed event.
+  useEffect(() => {
+    if (!conversationId) return;
+    joinConversation(conversationId);
+    const socket = getSocket();
+    if (!socket) return;
+    const onNew = (msg: any) => {
+      if (msg?.conversationId && msg.conversationId !== conversationId) return;
+      queryClient.setQueryData(['messages', conversationId], (old: any) => {
+        if (!old?.messages?.some((m: any) => m.id === msg.id)) {
+          return { ...old, messages: [...(old?.messages || []), msg] };
+        }
+        return old;
+      });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    };
+    const onUpdated = () => {
+      queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    };
+    socket.on('new-message', onNew);
+    socket.on('message-updated', onUpdated);
+    return () => {
+      socket.off('new-message', onNew);
+      socket.off('message-updated', onUpdated);
+    };
+  }, [conversationId, queryClient]);
 
   useEffect(() => {
     if (editingId) editInputRef.current?.focus();
@@ -205,7 +236,7 @@ export default function ChatPage() {
                     )}
                   </div>
                   {!isMe && (
-                    <Avatar src={msg.sender?.avatarUrl} name={msg.sender?.displayName} size="sm" className="!w-6 !h-6 !text-[10px] shrink-0 self-end opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <Avatar src={msg.sender?.avatarUrl} photoId={msg.sender?.avatarPhotoId} name={msg.sender?.displayName} size="sm" className="!w-6 !h-6 !text-[10px] shrink-0 self-end opacity-0 group-hover:opacity-100 transition-opacity" />
                   )}
                 </div>
               </div>

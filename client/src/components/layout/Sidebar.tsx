@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth.store';
+import { bestAvatarSrc } from '@/utils/photo';
 import { Home, Heart, Bell, Settings } from 'lucide-react';
 
 const navItems = [
@@ -44,9 +45,9 @@ export default function Sidebar() {
             `nb-sidebar-link ${isActive ? 'active' : 'text-white/90 hover:text-nb-black'}`
           }
         >
-          {user?.avatarUrl ? (
+          {bestAvatarSrc(user) ? (
             <img
-              src={user.avatarUrl}
+              src={bestAvatarSrc(user)!}
               alt=""
               className="w-8 h-8 nb-avatar"
             />

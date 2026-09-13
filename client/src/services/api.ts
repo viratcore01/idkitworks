@@ -1,8 +1,11 @@
 import axios from 'axios';
 
-// Production: absolute URL to the hosted API (Vercel serves only the SPA).
+// Production: VITE_API_URL is the bare API host (e.g. https://skola-api.onrender.com)
+// — all Express routes live under /api, so the prefix is appended here.
 // Dev: same-origin '/api' via the Vite proxy.
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const API_BASE = import.meta.env.VITE_API_URL
+  ? `${String(import.meta.env.VITE_API_URL).replace(/\/+$/, '')}/api`
+  : '/api';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -57,7 +60,8 @@ api.interceptors.response.use(
       }
 
       try {
-        const { data } = await axios.post('/api/auth/refresh', { refreshToken });
+        // Same base as everything else — a relative URL 404s on the SPA host in production
+        const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken });
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
         processQueue(null, data.accessToken);

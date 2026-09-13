@@ -31,6 +31,7 @@ export class UserService {
     dateOfBirth: true,
     isVerified: true,
     createdAt: true,
+    photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' } },
     interests: { include: { interest: true } },
   } as const;
 
@@ -49,6 +50,7 @@ export class UserService {
       include: {
         college: true,
         interests: { include: { interest: true } },
+        photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' } },
         _count: {
           select: {
             posts: { where: { deletedAt: null } },
@@ -129,6 +131,7 @@ export class UserService {
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       avatarColor: user.avatarColor,
+      photos: user.photos.map((p) => ({ id: p.id, slot: p.slot })),
       bio: user.bio,
       college: user.college,
       course: user.course,
@@ -177,7 +180,7 @@ export class UserService {
       orderBy: { createdAt: 'desc' },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true, college: true, course: true, year: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, college: true, course: true, year: true },
         },
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
         likes: { where: { userId: viewerId }, select: { userId: true } },
@@ -212,7 +215,7 @@ export class UserService {
     const blocks = await prisma.block.findMany({
       where: { blockerId: userId },
       include: {
-        blocked: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+        blocked: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true } },
       },
     });
     return blocks.map((b) => b.blocked);

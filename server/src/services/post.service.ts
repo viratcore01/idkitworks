@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma';
+import { publish } from '../config/bus';
 import { Prisma } from '@prisma/client';
 
 interface CreatePostInput {
@@ -46,7 +47,7 @@ export class PostService {
       },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true, college: true, course: true, year: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, college: true, course: true, year: true },
         },
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
       },
@@ -90,7 +91,7 @@ export class PostService {
       orderBy: { createdAt: 'desc' },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true, college: true, course: true, year: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, college: true, course: true, year: true },
         },
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
         likes: { where: { userId }, select: { userId: true } },
@@ -103,7 +104,7 @@ export class PostService {
             content: true,
             isAnonymous: true,
             createdAt: true,
-            author: { select: { id: true, username: true, displayName: true, avatarUrl: true } },
+            author: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true } },
           },
         },
       },
@@ -198,6 +199,7 @@ export class PostService {
             postId,
           },
         });
+        publish('notification:new', { userIds: [post.authorId] });
       }
       return { liked: true };
     }
@@ -219,7 +221,7 @@ export class PostService {
       orderBy: { createdAt: 'asc' },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true },
         },
         _count: { select: { replies: true } },
       },
@@ -263,7 +265,7 @@ export class PostService {
       },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true },
         },
       },
     });
@@ -280,6 +282,7 @@ export class PostService {
           commentId: comment.id,
         },
       });
+      publish('notification:new', { userIds: [post.authorId] });
     }
 
     return comment;
@@ -297,7 +300,7 @@ export class PostService {
       data: { content, editedAt: new Date() },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true },
         },
       },
     });
