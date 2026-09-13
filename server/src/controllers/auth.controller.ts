@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { AuthService } from '../services/auth.service';
 import { AuthRequest } from '../types';
 import { sendError } from '../utils/http-error';
+import { checkEmail } from '../utils/email-validation';
 
 const authService = new AuthService();
 
@@ -16,6 +17,15 @@ export class AuthController {
     } catch (error: any) {
       const status = error.message.includes('already') ? 409 : 400;
       sendError(res, error, status);
+    }
+  }
+
+  async checkEmail(req: Request, res: Response) {
+    try {
+      const result = checkEmail(String(req.body?.email || ''));
+      res.json(result);
+    } catch (error: any) {
+      sendError(res, error, 400);
     }
   }
 

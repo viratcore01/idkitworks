@@ -1,5 +1,6 @@
 import { prisma } from '../config/prisma';
 import { hashPassword, comparePassword } from '../utils/password';
+import { checkEmail } from '../utils/email-validation';
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -70,6 +71,21 @@ export class AuthService {
       typeof input?.collegeId !== 'string' || !input.collegeId
     ) {
       const e: any = new Error('Invalid signup details'); e.status = 400; throw e;
+    }
+
+    // Email hygiene: syntax + disposable-inbox block + typo suggestion.
+    const emailCheck = checkEmail(input.email);
+    if (!emailCheck.ok) {
+      const e: any = new Error(emailCheck.error || 'Invalid email'); e.status = 400;
+      e.code = 'EMAIL_INVALID';
+      throw e;
+    }
+    if (emailCheck.suggestion) {
+      // Not fatal — but the client shows "did you mean?" before creating the account
+      const e: any = new Error(`Did you mean ${emailCheck.suggestion}?`); e.status = 400;
+      e.code = 'EMAIL_TYPO';
+      e.suggestion = emailCheck.suggestion;
+      throw e;
     }
     const existingUser = await prisma.user.findFirst({
       where: { OR: [{ email: input.email }, { username: input.username }] },

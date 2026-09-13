@@ -40,5 +40,10 @@ export function sendError(res: Response, error: any, fallbackStatus = 400): void
     res.status(500).json({ error: 'Something went wrong' });
     return;
   }
+  // App-level codes travel to the client (e.g. EMAIL_TYPO carries a suggestion)
+  if (code === 'EMAIL_TYPO' || code === 'EMAIL_INVALID') {
+    res.status(status).json({ error: raw, code, suggestion: error?.suggestion });
+    return;
+  }
   res.status(status).json({ error: raw || 'Bad request' });
 }

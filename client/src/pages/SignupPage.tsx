@@ -39,6 +39,31 @@ export default function SignupPage() {
 
   const update = (field: string, value: any) => setFormData((d) => ({ ...d, [field]: value }));
 
+  /** "gmial@…" → "Did you mean gmail@…?" — client-side, before we even hit the API. */
+  const suggestEmailFix = (value: string): string | null => {
+    const at = value.lastIndexOf('@');
+    if (at < 1) return null;
+    const domain = value.slice(at + 1).toLowerCase();
+    const common = ['gmail.com', 'yahoo.com', 'yahoo.in', 'outlook.com', 'hotmail.com', 'icloud.com', 'proton.me', 'rediffmail.com', 'live.com'];
+    const lev = (a: string, b: string) => {
+      const dp = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+      for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+      for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+        dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      return dp[a.length][b.length];
+    };
+    for (const k of common) {
+      if (domain !== k && lev(domain, k) <= (k.length > 8 ? 2 : 1)) return value.slice(0, at + 1) + k;
+    }
+    return null;
+  };
+
+  const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null);
+  const handleEmailChange = (v: string) => {
+    update('email', v);
+    setEmailSuggestion(suggestEmailFix(v));
+  };
+
   const handleFinalSubmit = async () => {
     setIsLoading(true);
     try {
@@ -95,8 +120,17 @@ export default function SignupPage() {
               className="nb-input"
               placeholder="your@email.com"
               value={formData.email}
-              onChange={(e) => update('email', e.target.value)}
+              onChange={(e) => handleEmailChange(e.target.value)}
             />
+            {emailSuggestion && emailSuggestion !== formData.email && (
+              <button
+                type="button"
+                onClick={() => { update('email', emailSuggestion); setEmailSuggestion(null); }}
+                className="text-xs text-nb-orange mt-1.5 hover:underline"
+              >
+                Did you mean <span className="font-semibold">{emailSuggestion}</span>?
+              </button>
+            )}
           </div>
           <div>
             <label className="block font-display text-sm font-semibold mb-1.5">Password</label>
@@ -111,6 +145,7 @@ export default function SignupPage() {
               if (!formData.email || !formData.password) return toast.error('Fill all fields');
               if (formData.password !== formData.confirmPassword) return toast.error("Passwords don't match");
               if (formData.password.length < 8) return toast.error('Password must be 8+ chars');
+              if (emailSuggestion) return toast.error('Pick the suggested email or fix the typo first');
               setStep(2);
             }}
             className="nb-btn-orange w-full text-center"
