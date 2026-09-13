@@ -235,8 +235,11 @@ export default function ImageEditorModal({ file, title = 'Edit photo', aspects =
 
   if (!file) return null;
 
+  // Same safe modal pattern as ProfileEditModal: fixed = scroll container,
+  // min-h-full wrapper centers — tall content never clips its own top.
   return (
-    <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
+    <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm overflow-y-auto overscroll-contain" onClick={onCancel}>
+      <div className="min-h-full flex items-center justify-center p-4 pb-[calc(2rem+env(safe-area-inset-bottom))]" onClick={onCancel}>
       <div className="nb-card bg-white p-4 sm:p-5 max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-display font-bold text-lg">{title}</h2>
@@ -324,6 +327,7 @@ export default function ImageEditorModal({ file, title = 'Edit photo', aspects =
             </div>
           </>
         )}
+      </div>
       </div>
     </div>
   );

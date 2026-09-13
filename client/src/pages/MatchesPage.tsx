@@ -172,7 +172,8 @@ export default function MatchesPage() {
 
       {/* Match celebration */}
       {matchBanner && (
-        <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4 overflow-y-auto" onClick={() => setMatchBanner(null)}>
+        <div className="fixed inset-0 z-[80] bg-black/60 overflow-y-auto overscroll-contain" onClick={() => setMatchBanner(null)}>
+          <div className="min-h-full flex items-center justify-center p-4" onClick={() => setMatchBanner(null)}>
           <div className="nb-card bg-nb-lime p-8 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
             <PartyPopper size={48} strokeWidth={2.5} className="mx-auto mb-3 text-nb-black" />
             <h2 className="font-display font-bold text-2xl mb-1">It's a Match!</h2>
@@ -192,12 +193,14 @@ export default function MatchesPage() {
               </button>
             </div>
           </div>
+          </div>
         </div>
       )}
 
       {/* Preferences editor */}
       {showPrefs && (
-        <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4 overflow-y-auto" onClick={() => setShowPrefs(false)}>
+        <div className="fixed inset-0 z-[80] bg-black/60 overflow-y-auto overscroll-contain" onClick={() => setShowPrefs(false)}>
+          <div className="min-h-full flex items-center justify-center p-4" onClick={() => setShowPrefs(false)}>
           <div className="nb-card bg-white p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
             <h2 className="font-display font-bold text-xl mb-4 flex items-center gap-2">
               <SlidersHorizontal size={18} strokeWidth={2.5} /> Discovery preferences
@@ -242,6 +245,7 @@ export default function MatchesPage() {
                 {savePrefsMutation.isPending ? 'Saving...' : 'Save'}
               </button>
             </div>
+          </div>
           </div>
         </div>
       )}

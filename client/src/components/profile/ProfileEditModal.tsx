@@ -118,9 +118,14 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
     }
   };
 
+  // Modal layout: the FIXED element is the scroll container; the inner wrapper
+  // is min-h-full so `items-center` centers within the FULL content height.
+  // (Centering a tall card directly inside a centering viewport clips its top
+  // above the scroll origin — the header became unreachable.)
   return (
-    <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4 overflow-y-auto" onClick={onClose}>
-      <div className="nb-card bg-white p-6 max-w-lg w-full my-8" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[80] bg-black/60 overflow-y-auto overscroll-contain" onClick={onClose}>
+      <div className="min-h-full flex items-center justify-center p-4 pb-[calc(2rem+env(safe-area-inset-bottom))]" onClick={onClose}>
+      <div className="nb-card bg-white p-6 max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display font-bold text-xl">Edit profile</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-nb-black">
@@ -333,6 +338,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
             {isSaving ? <><Hourglass size={14} strokeWidth={2.5} /> Saving...</> : <><Save size={14} strokeWidth={2.5} /> Save</>}
           </button>
         </div>
+      </div>
       </div>
     </div>
   );
