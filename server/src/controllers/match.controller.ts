@@ -79,16 +79,6 @@ export class MatchController {
     }
   }
 
-  async whoLikedMe(req: AuthRequest, res: Response) {
-    try {
-      const limit = parseInt(req.query.limit as string) || undefined;
-      const result = await service.whoLikedMe(req.user!.id, limit);
-      res.json(result);
-    } catch (error: any) {
-      sendError(res, error, 400);
-    }
-  }
-
   async updatePreference(req: AuthRequest, res: Response) {
     try {
       const pref = await service.updatePreference(req.user!.id, req.body);
