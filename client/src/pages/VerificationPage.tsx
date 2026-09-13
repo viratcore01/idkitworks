@@ -39,8 +39,8 @@ export default function VerificationPage() {
     }
   }, [phase, status, queryClient]);
 
-  // Bounded wait: with no AI configured, the auto-check always ends PENDING
-  // (human review) — polling for a verdict would spin forever. After 30s stop
+  // Bounded wait: verification is human-only, so status stays PENDING until a
+  // moderator acts — polling for a verdict would spin forever. After 30s stop
   // waiting and show the review-queue state instead. Never an infinite spinner.
   useEffect(() => {
     if (phase !== 'checking') return;
@@ -98,9 +98,9 @@ export default function VerificationPage() {
             </div>
           )}
           <h1 className="font-display text-2xl font-bold">Checking your student ID…</h1>
-          <p className="text-sm opacity-70 mt-2">This usually takes a few seconds. Keep this page open.</p>
+          <p className="text-sm opacity-70 mt-2">A moderator from your college is reviewing it. This usually takes a little while.</p>
           <div className="mt-6 flex items-center justify-center gap-2 text-sm">
-            <RefreshCw size={16} className="animate-spin" /> verifying in real time
+            <RefreshCw size={16} className="animate-spin" /> waiting for review
           </div>
           {status?.pending?.note && (
             <p className="mt-4 text-xs opacity-60 italic">“{status.pending.note}”</p>
@@ -119,7 +119,7 @@ export default function VerificationPage() {
         <div className="nb-card max-w-md w-full mx-auto p-8 text-center">
           <Clock3 size={40} className="mx-auto text-nb-purple" />
           <h1 className="font-display text-2xl font-bold mt-5">Your ID is submitted</h1>
-          <p className="text-sm opacity-70 mt-2">A moderator from your college will confirm it shortly.</p>
+          <p className="text-sm opacity-70 mt-2">A moderator from your college is checking it — you'll get a notification with the decision.</p>
           <button onClick={() => navigate('/home')} className="nb-btn-primary w-full mt-6">Continue to Skola</button>
         </div>
       </Shell>
@@ -143,8 +143,8 @@ export default function VerificationPage() {
             {verified
               ? 'Welcome to Skola. Your college community is waiting.'
               : status.status === 'REJECTED'
-                ? (status.lastRejection || 'We could not confirm your ID automatically — a moderator will review it.')
-                : 'Your ID is in the review queue. A moderator from your college will confirm it shortly.'}
+                ? (status.lastRejection || 'A moderator could not confirm your ID — retake a clearer photo.')
+                : 'Your ID is with a moderator from your college. You\'ll get a notification the moment it\'s decided.'}
           </p>
           <button
             onClick={async () => {
@@ -224,12 +224,12 @@ export default function VerificationPage() {
         <h1 className="font-display text-2xl font-bold mt-5">Verify you're a student</h1>
         <p className="text-sm opacity-70 mt-2">
           Skola is college-only. Snap a photo of your college ID —
-          a quick automatic check confirms you belong, and the photo is deleted right after.
+          a moderator from your college checks it, and the photo is deleted right after the decision.
         </p>
         <ul className="text-left text-sm mt-6 space-y-3">
           <Li><Check size={16} className="text-nb-orange mt-0.5 shrink-0" /> Your college name and your name readable on the card</Li>
-          <Li><Check size={16} className="text-nb-orange mt-0.5 shrink-0" /> Deleted instantly once you're verified</Li>
-          <Li><Check size={16} className="text-nb-orange mt-0.5 shrink-0" /> Unclear photo? A moderator from your college reviews it</Li>
+          <Li><Check size={16} className="text-nb-orange mt-0.5 shrink-0" /> Deleted instantly once a moderator decides</Li>
+          <Li><Check size={16} className="text-nb-orange mt-0.5 shrink-0" /> Reviewed by a real moderator from your college</Li>
         </ul>
         <button onClick={() => setPhase('capture')} className="nb-btn-primary w-full mt-8">
           <Camera size={18} className="inline mr-2" /> Verify my student ID
