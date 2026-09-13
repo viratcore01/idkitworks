@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, Heart, User } from 'lucide-react';
+import { Home, Heart, User, Bookmark } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 
 export default function MobileNav() {
@@ -9,6 +9,7 @@ export default function MobileNav() {
   const items = [
     { to: '/home', Icon: Home, label: 'Home' },
     { to: '/matches', Icon: Heart, label: 'Match' },
+    { to: '/saved', Icon: Bookmark, label: 'Saved' },
     // Real username route — /profile/me was a 404
     { to: `/profile/${user?.username || ''}`, Icon: User, label: 'Profile' },
   ];

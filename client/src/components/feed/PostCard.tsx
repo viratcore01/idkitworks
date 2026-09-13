@@ -65,6 +65,7 @@ export default function PostCard({ post, detailView = false }: Props) {
       queryClient.invalidateQueries({ queryKey: ['post', post.id] });
       queryClient.invalidateQueries({ queryKey: ['saved-posts'] });
       queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['anonymous-posts'] });
       // If we're on the post's detail page, it's gone — go home.
       if (detailView) navigate('/home', { replace: true });
     },

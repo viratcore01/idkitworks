@@ -36,6 +36,7 @@ export interface Interest {
 
 export interface Post {
   id: string;
+  /** PRIVACY: masked to 'anonymous' by the server when isAnonymous — never a real user id. */
   authorId: string;
   content: string;
   mediaUrl: string | null;
@@ -71,6 +72,7 @@ export interface Post {
 export interface Comment {
   id: string;
   postId: string;
+  /** PRIVACY: masked to 'anonymous' by the server when isAnonymous — never a real user id. */
   authorId: string;
   parentCommentId?: string | null;
   content: string;
@@ -87,6 +89,8 @@ export interface Comment {
     avatarColor?: string | null;
   } | null;
   _count?: { replies: number };
+  /** Viewer is the author — enables edit/delete. Computed server-side (authorId is masked on anonymous comments). */
+  isMine?: boolean;
 }
 
 export interface Match {

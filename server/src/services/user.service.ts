@@ -1,5 +1,18 @@
 import { prisma } from '../config/prisma';
 
+/**
+ * The masked persona for anonymous posts (same shape post.service uses).
+ * Anonymous content never carries the real author over the wire — not even
+ * to the author themselves on their own profile.
+ */
+const ANON_AUTHOR = {
+  id: 'anonymous',
+  username: 'anonymous',
+  displayName: 'Anonymous Student',
+  avatarUrl: null as string | null,
+  avatarPhotoId: null as string | null,
+};
+
 /** What the viewer's relationship to this profile is — powers the action buttons. */
 export interface RelationshipContext {
   isOwn: boolean;
@@ -54,7 +67,11 @@ export class UserService {
         photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' } },
         _count: {
           select: {
-            posts: { where: { deletedAt: null } },
+            // PRIVACY: the Posts stat counts only attributed posts. Anonymous
+            // posts are counted separately (and returned ONLY to the owner) —
+            // a public "9 posts, 3 of them hidden confessions" badge would let
+            // anyone correlate new confessions with a person's profile.
+            posts: { where: { deletedAt: null, isAnonymous: false } },
             postLikes: true,
             matchesA: { where: { status: 'ACTIVE' } },
             matchesB: { where: { status: 'ACTIVE' } },
@@ -126,6 +143,29 @@ export class UserService {
     const postCount = user._count.posts;
     const matchCount = user._count.matchesA + user._count.matchesB;
 
+    // The anonymous count is the owner's private data — strangers get nothing,
+    // not even the number. Queried only when the viewer owns the profile.
+    let anonymousCount: number | undefined;
+    if (isOwn) {
+      anonymousCount = await prisma.post.count({
+        where: { authorId: user.id, deletedAt: null, isAnonymous: true },
+      });
+    }
+
+    const stats: {
+      posts: number;
+      likesReceived: number;
+      matches?: number;
+      anonymousPosts?: number;
+    } = {
+      posts: postCount,
+      likesReceived: user._count.postLikes,
+    };
+    if (isOwn) {
+      stats.matches = matchCount;
+      stats.anonymousPosts = anonymousCount;
+    }
+
     return {
       id: user.id,
       username: user.username,
@@ -143,16 +183,28 @@ export class UserService {
       isVerified: user.isVerified,
       joinedAt: user.createdAt,
       interests: user.interests.map((ui) => ui.interest),
-      stats: {
-        posts: postCount,
-        likesReceived: user._count.postLikes,
-        matches: isOwn ? matchCount : undefined, // matches are private to the owner
-      },
+      stats,
       relationship,
     };
   }
 
-  async getUserPosts(username: string, viewerId: string, limit = 20, cursor?: string, viewerCollegeId?: string | null) {
+  /**
+   * Posts on a profile grid.
+   *
+   * PRIVACY MODEL: anonymous posts appear here ONLY when the viewer is the
+   * profile owner (anonymousOnly=true) — the server checks ownership itself,
+   * so a forged request from anyone else gets an empty list. Even the author
+   * receives their own anonymous posts behind the masked ANON persona, so the
+   * real authorId never travels over the wire from this endpoint.
+   */
+  async getUserPosts(
+    username: string,
+    viewerId: string,
+    limit = 20,
+    cursor?: string,
+    viewerCollegeId?: string | null,
+    anonymousOnly = false,
+  ) {
     const user = await prisma.user.findUnique({ where: { username } });
     if (!user) throw new Error('User not found');
 
@@ -172,10 +224,20 @@ export class UserService {
     });
     if (block) return { posts: [], nextCursor: null };
 
+    // The request is only honored when the viewer IS the profile owner.
+    if (anonymousOnly && user.id !== viewerId) {
+      return { posts: [], nextCursor: null };
+    }
+
     const posts = await prisma.post.findMany({
-      // Anonymous posts stay anonymous: on someone's profile we show them in the
-      // count, but their content belongs to the anonymous feed, not the identity.
-      where: { authorId: user.id, deletedAt: null, isAnonymous: false },
+      // Anonymous posts stay anonymous: on someone else's profile grid they
+      // never appear, and their content belongs to the anonymous feed, not
+      // the identity. Only the owner (anonymousOnly) can list them.
+      where: {
+        authorId: user.id,
+        deletedAt: null,
+        isAnonymous: anonymousOnly,
+      },
       take: limit + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       orderBy: { createdAt: 'desc' },
@@ -195,7 +257,16 @@ export class UserService {
     return {
       posts: data.map((p) => ({
         ...p,
+        // Ownership is computed BEFORE anonymous masking — the real authorId
+        // of an anonymous post never leaves the server, only this boolean does.
         isMine: p.authorId === viewerId,
+        // PRIVACY: even in the owner's private list, the author is the masked
+        // persona — the same shape every other list returns.
+        author: p.isAnonymous
+          ? { ...ANON_AUTHOR, college: null, course: null, year: null }
+          : p.author,
+        // PRIVACY: same authorId masking as every other post list.
+        authorId: p.isAnonymous ? ANON_AUTHOR.id : p.authorId,
         isLikedByMe: p.likes.length > 0,
         isSavedByMe: p.saves.length > 0,
         likes: undefined,

@@ -208,7 +208,9 @@ export default function PostDetailPage() {
 
   const renderComment = (c: Comment & { replies?: Comment[] }, isReply = false) => {
     const highlighted = highlightId === c.id;
-    const isOwn = !!user && c.authorId === user.id;
+    // The server decides ownership — anonymous comments mask authorId, so a
+    // client-side authorId comparison would unmask nothing but also match nothing.
+    const isOwn = !!(c as any).isMine;
     const isDeleted = !!(c as any).isDeleted;
     const isEditing = editingId === c.id;
 

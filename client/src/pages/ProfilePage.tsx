@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import {
   MessageSquare, Ban, FileText, BadgeCheck, CircleHelp, ShieldAlert,
-  Heart, UserMinus, MoreVertical, Flag, Pencil, Calendar, GraduationCap, Sparkles,
+  Heart, UserMinus, MoreVertical, Flag, Pencil, Calendar, GraduationCap, Sparkles, Ghost, EyeOff,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
@@ -28,6 +28,8 @@ export default function ProfilePage() {
     enabled: !!username,
   });
 
+  const isOwnProfile = !!profile?.relationship?.isOwn;
+
   const { data: completeness } = useQuery({
     queryKey: ['profile-completeness'],
     queryFn: () => api.get('/auth/me/completeness').then((r) => r.data),
@@ -41,6 +43,20 @@ export default function ProfilePage() {
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,
     enabled: !!username && !profile?.blocked,
+  });
+
+  // Anonymous posts: owner-only. The server enforces this (anyone else — or a
+  // forged request — gets an empty list); the client just doesn't ask for the
+  // list unless it's your own profile.
+  const { data: anonData, fetchNextPage: fetchMoreAnon, hasNextPage: hasMoreAnon } = useInfiniteQuery({
+    queryKey: ['anonymous-posts', username],
+    queryFn: ({ pageParam }) =>
+      api
+        .get(`/users/${username}/posts`, { params: { cursor: pageParam, anonymous: 1 } })
+        .then((r) => r.data),
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: undefined as string | undefined,
+    enabled: !!username && isOwnProfile && !profile?.blocked,
   });
 
   const invalidateProfile = () => queryClient.invalidateQueries({ queryKey: ['profile', username] });
@@ -93,7 +109,7 @@ export default function ProfilePage() {
   });
 
   const posts = postData?.pages.flatMap((p) => p.posts) || [];
-  const isOwnProfile = !!profile?.relationship?.isOwn;
+  const anonymousPosts = anonData?.pages.flatMap((p) => p.posts) || [];
   const rel = profile?.relationship;
 
   if (isLoading) return <LoadingSpinner />;
@@ -195,6 +211,14 @@ export default function ProfilePage() {
             <div>
               <p className="font-display font-bold text-lg">{profile.stats?.matches ?? 0}</p>
               <p className="text-xs text-gray-500 font-body">Matches</p>
+            </div>
+          )}
+          {/* Owner-only: your anonymous posts are your private data, the stat is
+              too — strangers see just the attributed Posts number. */}
+          {isOwnProfile && (
+            <div>
+              <p className="font-display font-bold text-lg">{profile.stats?.anonymousPosts ?? 0}</p>
+              <p className="text-xs text-gray-500 font-body">Anonymous</p>
             </div>
           )}
           {isOwnProfile && (
@@ -304,6 +328,38 @@ export default function ProfilePage() {
             <button onClick={() => fetchNextPage()} className="nb-btn-ghost w-full text-center text-sm mt-4">
               Load more
             </button>
+          )}
+        </>
+      )}
+
+      {/* Anonymous posts — visible ONLY on your own profile. The server sends
+          this list to the owner alone and always masks the author, so these
+          posts stay "Anonymous Student" even to their author here. */}
+      {isOwnProfile && (
+        <>
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="font-display font-bold text-lg">Anonymous posts</h2>
+            <span className="nb-badge bg-nb-purple text-white text-[10px] inline-flex items-center gap-1">
+              <EyeOff size={12} strokeWidth={2.5} /> Only you can see these
+            </span>
+          </div>
+          {anonymousPosts.length === 0 ? (
+            <EmptyState
+              icon={<Ghost strokeWidth={2.5} />}
+              title="No anonymous posts yet"
+              description="Confessions and incognito posts you make will show up here — for your eyes only."
+            />
+          ) : (
+            <>
+              {anonymousPosts.map((post: any) => (
+                <PostCard key={post.id} post={post} />
+              ))}
+              {hasMoreAnon && (
+                <button onClick={() => fetchMoreAnon()} className="nb-btn-ghost w-full text-center text-sm mt-4">
+                  Load more
+                </button>
+              )}
+            </>
           )}
         </>
       )}

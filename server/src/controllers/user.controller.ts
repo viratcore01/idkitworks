@@ -18,13 +18,16 @@ export class UserController {
 
   async getUserPosts(req: AuthRequest, res: Response) {
     try {
-      const { limit, cursor } = req.query;
+      const { limit, cursor, anonymous } = req.query;
       const result = await userService.getUserPosts(
         req.params.username as string,
         req.user!.id,
         limit ? parseInt(limit as string) : undefined,
         cursor as string,
         req.user!.collegeId,
+        // Owner-only anonymous list: the service re-checks ownership, so a
+        // forged ?anonymous=1 on someone else's profile just yields nothing.
+        anonymous === '1' || anonymous === 'true',
       );
       res.json(result);
     } catch (error: any) {

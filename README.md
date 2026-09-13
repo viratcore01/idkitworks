@@ -116,6 +116,7 @@ Soft deletes everywhere user content lives (`deletedAt`), tombstone reads for de
 
 ### 📝 Community Feed
 - Text posts (NORMAL / CONFESSION / POLL / QUESTION) with anonymous posting
+- Owner-only anonymous archive: your anonymous posts appear on YOUR profile behind a "Only you can see these" badge — enforced server-side (anyone else's request returns an empty list), and even the author sees them under the masked "Anonymous Student" persona, so the real author never leaves the server
 - Reddit-style threaded comments; deleted-with-replies become tombstones, childless deletes vanish
 - Top-3 newest comments previewed on every feed card
 - Cursor pagination (infinite scroll), optimistic likes, live counts

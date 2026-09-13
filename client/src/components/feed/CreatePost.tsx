@@ -28,6 +28,9 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
       setContent('');
       setIsAnonymous(false);
       queryClient.invalidateQueries({ queryKey: ['feed'] });
+      // Anonymous posts surface on your own profile (owner-only section).
+      queryClient.invalidateQueries({ queryKey: ['anonymous-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
       toast.success(type === 'CONFESSION' ? 'Confession posted!' : 'Posted!');
     },
     onError: () => toast.error('Failed to post'),

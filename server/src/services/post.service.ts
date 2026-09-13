@@ -35,7 +35,9 @@ const ANON_AUTHOR = {
 };
 
 function anonymizeComment<T extends { isAnonymous: boolean; author: unknown }>(c: T): T {
-  return c.isAnonymous ? ({ ...c, author: { ...ANON_AUTHOR } } as T) : c;
+  return c.isAnonymous
+    ? ({ ...c, author: { ...ANON_AUTHOR }, authorId: ANON_AUTHOR.id } as T)
+    : c;
 }
 
 export class PostService {
@@ -142,6 +144,9 @@ export class PostService {
         author: post.isAnonymous
           ? { ...ANON_AUTHOR, college: null, course: null, year: null }
           : post.author,
+        // PRIVACY: the raw authorId is a de-anonymization oracle (it equals the
+        // profile id) — mask it along with the author object.
+        authorId: post.isAnonymous ? ANON_AUTHOR.id : post.authorId,
         isLikedByMe: post.likes.length > 0,
         isSavedByMe: post.saves.length > 0,
         likes: undefined,
@@ -184,6 +189,8 @@ export class PostService {
       author: post.isAnonymous
         ? { ...ANON_AUTHOR, college: null, course: null, year: null, collegeId: null, isActive: true }
         : post.author,
+      // PRIVACY: same authorId masking as the feed — see getFeed.
+      authorId: post.isAnonymous ? ANON_AUTHOR.id : post.authorId,
       isLikedByMe: post.likes.length > 0,
       isSavedByMe: post.saves.length > 0,
       likes: undefined,
@@ -294,6 +301,9 @@ export class PostService {
     return {
       comments: data.map((c) => ({
         ...anonymizeComment(c),
+        // Computed BEFORE masking (real authorId still present above) — lets the
+        // author manage their own anonymous comments without unmasking them.
+        isMine: c.authorId === userId,
         content: c.deletedAt ? '' : c.content,
         isDeleted: !!c.deletedAt,
       })),
@@ -360,7 +370,7 @@ export class PostService {
     }
 
     // PRIVACY: an anonymous reply must not de-anonymize itself in its own response.
-    return anonymizeComment(comment);
+    return { ...anonymizeComment(comment), isMine: true };
   }
 
   /** Edit own comment. Social apps (Reddit/Instagram style) allow this anytime; shows an "Edited" tag. */
@@ -383,7 +393,7 @@ export class PostService {
     });
 
     // You are the author, but keep the response shape identical to reads.
-    return anonymizeComment(updated);
+    return { ...anonymizeComment(updated), isMine: true };
   }
 
   async deleteComment(commentId: string, userId: string, isAdmin = false) {
@@ -451,6 +461,8 @@ export class PostService {
       posts: data.map((r) => ({
         ...r.post,
         author: r.post.isAnonymous ? { ...ANON_AUTHOR, college: null, course: null, year: null } : r.post.author,
+        // PRIVACY: same authorId masking as the feed — see getFeed.
+        authorId: r.post.isAnonymous ? ANON_AUTHOR.id : r.post.authorId,
         isLikedByMe: r.post.likes.length > 0,
         isSavedByMe: true,
         likes: undefined,
