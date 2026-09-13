@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { photoSrc } from '@/utils/photo';
+import { useEffect, useState } from 'react';
+import { photoSrc, refreshTokenFor, usePhotoVersion } from '@/utils/photo';
 
 interface AvatarProps {
   src?: string | null;
@@ -19,16 +19,45 @@ const sizeClasses = {
   xl: 'w-24 h-24 text-3xl',
 };
 
+const isInternal = (u: string) => u.includes('/users/photos/');
+
+/**
+ * The app avatar. Self-healing: if the photo fails to load (expired/missing
+ * token), it fetches a fresh long-lived photo token ONCE and re-renders —
+ * instead of silently flipping to the letter tile forever ("image not
+ * available"). Also re-renders whenever the photo token rotates.
+ */
 export default function Avatar({ src, photoId, name, size = 'md', className = '', color }: AvatarProps) {
+  const version = usePhotoVersion();
   const [broken, setBroken] = useState(false);
-  const resolved = photoSrc(photoId) || src;
+  const [healed, setHealed] = useState(false);
+  const external = photoId ? null : src || null;
+  // version in the deps: a token rotation rebuilds the URL with a fresh ?v=
+  const resolved = photoId ? photoSrc(photoId) : external;
+
+  useEffect(() => {
+    setBroken(false);
+    setHealed(false);
+  }, [resolved]);
 
   if (resolved && !broken) {
+    const onError = () => {
+      if (!healed && resolved && isInternal(resolved)) {
+        setHealed(true);
+        refreshTokenFor(resolved).then((ok) => {
+          if (ok) return; // rotation re-renders with the new URL
+          setBroken(true); // genuinely gone / logged out — fall back to the tile
+        });
+      } else {
+        setBroken(true);
+      }
+    };
     return (
       <img
+        key={`${resolved}`}
         src={resolved}
         alt={name}
-        onError={() => setBroken(true)}
+        onError={onError}
         className={`nb-avatar ${sizeClasses[size]} ${className}`}
       />
     );

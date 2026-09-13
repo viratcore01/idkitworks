@@ -7,6 +7,8 @@ export interface AuthUser {
   role: string;
   /** Resolved from the live DB on every request (NOT from the token) so college changes apply instantly. */
   collegeId: string | null;
+  /** Live DB value — the verification wall is enforced against this, per request. */
+  verificationStatus?: string;
 }
 
 export interface AuthRequest extends Request {
@@ -18,6 +20,8 @@ export interface JwtPayload {
   email: string;
   username: string;
   role: string;
+  /** Set on special-purpose tokens: 'photo' = long-lived <img> token. */
+  purpose?: string;
 }
 
 export interface PaginatedQuery {

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { UserController } from '../controllers/user.controller';
-import { uploadPhoto, deletePhoto, getPhoto } from '../controllers/photo.controller';
+import { uploadPhoto, deletePhoto, getPhoto, issuePhotoToken } from '../controllers/photo.controller';
 import { authMiddleware, collegeRequired, photoAuth } from '../middleware/auth';
 
 const router = Router();
@@ -11,11 +11,16 @@ const controller = new UserController();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 // Binary photo serving — must be registered BEFORE router.use(authMiddleware):
-// <img> tags can't send headers, so this route authenticates via header OR ?t=
-// (photoAuth). Same checks: live DB user, active account, same-college only.
+// <img> tags can't send headers, so this route authenticates via header OR the
+// long-lived ?pt= photo token (photoAuth). Same checks: live DB user, active
+// account, same-college only.
 router.get('/photos/:photoId', photoAuth, (req, res) => getPhoto(req, res));
 
 router.use(authMiddleware);
+
+// Long-lived token for <img> URLs — the client fetches this after login and
+// embeds it on every photo URL (see GET /users/photos/:photoId?pt=...).
+router.get('/photo-token', authMiddleware, (req, res) => issuePhotoToken(req, res));
 
 // Meta endpoints: needed while picking a college during signup/setup, so no college gate here
 router.get('/colleges', (req, res) => controller.getColleges(req, res));

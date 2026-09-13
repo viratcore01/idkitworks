@@ -13,10 +13,20 @@ export async function photoAuth(req: AuthRequest, res: Response, next: NextFunct
   let token: string | undefined;
   if (header && header.startsWith('Bearer ')) token = header.split(' ')[1];
   if (!token && typeof req.query.t === 'string') token = req.query.t;
+  // Long-lived photo token (see issuePhotoToken) — survives between sessions.
+  let purpose: string | undefined;
+  if (!token && typeof req.query.pt === 'string') {
+    token = req.query.pt;
+    purpose = 'photo';
+  }
   if (!token) return res.status(401).json({ error: 'No token provided' });
 
   try {
     const payload = verifyAccessToken(token);
+    if (purpose && payload.purpose !== purpose) {
+      // A ?pt= value that isn't a photo token is never accepted.
+      return res.status(401).json({ error: 'Invalid token' });
+    }
     const dbUser = await prisma.user.findUnique({
       where: { id: payload.userId },
       select: { isActive: true, collegeId: true },
@@ -53,7 +63,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
     const payload = verifyAccessToken(token);
     const dbUser = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { isActive: true, collegeId: true },
+      select: { isActive: true, collegeId: true, verificationStatus: true },
     });
 
     if (!dbUser || !dbUser.isActive) {
@@ -66,6 +76,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       username: payload.username,
       role: payload.role,
       collegeId: dbUser.collegeId,
+      verificationStatus: dbUser.verificationStatus,
     };
     next();
   } catch (error) {
@@ -97,4 +108,22 @@ export function adminMiddleware(req: AuthRequest, res: Response, next: NextFunct
 /** College admins see only their college; super-admins see everything. */
 export function isSuperAdmin(user?: AuthUser): boolean {
   return user?.role === 'super_admin';
+}
+
+/**
+ * PRODUCT RULE (the dead-simple one): a person gets into the app — feed,
+ * match, chat, everything — ONLY after a moderator approves their student ID.
+ * Enforced HERE, on the server, per request: the client hiding screens is
+ * convenience, this is the actual wall. Admins are exempt (they must be able
+ * to reach the review queue and every page regardless of their own status).
+ */
+export function verificationRequired(req: AuthRequest, res: Response, next: NextFunction) {
+  if (req.user?.role === 'admin' || req.user?.role === 'super_admin') return next();
+  if (req.user?.verificationStatus !== 'VERIFIED') {
+    return res.status(403).json({
+      error: 'Your student ID must be verified by a moderator first',
+      code: 'VERIFICATION_REQUIRED',
+    });
+  }
+  next();
 }

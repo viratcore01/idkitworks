@@ -5,13 +5,14 @@ import { useAuthStore } from '@/store/auth.store';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
 import CollegeSelect, { CollegeOption } from '@/components/common/CollegeSelect';
-import { photoSrc } from '@/utils/photo';
+import { photoSrc, usePhotoVersion } from '@/utils/photo';
 import ImageEditorModal from '@/components/common/ImageEditorModal';
 import toast from 'react-hot-toast';
 
 export default function ProfileSetupPage() {
   const { user, updateProfile, fetchMe } = useAuthStore();
   const navigate = useNavigate();
+  const photoVersion = usePhotoVersion(); // token rotation → thumbnails reload
   const [college, setCollege] = useState<CollegeOption | null>(
     user?.college ? { id: user.college.id, name: user.college.name, shortName: user.college.shortName, city: user.college.city, state: user.college.state } : null,
   );
@@ -195,7 +196,7 @@ export default function ProfileSetupPage() {
             <div className="grid grid-cols-4 gap-2 mb-1">
               {Array.from({ length: 4 }).map((_, slot) => {
                 const photo = slots.find((s) => s.slot === slot) || null;
-                const src = photo ? photoSrc(photo.id) : null;
+                const src = photo ? photoSrc(photo.id) + `&v=${photoVersion}` : null;
                 return (
                   <div key={slot} className="relative">
                     {photo && (

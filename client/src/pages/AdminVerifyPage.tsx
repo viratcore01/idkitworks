@@ -35,7 +35,7 @@ export default function AdminVerifyPage() {
         try {
           const res = await api.get(item.imageUrl.replace('/api/', '/'), { responseType: 'blob' });
           entries[item.id] = URL.createObjectURL(res.data);
-        } catch { /* image may already be resolved */ }
+        } catch { /* image may already be resolved — card just hides it */ }
       }
       setImgUrls(entries);
       return entries;
@@ -83,7 +83,7 @@ export default function AdminVerifyPage() {
               <div className="sm:w-52 shrink-0">
                 {imgUrls[item.id]
                   ? <img src={imgUrls[item.id]} alt="Student ID" className="w-full rounded-xl object-contain max-h-40 bg-black/20" />
-                  : <div className="w-full h-40 rounded-xl bg-black/20 animate-pulse" />}
+                  : <div className="w-full h-40 rounded-xl bg-black/20 flex items-center justify-center text-xs opacity-50 px-2 text-center">Image unavailable — it was already decided</div>}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2.5">

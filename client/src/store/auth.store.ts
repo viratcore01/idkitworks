@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import api from '@/services/api';
+import { ensurePhotoToken } from '@/utils/photo';
 import { User } from '@/types';
 
 interface AuthState {
@@ -36,6 +37,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Login response carries only collegeId — fetch the full profile (with the
     // college object) so the college gate evaluates correctly immediately.
     try { await get().fetchMe(); } catch {}
+    // Long-lived token for <img> photo URLs (photos break without it).
+    ensurePhotoToken().catch(() => {});
   },
 
   /** Google Sign-In: server verifies the ID token, links/creates the account.
@@ -46,6 +49,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.setItem('refreshToken', data.refreshToken);
     set({ user: data.user, isAuthenticated: true });
     try { await get().fetchMe(); } catch {}
+    ensurePhotoToken().catch(() => {});
     return !!data.created;
   },
 
@@ -74,6 +78,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const { data } = await api.get('/auth/me');
       set({ user: data, isAuthenticated: true, isLoading: false });
+      ensurePhotoToken().catch(() => {}); // photo <img> URLs need it
     } catch {
       localStorage.clear();
       set({ user: null, isAuthenticated: false, isLoading: false });

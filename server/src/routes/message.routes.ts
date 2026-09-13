@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { MessageController } from '../controllers/message.controller';
-import { authMiddleware, collegeRequired } from '../middleware/auth';
+import { authMiddleware, collegeRequired, verificationRequired } from '../middleware/auth';
 
 const router = Router();
 const controller = new MessageController();
 
-router.use(authMiddleware, collegeRequired);
+// PRODUCT RULE: chatting is verified-students only (both sides of a chat are).
+router.use(authMiddleware, collegeRequired, verificationRequired);
 
 router.get('/conversations', (req, res) => controller.getConversations(req, res));
 router.post('/conversation', (req, res) => controller.createConversation(req, res));

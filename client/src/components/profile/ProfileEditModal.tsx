@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
 import ImageEditorModal from '@/components/common/ImageEditorModal';
-import { photoSrc } from '@/utils/photo';
+import { photoSrc, usePhotoVersion } from '@/utils/photo';
 import toast from 'react-hot-toast';
 
 const AVATAR_COLORS = [
@@ -41,6 +41,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
   const [busySlot, setBusySlot] = useState<number | null>(null);
   const [editing, setEditing] = useState<{ slot: number; file: File } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const photoVersion = usePhotoVersion(); // token rotation → thumbnails reload
 
   const { data: interests } = useQuery({
     queryKey: ['interests'],
@@ -134,7 +135,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
         <div className="grid grid-cols-4 gap-2 mb-1">
           {Array.from({ length: MAX_PHOTOS }).map((_, slot) => {
             const photo = slots.find((s) => s.slot === slot) || null;
-            const src = photo ? photoSrc(photo.id) : null;
+            const src = photo ? photoSrc(photo.id) + `&v=${photoVersion}` : null;
             return (
               <div key={slot} className="relative">
                 {photo && (

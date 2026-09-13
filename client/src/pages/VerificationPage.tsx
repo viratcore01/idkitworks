@@ -5,6 +5,7 @@ import { GraduationCap, Camera, ScanLine, ShieldCheck, RefreshCw, Clock3, AlertT
 import Logo from '@/components/common/Logo';
 import ImageEditorModal from '@/components/common/ImageEditorModal';
 import { useAuthStore } from '@/store/auth.store';
+import { useVerificationUnlock } from '@/hooks/useVerificationUnlock';
 import { verificationApi, VerificationStatus } from '@/services/verification';
 
 type Phase = 'intro' | 'capture' | 'checking' | 'done';
@@ -58,6 +59,14 @@ export default function VerificationPage() {
     if (phase === 'done') fetchMe().catch(() => {});
   }, [phase, fetchMe]);
 
+  // THE DEAD-SIMPLE RULE: when the moderator approves, the user is IN —
+  // instantly, no reload, no button. The socket fires, the session refreshes,
+  // and we navigate onto the feed ourselves.
+  useVerificationUnlock(() => {
+    setPhase('done');
+    navigate('/home', { replace: true });
+  });
+
   const submit = async (file: File) => {
     setError('');
     setPreview(URL.createObjectURL(file));
@@ -98,10 +107,11 @@ export default function VerificationPage() {
             </div>
           )}
           <h1 className="font-display text-2xl font-bold">Checking your student ID…</h1>
-          <p className="text-sm opacity-70 mt-2">A moderator from your college is reviewing it. This usually takes a little while.</p>
+          <p className="text-sm opacity-70 mt-2">A moderator from your college is reviewing it. The moment they approve, you're in.</p>
           <div className="mt-6 flex items-center justify-center gap-2 text-sm">
             <RefreshCw size={16} className="animate-spin" /> waiting for review
           </div>
+          <p className="text-xs opacity-50 mt-3">You can leave this page — the second it's approved, Skola opens by itself.</p>
           {status?.pending?.note && (
             <p className="mt-4 text-xs opacity-60 italic">“{status.pending.note}”</p>
           )}
@@ -113,14 +123,13 @@ export default function VerificationPage() {
   // ── DONE ──────────────────────────────────────────────────
   if (phase === 'done' && !status) {
     // Status query failed (e.g. cold server mid-refresh) — still give the user
-    // a way forward instead of a blank card.
+    // a clear state instead of a blank card.
     return (
       <Shell>
         <div className="nb-card max-w-md w-full mx-auto p-8 text-center">
           <Clock3 size={40} className="mx-auto text-nb-purple" />
           <h1 className="font-display text-2xl font-bold mt-5">Your ID is submitted</h1>
-          <p className="text-sm opacity-70 mt-2">A moderator from your college is checking it — you'll get a notification with the decision.</p>
-          <button onClick={() => navigate('/home')} className="nb-btn-primary w-full mt-6">Continue to Skola</button>
+          <p className="text-sm opacity-70 mt-2">A moderator from your college is checking it — you'll be let in automatically the moment it's approved.</p>
         </div>
       </Shell>
     );
@@ -138,26 +147,29 @@ export default function VerificationPage() {
           </div>
           <h1 className="font-display text-2xl font-bold mt-5">
             {verified ? "You're verified! 🎓" : 'One more step'}
-          </h1>
-          <p className="text-sm opacity-70 mt-2">
+          </h1>          <p className="text-sm opacity-70 mt-2">
             {verified
               ? 'Welcome to Skola. Your college community is waiting.'
               : status.status === 'REJECTED'
                 ? (status.lastRejection || 'A moderator could not confirm your ID — retake a clearer photo.')
-                : 'Your ID is with a moderator from your college. You\'ll get a notification the moment it\'s decided.'}
+                : 'Your ID is with a moderator from your college. The moment they approve it, Skola opens automatically — no reload needed.'}
           </p>
-          <button
-            onClick={async () => {
-              queryClient.invalidateQueries({ queryKey: ['me'] });
-              await fetchMe().catch(() => {}); // store must carry PENDING/VERIFIED before the gate runs
-              navigate('/home');
-            }}
-            className="nb-btn-primary w-full mt-6"
-          >
-            {verified ? 'Enter Skola' : 'Continue to Skola'}
-          </button>
-          {!verified && (
-            <button onClick={() => { setPreview(null); setPhase('capture'); }} className="nb-btn-ghost w-full mt-2">
+
+          {verified && (
+            <button
+              onClick={() => navigate('/home')}
+              className="nb-btn-primary w-full mt-6"
+            >
+              Enter Skola
+            </button>
+          )}
+          {!verified && status.status === 'PENDING' && (
+            <p className="text-xs opacity-50 mt-6 flex items-center justify-center gap-1.5">
+              <RefreshCw size={13} className="animate-spin" /> You'll be let in automatically the moment it's approved
+            </p>
+          )}
+          {!verified && status.status === 'REJECTED' && (
+            <button onClick={() => { setPreview(null); setPhase('capture'); }} className="nb-btn-primary w-full mt-6">
               <Camera size={16} className="inline mr-1" /> Retake photo
             </button>
           )}

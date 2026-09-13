@@ -8,7 +8,7 @@ import Avatar from '@/components/common/Avatar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
 import { formatDistanceToNow } from '@/utils/date';
-import { photoSrc } from '@/utils/photo';
+import { photoSrc, usePhotoVersion } from '@/utils/photo';
 import toast from 'react-hot-toast';
 
 type View = 'discover' | 'matches' | 'chat';
@@ -63,6 +63,7 @@ export default function MatchesPage() {
   }, [currentUser?.id]);
 
   /** All displayable photos of the current card: stored slots first, then avatarUrl. */
+  const pv = usePhotoVersion(); // token rotation → rebuild URLs → images reload
   const cardPhotos: string[] = currentUser
     ? [
         ...(currentUser.photos || []).map((p: any) => photoSrc(p.id)),

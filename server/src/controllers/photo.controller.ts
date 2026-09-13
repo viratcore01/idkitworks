@@ -1,5 +1,7 @@
 import { Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { prisma } from '../config/prisma';
+import { env } from '../config/env';
 import { AuthRequest } from '../types';
 import { sendError } from '../utils/http-error';
 
@@ -40,6 +42,22 @@ export async function uploadPhoto(req: AuthRequest, res: Response) {
   } catch (error: any) {
     sendError(res, error, 400);
   }
+}
+
+/**
+ * GET /users/photo-token — a LONG-LIVED token (30d) used only to serve photos.
+ *
+ * WHY THIS EXISTS: <img> tags can't set Authorization headers, and they also
+ * can't refresh a token. Serving photos with the 15-minute access token meant
+ * every image in the app silently broke 15 minutes after login — the browser
+ * kept rendering the dead URL and the UI showed "image not available". This
+ * dedicated token outlives the session's idle gaps; the client stores it and
+ * embeds it as ?pt= on every photo URL.
+ */
+export async function issuePhotoToken(req: AuthRequest, res: Response) {
+  const u = req.user!;
+  const token = jwt.sign({ userId: u.id, purpose: 'photo' }, env.JWT_SECRET, { expiresIn: '30d' });
+  res.json({ token });
 }
 
 /**

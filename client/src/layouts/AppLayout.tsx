@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '@/store/auth.store';
 import { getSocket } from '@/services/realtime';
+import { useVerificationUnlock } from '@/hooks/useVerificationUnlock';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import MobileNav from '@/components/layout/MobileNav';
@@ -10,6 +12,7 @@ import MobileNav from '@/components/layout/MobileNav';
 export default function AppLayout() {
   const { user } = useAuthStore();
   const location = useLocation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   // Global realtime badges: incoming messages/matches/notifications refresh the
@@ -38,6 +41,12 @@ export default function AppLayout() {
       socket.off('match-new', onMatch);
     };
   }, [user, queryClient]);
+
+  // Verified the instant a moderator approves — no reload, no manual step.
+  useVerificationUnlock(() => {
+    toast.success("You're verified — welcome to Skola!", { icon: '🎓', duration: 5000 });
+    navigate('/home', { replace: true });
+  });
 
   const isSetupNeeded = user && !user.college && !user.course && location.pathname !== '/setup-profile';
 

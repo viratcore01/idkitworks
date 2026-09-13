@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { PostController } from '../controllers/post.controller';
-import { authMiddleware, collegeRequired } from '../middleware/auth';
+import { authMiddleware, collegeRequired, verificationRequired } from '../middleware/auth';
 
 const router = Router();
 const controller = new PostController();
 
-router.use(authMiddleware, collegeRequired);
+// PRODUCT RULE: only moderator-verified students read or write the feed.
+router.use(authMiddleware, collegeRequired, verificationRequired);
 
 router.get('/', (req, res) => controller.getFeed(req, res));
 router.post('/', (req, res) => controller.create(req, res));

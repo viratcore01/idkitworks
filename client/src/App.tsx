@@ -26,30 +26,31 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * PRODUCT RULE: the app is college-only AND student-verified.
- *  - No college → profile setup (pick your college first)
- *  - UNVERIFIED / REJECTED → the ID verification flow, before anything else
- *  - PENDING → may browse (a moderator is checking) but cannot match or chat
+ * PRODUCT RULE (dead simple): nobody enters the app until a moderator has
+ * approved their student ID. No college → profile setup. Not VERIFIED → the
+ * verification flow, full stop. (The server enforces the same wall.)
+ * Admins are staff — they bypass the wall so they can run the review queue.
  */
 function CollegeRoute({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isLoading } = useAuthStore();
   if (isLoading) return <LoadingScreen />;
   if (!isAuthenticated) return <Navigate to="/login" />;
   if (!user?.college) return <Navigate to="/setup-profile" replace />;
-  if (user.verificationStatus === 'UNVERIFIED' || user.verificationStatus === 'REJECTED') {
+  const isStaff = user.role === 'admin' || user.role === 'super_admin';
+  if (!isStaff && user.verificationStatus !== 'VERIFIED') {
     return <Navigate to="/verify" replace />;
   }
   return <>{children}</>;
 }
 
 /**
- * PRODUCT RULE: main app requires student verification. PENDING users get a
- * limited-access pass (browse the feed) — they simply can't match or chat.
+ * PRODUCT RULE: main app requires student verification (staff exempt).
  */
 function VerifiedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore();
   if (isLoading) return <LoadingScreen />;
-  if (user && user.verificationStatus !== 'VERIFIED') return <Navigate to="/verify" replace />;
+  const isStaff = user?.role === 'admin' || user?.role === 'super_admin';
+  if (user && !isStaff && user.verificationStatus !== 'VERIFIED') return <Navigate to="/verify" replace />;
   return <>{children}</>;
 }
 
@@ -105,10 +106,13 @@ export default function App() {
         <ProtectedRoute><ProfileSetupPage /></ProtectedRoute>
       } />
 
-      {/* Student ID verification: full-screen flow outside the app chrome */}
+      {/* Student ID verification: full-screen flow outside the app chrome.
+          VERIFIED users and staff don't need it. */}
       <Route path="/verify" element={
         <ProtectedRoute>
-          {user?.verificationStatus === 'VERIFIED' ? <Navigate to="/home" replace /> : <VerificationPage />}
+          {user && (user.verificationStatus === 'VERIFIED' || user.role === 'admin' || user.role === 'super_admin')
+            ? <Navigate to="/home" replace />
+            : <VerificationPage />}
         </ProtectedRoute>
       } />
 
