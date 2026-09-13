@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Rocket, PartyPopper, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuery } from '@tanstack/react-query';
+import CollegeSelect, { CollegeOption } from '@/components/common/CollegeSelect';
 import api from '@/services/api';
 import toast from 'react-hot-toast';
 
@@ -22,17 +23,16 @@ export default function SignupPage() {
     bio: '',
     interestIds: [] as string[],
   });
+  const [college, setCollege] = useState<CollegeOption | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const signup = useAuthStore((s) => s.signup);
   const navigate = useNavigate();
 
-  const { data: colleges } = useQuery({
-    queryKey: ['colleges'],
-    queryFn: () => api.get('/users/colleges').then((r) => r.data),
-  });
-
+  // Interests are loaded at the last step, AFTER the account exists —
+  // calling them pre-auth here would 401 and bounce the user to /login.
   const { data: interests } = useQuery({
-    queryKey: ['interests'],
+    queryKey: ['interests', step === 4],
+    enabled: step === 4,
     queryFn: () => api.get('/users/interests').then((r) => r.data),
   });
 
@@ -43,7 +43,8 @@ export default function SignupPage() {
     try {
       await signup(formData);
       toast.success('Welcome to Skola!');
-      navigate('/home');
+      // Onboarding: signup → verify student ID → feed (App gate handles routing)
+      navigate('/verify');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Signup failed');
     } finally {
@@ -177,19 +178,16 @@ export default function SignupPage() {
       {step === 3 && (
         <div className="space-y-4 animate-slide-up">
           <div>
-            <label className="block font-display text-sm font-semibold mb-1.5">College</label>
-            <select
-              className="nb-input"
-              value={formData.collegeId}
-              onChange={(e) => update('collegeId', e.target.value)}
-            >
-              <option value="">Select your college</option>
-              {colleges?.map((c: any) => (
-                <option key={c.id} value={c.id}>
-                  {c.shortName ? `${c.shortName} — ${c.name}` : c.name}
-                </option>
-              ))}
-            </select>
+            <label className="block font-display text-sm font-semibold mb-1.5">College *</label>
+            <CollegeSelect
+              value={college}
+              onChange={(c) => {
+                setCollege(c);
+                update('collegeId', c?.id || '');
+              }}
+              placeholder="Search e.g. IIT Delhi, VIT, SRM…"
+            />
+            <p className="text-[11px] text-gray-500 mt-1">Your college is your world here — everything you see stays inside it.</p>
           </div>
           <div>
             <label className="block font-display text-sm font-semibold mb-1.5">Course / Branch</label>

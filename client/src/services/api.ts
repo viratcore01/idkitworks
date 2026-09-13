@@ -53,9 +53,12 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       const refreshToken = localStorage.getItem('refreshToken');
+      const onAuthPage = /^\/(login|signup)$/.test(window.location.pathname);
       if (!refreshToken) {
         localStorage.clear();
-        window.location.href = '/login';
+        // Never bounce people off the auth pages themselves — signup makes
+        // pre-auth calls (interests/colleges) and must stay usable.
+        if (!onAuthPage) window.location.href = '/login';
         return Promise.reject(error);
       }
 
@@ -70,7 +73,7 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         localStorage.clear();
-        window.location.href = '/login';
+        if (!onAuthPage) window.location.href = '/login';
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

@@ -19,6 +19,8 @@ import notificationRoutes from './routes/notification.routes';
 import matchRoutes from './routes/match.routes';
 import messageRoutes from './routes/message.routes';
 import adminRoutes from './routes/admin.routes';
+import verificationRoutes from './routes/verification.routes';
+import collegeRoutes from './routes/college.routes';
 
 const app = express();
 const httpServer = createServer(app);
@@ -78,6 +80,8 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/matches', matchRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/verification', verificationRoutes);
+app.use('/api/colleges', collegeRoutes);
 
 // ── Socket.IO: authenticated + membership-checked ──
 export const io = new Server(httpServer, {
@@ -175,6 +179,11 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 });
 
 // Start server
+import { CollegeService } from './services/college.service';
+new CollegeService().seedDirectory().then(({ added, total }) => {
+  if (added > 0) console.log(`🎓 College directory seeded: +${added} (${total} total)`);
+}).catch((e) => console.error('[college-seed]', e.message));
+
 httpServer.listen(env.PORT, () => {
   console.log(`🚀 Server running on http://localhost:${env.PORT}`);
   console.log(`📡 Socket.IO ready`);

@@ -5,6 +5,7 @@ import { Search, Glasses, Bell, X, Users, FileText } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
+import Logo from '@/components/common/Logo';
 import { bestAvatarSrc, photoSrc } from '@/utils/photo';
 
 export default function Topbar() {
@@ -76,14 +77,10 @@ export default function Topbar() {
     >
       {/* Desktop: reserve exactly the sidebar's width so content never hides under it */}
       <div className="hidden lg:block w-64 shrink-0" aria-hidden="true">
-        <h1 className="text-2xl font-display font-bold text-white leading-none">
-          SKO<span className="text-nb-lime">LA</span>
-        </h1>
+        <Logo size={30} />
       </div>
       <Link to="/home" className="lg:hidden shrink-0">
-        <h1 className="text-xl font-display font-bold text-white">
-          SKO<span className="text-nb-lime">LA</span>
-        </h1>
+        <Logo size={26} />
       </Link>
 
       <form onSubmit={handleSearch} className="flex-1 min-w-0 max-w-md">

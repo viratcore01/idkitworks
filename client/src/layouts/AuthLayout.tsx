@@ -1,26 +1,23 @@
 import { Outlet } from 'react-router-dom';
-import { Zap, GraduationCap } from 'lucide-react';
+import { Zap } from 'lucide-react';
+import Logo from '@/components/common/Logo';
 
 export default function AuthLayout() {
   return (
     <div className="min-h-screen nb-canvas-surface flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Brand */}
+        {/* Brand — S mark + extruded wordmark, tagline straight from the logo sheet */}
         <div className="text-center mb-8">
           <div className="inline-block">
-            <h1 className="text-5xl font-display font-bold text-nb-black tracking-tight">
-              SKO<span className="text-nb-orange">LA</span>
-            </h1>
-            <div className="flex items-center gap-2 mt-1">
+            <Logo size={72} />
+            <div className="flex items-center gap-2 mt-2">
               <div className="h-1 flex-1 bg-nb-lime rounded-full" />
               <Zap size={14} strokeWidth={2.5} className="text-nb-lime" fill="currentColor" />
               <div className="h-1 flex-1 bg-nb-lime rounded-full" />
             </div>
           </div>
-          <p className="mt-3 font-body text-sm text-gray-600">
-            <span className="inline-flex items-center gap-1">
-              The social network for students. <GraduationCap size={16} strokeWidth={2.5} className="inline text-nb-black" />
-            </span>
+          <p className="mt-3 font-display font-semibold text-sm tracking-widest text-nb-black uppercase">
+            Hyperlocal Dating &amp; College Community Chat
           </p>
         </div>
 

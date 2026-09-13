@@ -40,6 +40,7 @@ model User {
   avatarColor   String?  @map("avatar_color")
   avatarPhotoId String?  @unique @map("avatar_photo_id")
   isVerified    Boolean  @default(false) @map("is_verified")
+  verificationStatus String @default("UNVERIFIED") @map("verification_status") // UNVERIFIED | PENDING | VERIFIED | REJECTED
   isActive      Boolean  @default(true) @map("is_active")
   role          String   @default("user")
   createdAt     DateTime @default(now()) @map("created_at")
@@ -66,6 +67,7 @@ model User {
   refreshTokens    RefreshToken[]
   photos           UserPhoto[]
   avatarPhoto      UserPhoto?         @relation("UserAvatarPhoto", fields: [avatarPhotoId], references: [id])
+  idVerifications  IdVerification[]
 
   @@map("users")
 }
@@ -86,6 +88,29 @@ model UserPhoto {
 
   @@index([userId, slot])
   @@map("user_photos")
+}
+
+// ─── STUDENT ID VERIFICATION ─────────────────────────────
+// Privacy: the ID photo is kept ONLY while a decision is pending; it is
+// deleted the moment the verification resolves (auto or human review).
+model IdVerification {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  imageData      Bytes?    @map("image_data") // nulled after decision — never retained
+  mimeType       String    @map("mime_type")
+  status         String    @default("PENDING") // PENDING | VERIFIED | REJECTED
+  autoDecision   String?   @map("auto_decision") // APPROVED | REJECTED | REVIEW | SKIPPED
+  autoConfidence Float?    @map("auto_confidence")
+  autoReason     String?   @map("auto_reason")
+  decidedBy      String?   @map("decided_by") // null = automatic
+  createdAt      DateTime  @default(now()) @map("created_at")
+  decidedAt      DateTime? @map("decided_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([userId])
+  @@map("id_verifications")
 }
 
 model RefreshToken {

@@ -181,8 +181,8 @@ export const MOCK_NOTIFICATIONS: Notification[] = [
 
 export const MOCK_SEARCH: SearchResults = {
   users: [
-    { id: 'u2', email: '', username: 'priya_sharma', displayName: 'Priya Sharma', avatarUrl: null, bio: 'ECE student', college: { id: 'c1', name: 'IPEC', shortName: 'IPEC', city: 'Ghaziabad', state: 'UP', logoUrl: null }, course: 'ECE', year: 3, isVerified: false, interests: [] },
-    { id: 'u3', email: '', username: 'arnav_dev', displayName: 'Arnav Gupta', avatarUrl: null, bio: 'Full-stack developer', college: { id: 'c1', name: 'IPEC', shortName: 'IPEC', city: 'Ghaziabad', state: 'UP', logoUrl: null }, course: 'CSE', year: 2, isVerified: false, interests: [] },
+    { id: 'u2', email: '', username: 'priya_sharma', displayName: 'Priya Sharma', avatarUrl: null, bio: 'ECE student', college: { id: 'c1', name: 'IPEC', shortName: 'IPEC', city: 'Ghaziabad', state: 'UP', logoUrl: null }, course: 'ECE', year: 3, isVerified: false, verificationStatus: 'VERIFIED' as const, interests: [] },
+    { id: 'u3', email: '', username: 'arnav_dev', displayName: 'Arnav Gupta', avatarUrl: null, bio: 'Full-stack developer', college: { id: 'c1', name: 'IPEC', shortName: 'IPEC', city: 'Ghaziabad', state: 'UP', logoUrl: null }, course: 'CSE', year: 2, isVerified: false, verificationStatus: 'VERIFIED' as const, interests: [] },
   ],
   posts: MOCK_POSTS.slice(0, 2),
   colleges: [

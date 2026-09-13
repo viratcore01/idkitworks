@@ -30,6 +30,7 @@ export class UserService {
     gender: true,
     dateOfBirth: true,
     isVerified: true,
+    verificationStatus: true,
     createdAt: true,
     photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' } },
     interests: { include: { interest: true } },

@@ -4,12 +4,16 @@ import { Sparkles, PartyPopper, Hourglass, Camera, Plus, X } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
+import CollegeSelect, { CollegeOption } from '@/components/common/CollegeSelect';
 import { photoSrc } from '@/utils/photo';
 import toast from 'react-hot-toast';
 
 export default function ProfileSetupPage() {
   const { user, updateProfile, fetchMe } = useAuthStore();
   const navigate = useNavigate();
+  const [college, setCollege] = useState<CollegeOption | null>(
+    user?.college ? { id: user.college.id, name: user.college.name, shortName: user.college.shortName, city: user.college.city, state: user.college.state } : null,
+  );
   const [formData, setFormData] = useState({
     collegeId: user?.college?.id || '',
     course: user?.course || '',
@@ -59,11 +63,6 @@ export default function ProfileSetupPage() {
     }
   };
 
-  const { data: colleges } = useQuery({
-    queryKey: ['colleges'],
-    queryFn: () => api.get('/users/colleges').then((r) => r.data),
-  });
-
   const { data: interests } = useQuery({
     queryKey: ['interests'],
     queryFn: () => api.get('/users/interests').then((r) => r.data),
@@ -82,7 +81,8 @@ export default function ProfileSetupPage() {
       // Refresh the user so the college gate re-evaluates immediately
       await fetchMe();
       toast.success('Profile updated!');
-      navigate('/home');
+      // Onboarding order: profile → student ID verification → feed
+      navigate('/verify');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Update failed');
     } finally {
@@ -107,17 +107,14 @@ export default function ProfileSetupPage() {
         <form onSubmit={handleSubmit} className="nb-card p-6 space-y-4">
           <div>
             <label className="block font-display text-sm font-semibold mb-1.5">College *</label>
-            <select
-              className="nb-input"
-              value={formData.collegeId}
-              onChange={(e) => setFormData((d) => ({ ...d, collegeId: e.target.value }))}
-              required
-            >
-              <option value="">Select your college</option>
-              {colleges?.map((c: any) => (
-                <option key={c.id} value={c.id}>{c.shortName || c.name}</option>
-              ))}
-            </select>
+            <CollegeSelect
+              value={college}
+              onChange={(c) => {
+                setCollege(c);
+                setFormData((d) => ({ ...d, collegeId: c?.id || '' }));
+              }}
+            />
+            <p className="text-[11px] text-gray-500 mt-1">Search by name, short name or city — worldwide.</p>
           </div>
 
           <div>

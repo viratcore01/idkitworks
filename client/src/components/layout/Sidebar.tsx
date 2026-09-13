@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth.store';
+import Logo from '@/components/common/Logo';
 import { bestAvatarSrc } from '@/utils/photo';
 import { Home, Heart, Bell, Settings } from 'lucide-react';
 
@@ -16,9 +17,7 @@ export default function Sidebar() {
     <div className="h-full bg-nb-black p-4 flex flex-col">
       {/* Logo */}
       <div className="mb-6 px-2">
-        <h1 className="text-2xl font-display font-bold text-white">
-          SKO<span className="text-nb-lime">LA</span>
-        </h1>
+        <Logo size={28} />
       </div>
 
       {/* Nav links */}

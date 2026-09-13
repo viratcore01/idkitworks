@@ -207,6 +207,8 @@ export class AuthService {
       course: user.course,
       year: user.year,
       isVerified: user.isVerified,
+      verificationStatus: user.verificationStatus,
+      role: user.role,
       interests: user.interests.map((ui) => ui.interest),
       postCount: user._count.posts,
       isProfileSetup: !!(user.collegeId && user.course),

@@ -7,6 +7,8 @@ import AppLayout from '@/layouts/AppLayout';
 import LoginPage from '@/pages/LoginPage';
 import SignupPage from '@/pages/SignupPage';
 import ProfileSetupPage from '@/pages/ProfileSetupPage';
+import VerificationPage from '@/pages/VerificationPage';
+import AdminVerifyPage from '@/pages/AdminVerifyPage';
 import HomePage from '@/pages/HomePage';
 import MatchesPage from '@/pages/MatchesPage';
 import ProfilePage from '@/pages/ProfilePage';
@@ -24,15 +26,30 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * PRODUCT RULE: the app is college-only. Every main-app page requires an
- * assigned college — anyone without one is funneled to profile setup until
- * they pick their college. Nothing else renders for them.
+ * PRODUCT RULE: the app is college-only AND student-verified.
+ *  - No college → profile setup (pick your college first)
+ *  - UNVERIFIED / REJECTED → the ID verification flow, before anything else
+ *  - PENDING → may browse (a moderator is checking) but cannot match or chat
  */
 function CollegeRoute({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isLoading } = useAuthStore();
   if (isLoading) return <LoadingScreen />;
   if (!isAuthenticated) return <Navigate to="/login" />;
   if (!user?.college) return <Navigate to="/setup-profile" replace />;
+  if (user.verificationStatus === 'UNVERIFIED' || user.verificationStatus === 'REJECTED') {
+    return <Navigate to="/verify" replace />;
+  }
+  return <>{children}</>;
+}
+
+/**
+ * PRODUCT RULE: main app requires student verification. PENDING users get a
+ * limited-access pass (browse the feed) — they simply can't match or chat.
+ */
+function VerifiedRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuthStore();
+  if (isLoading) return <LoadingScreen />;
+  if (user && user.verificationStatus !== 'VERIFIED') return <Navigate to="/verify" replace />;
   return <>{children}</>;
 }
 
@@ -55,7 +72,7 @@ function LoadingScreen() {
 }
 
 export default function App() {
-  const { fetchMe, isLoading } = useAuthStore();
+  const { user, fetchMe, isLoading } = useAuthStore();
 
   useEffect(() => {
     fetchMe();
@@ -75,9 +92,9 @@ export default function App() {
       <Route element={<CollegeRoute><AppLayout /></CollegeRoute>}>
         <Route path="/home" element={<HomePage />} />
         <Route path="/post/:postId" element={<PostDetailPage />} />
-        <Route path="/matches" element={<MatchesPage />} />
+        <Route path="/matches" element={<VerifiedRoute><MatchesPage /></VerifiedRoute>} />
         <Route path="/profile/:username" element={<ProfilePage />} />
-        <Route path="/messages/:conversationId" element={<ChatPage />} />
+        <Route path="/messages/:conversationId" element={<VerifiedRoute><ChatPage /></VerifiedRoute>} />
         <Route path="/notifications" element={<NotificationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/search" element={<SearchPage />} />
@@ -86,6 +103,18 @@ export default function App() {
       {/* Profile setup: authenticated users only (works with or without college) */}
       <Route path="/setup-profile" element={
         <ProtectedRoute><ProfileSetupPage /></ProtectedRoute>
+      } />
+
+      {/* Student ID verification: full-screen flow outside the app chrome */}
+      <Route path="/verify" element={
+        <ProtectedRoute>
+          {user?.verificationStatus === 'VERIFIED' ? <Navigate to="/home" replace /> : <VerificationPage />}
+        </ProtectedRoute>
+      } />
+
+      {/* Admin verification review queue (college-scoped) */}
+      <Route path="/admin/verify" element={
+        <ProtectedRoute><AdminVerifyPage /></ProtectedRoute>
       } />
 
       {/* Removed pages redirect to their closest replacement */}

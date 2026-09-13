@@ -12,6 +12,8 @@ export interface User {
   course: string | null;
   year: number | null;
   isVerified: boolean;
+  verificationStatus: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
+  role?: string;
   interests: Interest[];
   postCount?: number;
   createdAt?: string;

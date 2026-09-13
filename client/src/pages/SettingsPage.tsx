@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, Save, Hourglass, LogOut } from 'lucide-react';
+import { Settings, Save, Hourglass, LogOut, BadgeCheck, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import toast from 'react-hot-toast';
 
@@ -76,6 +76,30 @@ export default function SettingsPage() {
           <p><span className="font-semibold">Email:</span> {user?.email}</p>
           <p><span className="font-semibold">Username:</span> @{user?.username}</p>
         </div>
+      </div>
+
+      {/* Student verification */}
+      <div className="nb-card p-6 mb-4">
+        <h2 className="font-display font-bold text-lg mb-4 flex items-center gap-2">Student Verification</h2>
+        {user?.verificationStatus === 'VERIFIED' ? (
+          <p className="text-sm flex items-center gap-2">
+            <BadgeCheck size={18} className="text-nb-orange" /> Verified student of {user.college?.shortName || user.college?.name || 'your college'}
+          </p>
+        ) : (
+          <div>
+            <p className="text-sm opacity-70 mb-3">
+              {user?.verificationStatus === 'PENDING'
+                ? 'Your ID is in review — a moderator will confirm it shortly.'
+                : 'Verify your college ID to unlock matching and chat.'}
+            </p>
+            <button onClick={() => navigate('/verify')} className="nb-btn-orange text-sm">Verify now</button>
+          </div>
+        )}
+        {user?.role === 'admin' && (
+          <button onClick={() => navigate('/admin/verify')} className="nb-btn-ghost text-sm mt-4 w-full">
+            <ShieldCheck size={16} className="inline mr-1.5" /> Open ID review queue
+          </button>
+        )}
       </div>
 
       {/* Danger Zone */}
