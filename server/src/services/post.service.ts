@@ -135,6 +135,9 @@ export class PostService {
     return {
       posts: data.map((post) => ({
         ...post,
+        // Ownership is computed BEFORE anonymous masking — the real authorId
+        // of an anonymous post never leaves the server, only this boolean does.
+        isMine: post.authorId === userId,
         // PRIVACY: anonymous posts never carry the real author in any list.
         author: post.isAnonymous
           ? { ...ANON_AUTHOR, college: null, course: null, year: null }
@@ -175,6 +178,8 @@ export class PostService {
 
     return {
       ...post,
+      // Ownership computed BEFORE anonymous masking — see getFeed.
+      isMine: post.authorId === userId,
       // PRIVACY: the real author of an anonymous post never leaves the server.
       author: post.isAnonymous
         ? { ...ANON_AUTHOR, college: null, course: null, year: null, collegeId: null, isActive: true }

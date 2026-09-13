@@ -52,6 +52,25 @@ export default function PostCard({ post, detailView = false }: Props) {
     },
   });
 
+  // Author delete — the ⋯ menu shows Delete only for your own posts (isMine
+  // is computed server-side, so anonymous posts stay anonymous but their
+  // authors can still remove them). Soft-delete server-side; the post 404s
+  // for everyone afterwards.
+  const deleteMutation = useMutation({
+    mutationFn: () => api.delete(`/posts/${post.id}`),
+    onSuccess: () => {
+      toast.success('Post deleted');
+      setMenuOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      queryClient.invalidateQueries({ queryKey: ['post', post.id] });
+      queryClient.invalidateQueries({ queryKey: ['saved-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['profile-posts'] });
+      // If we're on the post's detail page, it's gone — go home.
+      if (detailView) navigate('/home', { replace: true });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.error || 'Could not delete post'),
+  });
+
   const sharePost = async () => {
     const url = `${window.location.origin}/post/${post.id}`;
     try {
@@ -190,13 +209,30 @@ export default function PostCard({ post, detailView = false }: Props) {
             {menuOpen && (
               <>
                 <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
-                <button
-                  onClick={() => reportMutation.mutate()}
-                  disabled={reportMutation.isPending}
-                  className="absolute right-0 bottom-8 z-30 nb-card bg-white py-1.5 px-3 min-w-[150px] text-left text-sm font-body text-nb-red hover:bg-red-50"
-                >
-                  Report post
-                </button>
+                <div className="absolute right-0 bottom-8 z-30 nb-card bg-white py-1.5 min-w-[150px] flex flex-col">
+                  {post.isMine && (
+                    <button
+                      onClick={() => {
+                        if (window.confirm('Delete this post? This cannot be undone.')) {
+                          deleteMutation.mutate();
+                        } else {
+                          setMenuOpen(false);
+                        }
+                      }}
+                      disabled={deleteMutation.isPending}
+                      className="py-1.5 px-3 text-left text-sm font-body text-nb-red hover:bg-red-50 disabled:opacity-60"
+                    >
+                      {deleteMutation.isPending ? 'Deleting…' : 'Delete post'}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => reportMutation.mutate()}
+                    disabled={reportMutation.isPending}
+                    className="py-1.5 px-3 text-left text-sm font-body text-nb-red hover:bg-red-50"
+                  >
+                    Report post
+                  </button>
+                </div>
               </>
             )}
           </div>

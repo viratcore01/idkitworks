@@ -185,6 +185,7 @@ export class UserService {
         },
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
         likes: { where: { userId: viewerId }, select: { userId: true } },
+        saves: { where: { userId: viewerId }, select: { userId: true } },
       },
     });
 
@@ -192,7 +193,14 @@ export class UserService {
     const data = hasMore ? posts.slice(0, limit) : posts;
 
     return {
-      posts: data.map((p) => ({ ...p, isLikedByMe: p.likes.length > 0, likes: undefined })),
+      posts: data.map((p) => ({
+        ...p,
+        isMine: p.authorId === viewerId,
+        isLikedByMe: p.likes.length > 0,
+        isSavedByMe: p.saves.length > 0,
+        likes: undefined,
+        saves: undefined,
+      })),
       nextCursor: hasMore ? data[data.length - 1].id : null,
     };
   }

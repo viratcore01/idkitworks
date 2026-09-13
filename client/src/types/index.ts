@@ -45,6 +45,8 @@ export interface Post {
   isAnonymous: boolean;
   isLikedByMe?: boolean;
   isSavedByMe?: boolean;
+  /** Viewer is the author — enables delete in the ⋯ menu. Computed server-side. */
+  isMine?: boolean;
   createdAt: string;
   updatedAt: string;
   author: {
