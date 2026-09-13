@@ -134,7 +134,7 @@ export default function VerificationPage() {
           <button onClick={() => setPhase('intro')} className="text-sm opacity-60 hover:opacity-100 mb-4">← Back</button>
           <h1 className="font-display text-2xl font-bold text-center">Take a photo of your college ID</h1>
           <p className="text-sm opacity-70 text-center mt-2">
-            Make sure your college name is clearly readable. We delete the photo as soon as you're verified.
+            Your college name and your name must be clearly readable — we check them against your profile. The photo is deleted once you're verified.
           </p>
           <div className="mt-6 rounded-2xl border-2 border-dashed border-nb-purple/40 p-8 text-center">
             <Camera size={44} className="mx-auto text-nb-purple" />
@@ -170,7 +170,7 @@ export default function VerificationPage() {
           a quick automatic check confirms you belong, and the photo is deleted right after.
         </p>
         <ul className="text-left text-sm mt-6 space-y-3">
-          <Li><Check size={16} className="text-nb-orange mt-0.5 shrink-0" /> Photo of your ID — nothing else is needed</Li>
+          <Li><Check size={16} className="text-nb-orange mt-0.5 shrink-0" /> Your college name and your name readable on the card</Li>
           <Li><Check size={16} className="text-nb-orange mt-0.5 shrink-0" /> Deleted instantly once you're verified</Li>
           <Li><Check size={16} className="text-nb-orange mt-0.5 shrink-0" /> Unclear photo? A moderator from your college reviews it</Li>
         </ul>
