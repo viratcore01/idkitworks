@@ -28,7 +28,25 @@ if (tunedDatabaseUrl(process.env.DATABASE_URL)) {
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
-export const prisma = globalForPrisma.prisma || new PrismaClient();
+/**
+ * Prisma's default pool (num_cpus * 2 + 1) exhausts Supabase's small
+ * session-pooler ceilings on small instances (EMAXCONNSESSION at 15 clients).
+ * The caps below are env-overridable so production can tune upward with the
+ * database, and the modest default keeps many instances from stacking up.
+ */
+const CONNECTION_LIMIT = Number(process.env.DATABASE_CONNECTION_LIMIT || 5);
+const POOL_TIMEOUT = Number(process.env.DATABASE_POOL_TIMEOUT || 30);
+const baseUrl = process.env.DATABASE_URL || '';
+
+export const prisma =
+  globalForPrisma.prisma ||
+  new PrismaClient({
+    datasources: {
+      db: {
+        url: `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}connection_limit=${CONNECTION_LIMIT}&pool_timeout=${POOL_TIMEOUT}`,
+      },
+    },
+  });
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
