@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GraduationCap, Camera, ScanLine, ShieldCheck, RefreshCw, Clock3, AlertTriangle, Check } from 'lucide-react';
 import Logo from '@/components/common/Logo';
+import ImageEditorModal from '@/components/common/ImageEditorModal';
 import { verificationApi, VerificationStatus } from '@/services/verification';
 
 type Phase = 'intro' | 'capture' | 'checking' | 'done';
@@ -18,6 +19,7 @@ export default function VerificationPage() {
   const [phase, setPhase] = useState<Phase>('intro');
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<string | null>(null);
+  const [editing, setEditing] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data: status, refetch } = useQuery<VerificationStatus>({
@@ -49,19 +51,15 @@ export default function VerificationPage() {
 
   const pickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) submit(file);
+    e.currentTarget.value = ''; // allow re-picking the same file later
+    if (file) setEditing(file);
   };
 
-  const openCamera = async () => {
-    // Try live camera first; fall back to file picker (mobile/unsupported).
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      stream.getTracks().forEach((t) => t.stop());
-      // Camera permission granted — let the OS picker handle capture so we
-      // get the native camera UI on every device without a custom widget.
-    } catch {
-      /* no camera or denied — the input below still works */
-    }
+  const openCamera = () => {
+    // The file input is the single entry point: on mobile it offers the native
+    // camera AND gallery; on desktop it opens the file dialog. (The old
+    // capture="environment" attribute forced camera-only and greyed out
+    // gallery files — that's why picking an image appeared broken.)
     fileRef.current?.click();
   };
 
@@ -150,8 +148,25 @@ export default function VerificationPage() {
           </button>
           <label className="nb-btn-ghost w-full mt-2 cursor-pointer text-center block">
             Upload from gallery
-            <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={pickFile} className="hidden" />
+            <input ref={fileRef} type="file" accept="image/*,.heic,.heif" onChange={pickFile} className="hidden" />
           </label>
+          {editing && (
+            <ImageEditorModal
+              file={editing}
+              title="Position your ID"
+              aspects={[
+                { label: 'Original', value: null },
+                { label: 'Card 3:2', value: 3 / 2 },
+                { label: 'Card 4:3', value: 4 / 3 },
+              ]}
+              maxOutputPx={2000}
+              onCancel={() => setEditing(null)}
+              onDone={(f) => {
+                setEditing(null);
+                submit(f);
+              }}
+            />
+          )}
         </div>
       </Shell>
     );

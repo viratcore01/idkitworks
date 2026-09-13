@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
 import CollegeSelect, { CollegeOption } from '@/components/common/CollegeSelect';
 import { photoSrc } from '@/utils/photo';
+import ImageEditorModal from '@/components/common/ImageEditorModal';
 import toast from 'react-hot-toast';
 
 export default function ProfileSetupPage() {
@@ -29,6 +30,7 @@ export default function ProfileSetupPage() {
     ((user as any)?.photos as any) || [],
   );
   const [busySlot, setBusySlot] = useState<number | null>(null);
+  const [editing, setEditing] = useState<{ slot: number; file: File } | null>(null);
 
   /** Photos unlock matching — upload right here so new users aren't gated later. */
   const handleUpload = async (slot: number, file: File | undefined) => {
@@ -212,8 +214,9 @@ export default function ProfileSetupPage() {
                         accept="image/*"
                         className="hidden"
                         onChange={(e) => {
-                          handleUpload(slot, e.target.files?.[0]);
+                          const f = e.target.files?.[0];
                           e.currentTarget.value = '';
+                          if (f) setEditing({ slot, file: f });
                         }}
                       />
                       {src ? (
@@ -289,6 +292,24 @@ export default function ProfileSetupPage() {
           </button>
         </form>
       </div>
+      {editing && (
+        <ImageEditorModal
+          file={editing.file}
+          title="Edit photo"
+          aspects={[
+            { label: 'Original', value: null },
+            { label: '1:1', value: 1 },
+            { label: '4:5', value: 4 / 5 },
+          ]}
+          maxOutputPx={1400}
+          onCancel={() => setEditing(null)}
+          onDone={(f) => {
+            const slot = editing.slot;
+            setEditing(null);
+            handleUpload(slot, f);
+          }}
+        />
+      )}
     </div>
   );
 }

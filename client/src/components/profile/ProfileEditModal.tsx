@@ -3,6 +3,7 @@ import { X, Save, Hourglass, Camera, Plus, Calendar } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
+import ImageEditorModal from '@/components/common/ImageEditorModal';
 import { photoSrc } from '@/utils/photo';
 import toast from 'react-hot-toast';
 
@@ -38,6 +39,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
   });
   const [slots, setSlots] = useState<{ id: string; slot: number }[]>(profile.photos || []);
   const [busySlot, setBusySlot] = useState<number | null>(null);
+  const [editing, setEditing] = useState<{ slot: number; file: File } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const { data: interests } = useQuery({
@@ -154,8 +156,9 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
                     accept="image/*"
                     className="hidden"
                     onChange={(e) => {
-                      handleUpload(slot, e.target.files?.[0]);
+                      const f = e.target.files?.[0];
                       e.currentTarget.value = '';
+                      if (f) setEditing({ slot, file: f });
                     }}
                   />
                   {src ? (
@@ -199,6 +202,25 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
             </div>
           </div>
         </div>
+
+        {editing && (
+          <ImageEditorModal
+            file={editing.file}
+            title="Edit photo"
+            aspects={[
+              { label: 'Original', value: null },
+              { label: '1:1', value: 1 },
+              { label: '4:5', value: 4 / 5 },
+            ]}
+            maxOutputPx={1400}
+            onCancel={() => setEditing(null)}
+            onDone={(f) => {
+              const slot = editing.slot;
+              setEditing(null);
+              handleUpload(slot, f);
+            }}
+          />
+        )}
 
         <label className="block font-display text-sm font-semibold mb-1.5">Name</label>
         <input
