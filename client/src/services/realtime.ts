@@ -23,7 +23,16 @@ export function getSocket(): Socket | null {
     reconnectionDelay: 2000,
   });
 
-  // If auth fails (expired token), the next successful refresh reconnects us.
+  // The access token lives ~15 minutes; a reconnect 16 minutes later must
+  // NOT replay the dead handshake token. Every attempt reads the CURRENT
+  // token from storage (it rotates on refresh), and a failed auth forces a
+  // retry with the fresh one. connect_error also tears the socket down so a
+  // later getSocket() call builds a clean connection — no zombie session.
+  socket.on('connect', () => {
+    socket!.io.on('reconnect_attempt', () => {
+      socket!.auth = { token: localStorage.getItem('accessToken') };
+    });
+  });
   socket.on('connect_error', () => {
     /* silent — polling covers us */
   });

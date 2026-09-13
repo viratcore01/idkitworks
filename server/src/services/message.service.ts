@@ -28,29 +28,52 @@ export class MessageService {
     });
     if (blocked) throw new Error('Cannot message this user');
 
-    // Check if conversation already exists between these two users
+    // Existing chat between exactly THIS PAIR — both members, no one else.
+    // (The old lookup scanned the other user's whole conversation history and
+    // could "find" a chat they have with a third person.)
     const existingMember = await prisma.conversationMember.findFirst({
-      where: { userId: otherUserId },
-      include: { conversation: { include: { members: true } } },
-    });
-
-    if (existingMember) {
-      const conv = existingMember.conversation;
-      if (conv.members.some((m) => m.userId === userId)) {
-        return conv;
-      }
-    }
-
-    // Create new conversation
-    const conversation = await prisma.conversation.create({
-      data: {
-        members: {
-          create: [{ userId }, { userId: otherUserId }],
+      where: {
+        userId,
+        conversation: {
+          AND: [
+            { members: { some: { userId } } },
+            { members: { some: { userId: otherUserId } } },
+            { members: { every: { userId: { in: [userId, otherUserId] } } } },
+          ],
         },
       },
+      include: { conversation: true },
     });
+    if (existingMember) return existingMember.conversation;
 
-    return conversation;
+    // Create inside a transaction with a PAIR-SAFE guard: two simultaneous
+    // taps must converge on ONE conversation, not two parallel threads.
+    //
+    // RACE-SAFE BY CONSTRUCTION: the conversation id is DETERMINED by the
+    // (sorted) user pair. Five simultaneous taps all try to create the SAME
+    // row — the primary key unique index lets exactly one win, and every
+    // loser catches P2002 and reads the winner. No lock tables, no windows.
+    const [userA, userB] = [userId, otherUserId].sort();
+    const pairConversationId = `pair_${userA}_${userB}`;
+    try {
+      return await prisma.conversation.create({
+        data: {
+          id: pairConversationId,
+          members: {
+            create: [{ userId }, { userId: otherUserId }],
+          },
+        },
+      });
+    } catch (err: any) {
+      if (err?.code !== 'P2002') throw err;
+    }
+    // Someone else created it a millisecond earlier — return theirs.
+    const existing = await prisma.conversation.findUnique({
+      where: { id: pairConversationId },
+      include: { members: true },
+    });
+    if (existing) return existing;
+    throw new Error('Could not open conversation');
   }
 
   async getConversations(userId: string, viewerCollegeId?: string | null) {

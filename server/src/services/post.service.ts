@@ -20,6 +20,24 @@ interface FeedQuery {
 const COMMENT_MAX = 2000;
 const POST_MAX = 5000;
 
+/**
+ * The public face of anonymity. Anonymous content must NEVER carry the real
+ * author across the wire — not even to the client that masks it in the UI,
+ * because anyone with curl could read the JSON and de-anonymize every
+ * confession on campus. Same persona the search service already uses.
+ */
+const ANON_AUTHOR = {
+  id: 'anonymous',
+  username: 'anonymous',
+  displayName: 'Anonymous Student',
+  avatarUrl: null as string | null,
+  avatarPhotoId: null as string | null,
+};
+
+function anonymizeComment<T extends { isAnonymous: boolean; author: unknown }>(c: T): T {
+  return c.isAnonymous ? ({ ...c, author: { ...ANON_AUTHOR } } as T) : c;
+}
+
 export class PostService {
   async create(authorId: string, input: CreatePostInput) {
     const content = String(input.content || '').trim();
@@ -116,9 +134,14 @@ export class PostService {
     return {
       posts: data.map((post) => ({
         ...post,
+        // PRIVACY: anonymous posts never carry the real author in any list.
+        author: post.isAnonymous
+          ? { ...ANON_AUTHOR, college: null, course: null, year: null }
+          : post.author,
         isLikedByMe: post.likes.length > 0,
         likes: undefined,
-        topComments: post.comments,
+        // PRIVACY: anonymous comment previews never carry the real author.
+        topComments: post.comments.map(anonymizeComment),
       })),
       nextCursor: hasMore ? data[data.length - 1].id : null,
     };
@@ -148,6 +171,10 @@ export class PostService {
 
     return {
       ...post,
+      // PRIVACY: the real author of an anonymous post never leaves the server.
+      author: post.isAnonymous
+        ? { ...ANON_AUTHOR, college: null, course: null, year: null, collegeId: null, isActive: true }
+        : post.author,
       isLikedByMe: post.likes.length > 0,
       likes: undefined,
     };
@@ -162,12 +189,26 @@ export class PostService {
     if (!post || post.deletedAt) throw new Error('Post not found');
     if (actorCollegeId && post.author.collegeId !== actorCollegeId) throw new Error('Post not found');
     return post;
-  }
-
+  }  /**
+   * Edit own post. STRICT WHITELIST: only content is editable from the API —
+   * the old version updated whatever the request body contained, so a crafted
+   * PATCH could reassign authorId (frame another student), flip isAnonymous,
+   * or resurrect deletedAt. Author/admin deletion paths are separate.
+   */
   async update(postId: string, authorId: string, data: { content?: string }) {
     const post = await prisma.post.findUnique({ where: { id: postId } });
     if (!post || post.authorId !== authorId) throw new Error('Not authorized');
-    return prisma.post.update({ where: { id: postId }, data });
+
+    const update: { content?: string } = {};
+    if (data.content !== undefined) {
+      const content = String(data.content || '').trim();
+      if (!content) throw new Error('Post cannot be empty');
+      if (content.length > POST_MAX) throw new Error(`Post must be under ${POST_MAX} characters`);
+      update.content = content;
+    }
+    if (!Object.keys(update).length) throw new Error('Nothing to update');
+
+    return prisma.post.update({ where: { id: postId }, data: update });
   }
   async delete(postId: string, userId: string, isAdmin = false) {
     const post = await prisma.post.findUnique({ where: { id: postId } });
@@ -185,9 +226,18 @@ export class PostService {
 
     if (existing) {
       await prisma.postLike.delete({ where: { userId_postId: { userId, postId } } });
+      // Unlike withdraws the like notification too (Instagram-style): a like
+      // that was spam-toggled 50 times must not leave 50 unread badges.
+      await prisma.notification.deleteMany({ where: { actorId: userId, postId, type: 'LIKE' } });
       return { liked: false };
     } else {
-      await prisma.postLike.create({ data: { userId, postId } });
+      try {
+        await prisma.postLike.create({ data: { userId, postId } });
+      } catch (err: any) {
+        // Double-tap race: two requests both saw "no like" — the unique pair
+        // index means exactly one create wins. Treat the loser as liked, not a 500.
+        if (err?.code !== 'P2002') throw err;
+      }
       // Create notification
       const post = await prisma.post.findUnique({ where: { id: postId } });
       if (post && post.authorId !== userId) {
@@ -232,7 +282,7 @@ export class PostService {
 
     return {
       comments: data.map((c) => ({
-        ...c,
+        ...anonymizeComment(c),
         content: c.deletedAt ? '' : c.content,
         isDeleted: !!c.deletedAt,
       })),
@@ -270,22 +320,36 @@ export class PostService {
       },
     });
 
-    // Notify post author
+    // Notify post author (or the parent comment's author when replying —
+    // exactly one notify target, and never yourself).
     const post = await prisma.post.findUnique({ where: { id: postId } });
-    if (post && post.authorId !== authorId) {
+    let notifyUserId: string | null = null;
+    if (parentCommentId) {
+      const parent = await prisma.comment.findUnique({
+        where: { id: parentCommentId },
+        select: { authorId: true },
+      });
+      if (parent && parent.authorId !== authorId) notifyUserId = parent.authorId;
+    } else if (post && post.authorId !== authorId) {
+      notifyUserId = post.authorId;
+    }
+    if (notifyUserId) {
       await prisma.notification.create({
         data: {
-          recipientId: post.authorId,
-          actorId: authorId,
+          recipientId: notifyUserId,
+          // PRIVACY: an anonymous comment notifies WITHOUT an actor — the
+          // recipient sees "Someone commented on your post", never the name.
+          actorId: isAnonymous ? null : authorId,
           type: parentCommentId ? 'COMMENT_REPLY' : 'COMMENT',
           postId,
           commentId: comment.id,
         },
       });
-      publish('notification:new', { userIds: [post.authorId] });
+      publish('notification:new', { userIds: [notifyUserId] });
     }
 
-    return comment;
+    // PRIVACY: an anonymous reply must not de-anonymize itself in its own response.
+    return anonymizeComment(comment);
   }
 
   /** Edit own comment. Social apps (Reddit/Instagram style) allow this anytime; shows an "Edited" tag. */
@@ -293,17 +357,22 @@ export class PostService {
     const comment = await prisma.comment.findUnique({ where: { id: commentId } });
     if (!comment || comment.deletedAt) throw new Error('Comment not found');
     if (comment.authorId !== userId) throw new Error('You can only edit your own comments');
-    if (!content.trim()) throw new Error('Comment cannot be empty');
+    const trimmed = String(content || '').trim();
+    if (!trimmed) throw new Error('Comment cannot be empty');
+    if (trimmed.length > COMMENT_MAX) throw new Error(`Comment must be under ${COMMENT_MAX} characters`);
 
-    return prisma.comment.update({
+    const updated = await prisma.comment.update({
       where: { id: commentId },
-      data: { content, editedAt: new Date() },
+      data: { content: trimmed, editedAt: new Date() },
       include: {
         author: {
           select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true },
         },
       },
     });
+
+    // You are the author, but keep the response shape identical to reads.
+    return anonymizeComment(updated);
   }
 
   async deleteComment(commentId: string, userId: string, isAdmin = false) {

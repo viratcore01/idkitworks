@@ -171,7 +171,7 @@ export class AuthService {
     }
     const user = await prisma.user.findUnique({ where: { email } });
 
-    if (!user || !user.isActive) {
+    if (!user) {
       // Always run one bcrypt compare, even for unknown emails — otherwise
       // response timing reveals which emails have accounts (enumeration).
       await comparePassword(password, DUMMY_HASH);
@@ -181,6 +181,15 @@ export class AuthService {
     const isValid = await comparePassword(password, user.passwordHash);
     if (!isValid) {
       throw new Error('Invalid email or password');
+    }
+
+    if (!user.isActive) {
+      // Distinct, honest message for suspended accounts — but only AFTER the
+      // password proves ownership (a wrong password still says "invalid",
+      // so the error never becomes an account-existence oracle).
+      const e: any = new Error('Your account has been suspended. Contact support if you think this is a mistake.');
+      e.status = 403;
+      throw e;
     }
 
     const payload = createPayload(user);

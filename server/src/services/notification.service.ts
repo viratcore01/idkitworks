@@ -7,7 +7,11 @@ export class NotificationService {
       where: {
         recipientId: userId,
         // PRODUCT RULE: college-only — never surface an actor from another college.
-        ...(viewerCollegeId && { actor: { collegeId: viewerCollegeId } }),
+        // OR actorId:null keeps ANONYMOUS notifications visible: a relation
+        // filter alone would silently hide every actor-less notification.
+        ...(viewerCollegeId && {
+          OR: [{ actor: { collegeId: viewerCollegeId } }, { actorId: null }],
+        }),
       },
       take: take + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
@@ -39,8 +43,10 @@ export class NotificationService {
       where: {
         recipientId: userId,
         isRead: false,
-        // Keep the badge consistent with the filtered list
-        ...(viewerCollegeId && { actor: { collegeId: viewerCollegeId } }),
+        // Keep the badge consistent with the filtered list (includes anonymous)
+        ...(viewerCollegeId && {
+          OR: [{ actor: { collegeId: viewerCollegeId } }, { actorId: null }],
+        }),
       },
     });
     return { count };

@@ -99,7 +99,8 @@ export function collegeRequired(req: AuthRequest, res: Response, next: NextFunct
 }
 
 export function adminMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
-  if (req.user?.role !== 'admin') {
+  // super_admin is an admin everywhere; college scoping is applied per-query.
+  if (req.user?.role !== 'admin' && req.user?.role !== 'super_admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
   next();

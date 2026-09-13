@@ -98,10 +98,11 @@ export default function PostCard({ post, detailView = false }: Props) {
       {/* Actions */}
       <div className="flex items-center gap-4 mt-4 pt-3 border-t-2 border-gray-300">
         <button
-          onClick={() => likeMutation.mutate()}
+          onClick={() => !likeMutation.isPending && likeMutation.mutate()}
+          disabled={likeMutation.isPending}
           className={`flex items-center gap-1.5 font-display text-sm font-semibold transition-colors ${
             post.isLikedByMe ? 'text-nb-red' : 'text-gray-500 hover:text-nb-red'
-          }`}
+          } disabled:opacity-60`}
         >
           <span className={post.isLikedByMe ? 'animate-pop' : ''}>
             <Heart size={18} strokeWidth={2.5} className={post.isLikedByMe ? 'fill-current' : ''} />

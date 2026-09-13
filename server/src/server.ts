@@ -147,6 +147,11 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   const userId = (socket.data as { userId: string }).userId;
 
+  // Per-user message throttle: a burst of sends is spam or a buggy client.
+  // 30 msgs / 10s is far above any real typing pace (WhatsApp-class clients
+  // average <1 msg/s even in group chats).
+  let sendTimestamps: number[] = [];
+
   // Join your personal room (auto-verified — token holds the id)
   socket.join(`user:${userId}`);
 
@@ -165,6 +170,13 @@ io.on('connection', (socket) => {
   // Real-time message send: persists via the service so REST pollers see it too.
   socket.on('send-message', async (data: { conversationId: string; content: string }, ack?: (r: any) => void) => {
     try {
+      const now = Date.now();
+      sendTimestamps = sendTimestamps.filter((t) => now - t < 10_000);
+      if (sendTimestamps.length >= 30) {
+        return ack?.({ error: 'Sending too fast — slow down' });
+      }
+      sendTimestamps.push(now);
+
       const member = await prisma.conversationMember.findUnique({
         where: { conversationId_userId: { conversationId: data.conversationId, userId } },
       });

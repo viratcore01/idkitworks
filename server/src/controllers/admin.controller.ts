@@ -115,6 +115,30 @@ export class AdminController {
     }
   }
 
+  /** Reverse of ban — same college-scoping rules. Wrong bans must be reversible. */
+  async unbanUser(req: AuthRequest, res: Response) {
+    try {
+      const isSuper = req.user!.role === 'super_admin';
+      if (!isSuper) {
+        if (!req.user!.collegeId) return res.status(403).json({ error: 'Not authorized' });
+        const target = await prisma.user.findUnique({
+          where: { id: req.params.id as string },
+          select: { collegeId: true },
+        });
+        if (!target || target.collegeId !== req.user!.collegeId) {
+          return res.status(403).json({ error: 'Not authorized' });
+        }
+      }
+      await prisma.user.update({
+        where: { id: req.params.id as string },
+        data: { isActive: true },
+      });
+      res.json({ message: 'User unbanned' });
+    } catch (error: any) {
+      sendError(res, error, 400);
+    }
+  }
+
   async getStats(req: AuthRequest, res: Response) {
     try {
       const isSuper = req.user!.role === 'super_admin';
