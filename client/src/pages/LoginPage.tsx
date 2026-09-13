@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Zap, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
@@ -9,11 +9,14 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const submittingRef = useRef(false); // ref guard: double-taps beat React re-render
   const login = useAuthStore((s) => s.login);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setIsLoading(true);
     try {
       await login(email, password);
@@ -23,6 +26,7 @@ export default function LoginPage() {
       toast.error(err.response?.data?.error || 'Login failed');
     } finally {
       setIsLoading(false);
+      submittingRef.current = false;
     }
   };
 

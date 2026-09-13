@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Rocket, PartyPopper, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
@@ -26,6 +26,7 @@ export default function SignupPage() {
   });
   const [college, setCollege] = useState<CollegeOption | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const submittingRef = useRef(false); // ref guard: double-taps beat React re-render
   const signup = useAuthStore((s) => s.signup);
   const navigate = useNavigate();
 
@@ -65,6 +66,8 @@ export default function SignupPage() {
   };
 
   const handleFinalSubmit = async () => {
+    if (submittingRef.current) return; // double-tap guard
+    submittingRef.current = true;
     setIsLoading(true);
     try {
       await signup(formData);
@@ -75,6 +78,7 @@ export default function SignupPage() {
       toast.error(err.response?.data?.error || 'Signup failed');
     } finally {
       setIsLoading(false);
+      submittingRef.current = false;
     }
   };
 

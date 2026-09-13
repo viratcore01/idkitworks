@@ -70,7 +70,23 @@ api.interceptors.response.use(
         processQueue(null, data.accessToken);
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(originalRequest);
-      } catch (refreshError) {
+      } catch (refreshError: any) {
+        // Rotation race: another tab may have just refreshed with this SAME
+        // stored refresh token (localStorage is shared across tabs). If the
+        // stored tokens changed while we were refreshing, ADOPT them and
+        // retry — never rotate again, or the tabs will invalidate each
+        // other forever (refresh ping-pong).
+        const latestAccess = localStorage.getItem('accessToken');
+        const latestRefresh = localStorage.getItem('refreshToken');
+        if (
+          refreshError?.response?.status === 401 &&
+          latestRefresh && latestRefresh !== refreshToken &&
+          latestAccess
+        ) {
+          processQueue(null, latestAccess);
+          originalRequest.headers.Authorization = `Bearer ${latestAccess}`;
+          return api(originalRequest);
+        }
         processQueue(refreshError, null);
         localStorage.clear();
         if (!onAuthPage) window.location.href = '/login';

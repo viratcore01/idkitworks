@@ -38,27 +38,46 @@ app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 
-// ── Global API brake: every IP, 300 req/min ──
+// ── Global API brake: every IP, 600 req/min ──
+// Sized for a college campus: hundreds of students share one public IP via
+// campus WiFi/NAT, so per-IP budgets must assume whole-classroom traffic.
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 300,
+  limit: 600,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many requests. Slow down.' },
 });
 app.use('/api', globalLimiter);
 
-// ── Auth brake: 10 attempts / 15 min per IP (brute-force wall) ──
-const authLimiter = rateLimit({
+// ── Brute-force wall for LOGIN: counts FAILURES only ──
+// skipSuccessfulRequests is the campus-NAT fix: 300 students signing in from
+// one IP never trip it (their attempts succeed), while a password-guessing
+// script is still capped at 30 failures per 15 min. Refresh is deliberately
+// NOT limited here — its traffic scales with legitimate active users (every
+// session refreshes every ~15 min), and a stolen refresh token is already
+// a signed secret checked against the DB.
+const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: process.env.NODE_ENV === 'production' ? 10 : 100, // dev shares one 127.0.0.1 bucket across browser+tests
+  limit: process.env.NODE_ENV === 'production' ? 30 : 300, // dev shares one 127.0.0.1 bucket across browser+tests
+  skipSuccessfulRequests: true,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  message: { error: 'Too many attempts. Try again in 15 minutes.' },
+  message: { error: 'Too many failed attempts. Try again in 15 minutes.' },
 });
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/signup', authLimiter);
-app.use('/api/auth/refresh', authLimiter);
+app.use('/api/auth/login', loginLimiter);
+
+// ── Signup brake: 50 accounts / 15 min per IP (all attempts count) ──
+// Generous enough for a dorm flooding in on launch night; account-farming
+// beyond this is still fenced off by student-ID verification.
+const signupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 50 : 300,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many signups from this network. Try again in 15 minutes.' },
+});
+app.use('/api/auth/signup', signupLimiter);
 
 // Health check (unauthenticated, cheap, for uptime monitors + load balancers)
 app.get('/api/health', async (_req, res) => {

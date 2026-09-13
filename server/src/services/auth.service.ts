@@ -4,11 +4,17 @@ import { checkEmail } from '../utils/email-validation';
 import {
   generateAccessToken,
   generateRefreshToken,
-  verifyRefreshToken,
   parseDuration,
 } from '../utils/jwt';
 import { env } from '../config/env';
 import { JwtPayload } from '../types';
+
+/**
+ * Constant dummy hash for the login timing-oracle fix: when the email does
+ * not exist we still run one bcrypt compare so "unknown email" and "wrong
+ * password" take the same time to answer.
+ */
+const DUMMY_HASH = '$2a$12$C6UzMDM.H6dfI/f/IKcEeO7tAUFnOnV0Co7f3OSJ8X6VzX2rZC0Ny';
 
 interface SignupInput {
   email: string;
@@ -98,26 +104,47 @@ export class AuthService {
       throw new Error('Username already taken');
     }
 
+    // Interests: dedupe the payload and verify every id exists — a stale or
+    // forged interest id would otherwise surface as an ugly FK-violation 500.
+    const interestIds = [...new Set((input.interestIds || []).filter(Boolean))];
+    if (interestIds.length > 15) {
+      const e: any = new Error('Pick at most 15 interests'); e.status = 400; throw e;
+    }
+    if (interestIds.length) {
+      const found = await prisma.interest.findMany({ where: { id: { in: interestIds } }, select: { id: true } });
+      if (found.length !== interestIds.length) {
+        const e: any = new Error('One or more interests not found'); e.status = 400; throw e;
+      }
+    }
+
     const passwordHash = await hashPassword(input.password);
 
-    const user = await prisma.user.create({
-      data: {
-        email: input.email,
-        passwordHash,
-        username: input.username,
-        displayName: input.displayName,
-        collegeId: input.collegeId,
-        course: input.course,
-        year: input.year,
-        avatarUrl: input.avatarUrl,
-        bio: input.bio,
-        interests: input.interestIds?.length
-          ? {
-              create: input.interestIds.map((interestId) => ({ interestId })),
-            }
-          : undefined,
-      },
-    });
+    let user: any;
+    try {
+      user = await prisma.user.create({
+        data: {
+          email: input.email,
+          passwordHash,
+          username: input.username,
+          displayName: input.displayName,
+          collegeId: input.collegeId,
+          course: input.course,
+          year: input.year,
+          avatarUrl: input.avatarUrl,
+          bio: input.bio,
+          interests: interestIds.length
+            ? { create: interestIds.map((interestId) => ({ interestId })) }
+            : undefined,
+        },
+      });
+    } catch (err: any) {
+      // Two people submitting the same email/username in the same second:
+      // the DB unique index is the truth — answer 409, never 500.
+      if (err?.code === 'P2002') {
+        const e: any = new Error('Email or username already in use'); e.status = 409; throw e;
+      }
+      throw err;
+    }
 
     const payload = createPayload(user);
     const accessToken = generateAccessToken(payload);
@@ -131,6 +158,10 @@ export class AuthService {
       },
     });
 
+    // Housekeeping: expired tokens otherwise accumulate forever. Indexed and
+    // fire-and-forget — never blocks the login response.
+    prisma.refreshToken.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(() => {});
+
     return createAuthResponse(user, accessToken, refreshToken);
   }
 
@@ -141,6 +172,9 @@ export class AuthService {
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user || !user.isActive) {
+      // Always run one bcrypt compare, even for unknown emails — otherwise
+      // response timing reveals which emails have accounts (enumeration).
+      await comparePassword(password, DUMMY_HASH);
       throw new Error('Invalid email or password');
     }
 
@@ -164,20 +198,35 @@ export class AuthService {
     return createAuthResponse(user, accessToken, refreshToken);
   }
 
+  /**
+   * Rotate the refresh token. Race-safe under concurrent 401 storms:
+   * deleteMany on the un-expired token is an atomic claim — exactly ONE
+   * concurrent caller wins the rotation; every loser gets 401 and the
+   * client recovers by re-reading the (shared) stored token. No grace
+   * windows, no token-family explosion from multi-tab refresh bursts.
+   */
   async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
     const stored = await prisma.refreshToken.findUnique({
       where: { token: refreshToken },
-      include: { user: true },
+      include: { user: { select: { id: true, email: true, username: true, role: true, isActive: true } } },
     });
 
-    if (!stored || stored.expiresAt < new Date()) {
+    if (!stored || stored.expiresAt < new Date() || !stored.user?.isActive) {
       throw new Error('Invalid or expired refresh token');
     }
 
-    // Rotate refresh token
-    await prisma.refreshToken.delete({ where: { id: stored.id } });
+    // Atomic claim: the winner deletes the row; concurrent losers' deleteMany
+    // affects 0 rows and they are told to re-authenticate.
+    const claim = await prisma.refreshToken.deleteMany({
+      where: { token: refreshToken, expiresAt: { gt: new Date() } },
+    });
+    if (claim.count === 0) {
+      const e: any = new Error('Session was refreshed elsewhere — reloading');
+      e.status = 401;
+      throw e;
+    }
 
-    const payload = createPayload(stored.user);
+    const payload = createPayload(stored.user as any);
     const newAccessToken = generateAccessToken(payload);
     const newRefreshToken = generateRefreshToken(payload);
 
@@ -188,6 +237,10 @@ export class AuthService {
         expiresAt: new Date(Date.now() + parseDuration(env.JWT_REFRESH_EXPIRES_IN)),
       },
     });
+
+    // Housekeeping: expired tokens otherwise accumulate forever. Indexed and
+    // fire-and-forget — never blocks the refresh response.
+    prisma.refreshToken.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(() => {});
 
     return { accessToken: newAccessToken, refreshToken: newRefreshToken };
   }
