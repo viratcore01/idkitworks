@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Ghost, MessageCircle, Heart, ChevronRight } from 'lucide-react';
+import { Ghost, MessageCircle, Heart, ChevronRight, Bookmark, Share2, Flag } from 'lucide-react';
+import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
 import { Post } from '@/types';
@@ -19,10 +21,50 @@ export default function PostCard({ post, detailView = false }: Props) {
 
   const openPost = () => navigate(`/post/${post.id}`, { state: { scrollY: window.scrollY } });
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
   const likeMutation = useMutation({
     mutationFn: () => api.post(`/posts/${post.id}/like`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['feed'] }),
   });
+
+  const saveMutation = useMutation({
+    mutationFn: () => api.post(`/posts/${post.id}/save`).then((r) => r.data),
+    onSuccess: (data) => {
+      toast(data.saved ? 'Saved' : 'Removed from saved');
+      // Saved list is its own page — refresh it wherever it's cached
+      queryClient.invalidateQueries({ queryKey: ['saved-posts'] });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      queryClient.invalidateQueries({ queryKey: ['post', post.id] });
+    },
+    onError: () => toast.error('Could not save post'),
+  });
+
+  const reportMutation = useMutation({
+    mutationFn: () => api.post('/admin/reports', { targetType: 'POST', targetId: post.id, reason: 'INAPPROPRIATE' }),
+    onSuccess: () => {
+      toast.success('Reported to moderators');
+      setMenuOpen(false);
+    },
+    onError: (e: any) => {
+      if (e?.response?.status !== 409) toast.error(e.response?.data?.error || 'Could not report');
+      setMenuOpen(false);
+    },
+  });
+
+  const sharePost = async () => {
+    const url = `${window.location.origin}/post/${post.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Skola', text: post.content.slice(0, 80), url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast('Link copied');
+      }
+    } catch {
+      /* user cancelled the share sheet — not an error */
+    }
+  };
 
   const authorName = post.isAnonymous ? 'Anonymous Student' : post.author.displayName;
   const authorUsername = post.isAnonymous ? null : post.author.username;
@@ -111,16 +153,54 @@ export default function PostCard({ post, detailView = false }: Props) {
         </button>
 
         {!detailView && (
-          <>
-            <button
-              onClick={openPost}
-              className="flex items-center gap-1.5 font-display text-sm font-semibold text-gray-500 hover:text-nb-blue"
-            >
-              <MessageCircle size={18} strokeWidth={2.5} /> {post._count.comments}
-            </button>
-            <ChevronRight size={18} strokeWidth={2.5} className="ml-auto text-gray-400" />
-          </>
+          <button
+            onClick={openPost}
+            className="flex items-center gap-1.5 font-display text-sm font-semibold text-gray-500 hover:text-nb-blue"
+          >
+            <MessageCircle size={18} strokeWidth={2.5} /> {post._count.comments}
+          </button>
         )}
+
+        <div className="flex items-center gap-1 ml-auto">
+          <button
+            onClick={() => !saveMutation.isPending && saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            className={`p-1.5 rounded-full transition-colors ${
+              post.isSavedByMe ? 'text-nb-blue' : 'text-gray-500 hover:text-nb-blue'
+            } disabled:opacity-60`}
+            title={post.isSavedByMe ? 'Remove from saved' : 'Save post'}
+          >
+            <Bookmark size={17} strokeWidth={2.5} className={post.isSavedByMe ? 'fill-current' : ''} />
+          </button>
+          <button
+            onClick={sharePost}
+            className="p-1.5 rounded-full text-gray-500 hover:text-nb-black transition-colors"
+            title="Share"
+          >
+            <Share2 size={17} strokeWidth={2.5} />
+          </button>
+          <div className="relative">
+            <button
+              onClick={() => setMenuOpen((o) => !o)}
+              className="p-1.5 rounded-full text-gray-500 hover:text-nb-red transition-colors"
+              title="More options"
+            >
+              <Flag size={16} strokeWidth={2.5} />
+            </button>
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
+                <button
+                  onClick={() => reportMutation.mutate()}
+                  disabled={reportMutation.isPending}
+                  className="absolute right-0 bottom-8 z-30 nb-card bg-white py-1.5 px-3 min-w-[150px] text-left text-sm font-body text-nb-red hover:bg-red-50"
+                >
+                  Report post
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Comment previews — feed only, teases the discussion */}

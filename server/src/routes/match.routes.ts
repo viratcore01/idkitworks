@@ -12,6 +12,8 @@ router.use(authMiddleware, collegeRequired, verificationRequired);
 router.get('/preferences', (req, res) => controller.getPreference(req, res));
 router.patch('/preferences', (req, res) => controller.updatePreference(req, res));
 router.get('/stats', (req, res) => controller.getStats(req, res));
+router.get('/liked-you', (req, res) => controller.whoLikedMe(req, res));
+router.post('/rewind', (req, res) => controller.rewind(req, res));
 
 router.get('/discover', (req, res) => controller.discover(req, res));
 router.post('/like', (req, res) => controller.like(req, res));

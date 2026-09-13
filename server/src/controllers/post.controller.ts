@@ -66,6 +66,28 @@ export class PostController {
     }
   }
 
+  async toggleSave(req: AuthRequest, res: Response) {
+    try {
+      const result = await postService.toggleSave(req.params.postId as string, req.user!.id, req.user!.collegeId);
+      res.json(result);
+    } catch (error: any) {
+      sendError(res, error, 400);
+    }
+  }
+
+  async getSaved(req: AuthRequest, res: Response) {
+    try {
+      const { limit, cursor } = req.query;
+      const result = await postService.getSaved(req.user!.id, {
+        limit: limit ? parseInt(limit as string) : undefined,
+        cursor: cursor as string,
+      });
+      res.json(result);
+    } catch (error: any) {
+      sendError(res, error, 400);
+    }
+  }
+
   async getComments(req: AuthRequest, res: Response) {
     try {
       const { limit, cursor } = req.query;

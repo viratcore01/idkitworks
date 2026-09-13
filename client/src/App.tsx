@@ -17,6 +17,7 @@ import NotificationsPage from '@/pages/NotificationsPage';
 import PostDetailPage from '@/pages/PostDetailPage';
 import SettingsPage from '@/pages/SettingsPage';
 import SearchPage from '@/pages/SearchPage';
+import SavedPage from '@/pages/SavedPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -92,6 +93,7 @@ export default function App() {
       {/* Main app: protected AND college-gated */}
       <Route element={<CollegeRoute><AppLayout /></CollegeRoute>}>
         <Route path="/home" element={<HomePage />} />
+        <Route path="/saved" element={<SavedPage />} />
         <Route path="/post/:postId" element={<PostDetailPage />} />
         <Route path="/matches" element={<VerifiedRoute><MatchesPage /></VerifiedRoute>} />
         <Route path="/profile/:username" element={<ProfilePage />} />

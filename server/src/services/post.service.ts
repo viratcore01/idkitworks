@@ -113,6 +113,7 @@ export class PostService {
         },
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
         likes: { where: { userId }, select: { userId: true } },
+        saves: { where: { userId }, select: { userId: true } },
         comments: {
           where: { deletedAt: null, parentCommentId: null },
           take: 3,
@@ -139,7 +140,9 @@ export class PostService {
           ? { ...ANON_AUTHOR, college: null, course: null, year: null }
           : post.author,
         isLikedByMe: post.likes.length > 0,
+        isSavedByMe: post.saves.length > 0,
         likes: undefined,
+        saves: undefined,
         // PRIVACY: anonymous comment previews never carry the real author.
         topComments: post.comments.map(anonymizeComment),
       })),
@@ -157,6 +160,7 @@ export class PostService {
         },
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
         likes: { where: { userId }, select: { userId: true } },
+        saves: { where: { userId }, select: { userId: true } },
       },
     });
 
@@ -176,7 +180,9 @@ export class PostService {
         ? { ...ANON_AUTHOR, college: null, course: null, year: null, collegeId: null, isActive: true }
         : post.author,
       isLikedByMe: post.likes.length > 0,
+      isSavedByMe: post.saves.length > 0,
       likes: undefined,
+      saves: undefined,
     };
   }
 
@@ -380,5 +386,72 @@ export class PostService {
     if (!comment) throw new Error('Comment not found');
     if (!isAdmin && comment.authorId !== userId) throw new Error('Not authorized');
     return prisma.comment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
+  }
+
+  /**
+   * Bookmark a post (Reddit/Instagram "Save"). Idempotent under double-taps
+   * via the unique (userId, postId) pair — the losing create is a no-op.
+   */
+  async toggleSave(postId: string, userId: string, actorCollegeId?: string | null) {
+    await this.assertLivePost(postId, actorCollegeId);
+    const existing = await prisma.savedPost.findUnique({
+      where: { userId_postId: { userId, postId } },
+    });
+    if (existing) {
+      await prisma.savedPost.delete({ where: { userId_postId: { userId, postId } } });
+      return { saved: false };
+    }
+    try {
+      await prisma.savedPost.create({ data: { userId, postId } });
+    } catch (err: any) {
+      if (err?.code !== 'P2002') throw err;
+    }
+    return { saved: true };
+  }
+
+  /** The user's bookmarks, newest first. Only live, in-college posts surface. */
+  async getSaved(userId: string, query: { limit?: number; cursor?: string }) {
+    const limit = Math.min(query.limit || 20, 50);
+    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
+    if (!viewer?.collegeId) return { posts: [], nextCursor: null };
+
+    const rows = await prisma.savedPost.findMany({
+      where: { userId, post: { deletedAt: null, author: { collegeId: viewer.collegeId, isActive: true } } },
+      take: limit + 1,
+      // Keyset pagination on the compound unique (user rows are single-user,
+      // so the postId half orders the scan; createdAt ties break naturally).
+      ...(query.cursor && {
+        cursor: { userId_postId: { userId, postId: query.cursor } },
+        skip: 1,
+      }),
+      orderBy: [{ createdAt: 'desc' }, { postId: 'desc' }],
+      include: {
+        post: {
+          include: {
+            author: {
+              select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, college: true, course: true, year: true },
+            },
+            _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
+            likes: { where: { userId }, select: { userId: true } },
+            saves: { where: { userId }, select: { userId: true } },
+          },
+        },
+      },
+    });
+
+    const hasMore = rows.length > limit;
+    const data = hasMore ? rows.slice(0, limit) : rows;
+
+    return {
+      posts: data.map((r) => ({
+        ...r.post,
+        author: r.post.isAnonymous ? { ...ANON_AUTHOR, college: null, course: null, year: null } : r.post.author,
+        isLikedByMe: r.post.likes.length > 0,
+        isSavedByMe: true,
+        likes: undefined,
+        saves: undefined,
+      })),
+      nextCursor: hasMore ? data[data.length - 1].postId : null,
+    };
   }
 }

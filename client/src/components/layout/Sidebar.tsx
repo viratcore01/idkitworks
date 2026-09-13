@@ -2,10 +2,11 @@ import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth.store';
 import Logo from '@/components/common/Logo';
 import { bestAvatarSrc } from '@/utils/photo';
-import { Home, Heart, Bell, Settings } from 'lucide-react';
+import { Home, Heart, Bell, Settings, Bookmark } from 'lucide-react';
 
 const navItems = [
   { to: '/home', Icon: Home, label: 'Home' },
+  { to: '/saved', Icon: Bookmark, label: 'Saved' },
   { to: '/matches', Icon: Heart, label: 'Find Match' },
   { to: '/notifications', Icon: Bell, label: 'Notifications' },
 ];

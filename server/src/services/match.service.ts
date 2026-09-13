@@ -352,6 +352,105 @@ export class MatchService {
     return { likesSent, likeCap: LIKE_CAP, likesReceived, totalMatches };
   }
 
+  /**
+   * REWIND (Tinder's signature): undo the last PASS so a mis-swipe doesn't
+   * lock the person away for the resurface window. Only the most recent
+   * action is undoable, only PASS (a like that matched already created real
+   * notifications), and only within 10 minutes (accident window).
+   * The like cap is not refunded — rewinding doesn't erase that you acted.
+   */
+  async rewindLastPass(userId: string) {
+    const last = await prisma.matchLike.findFirst({
+      where: { senderId: userId, action: 'PASS' },
+      orderBy: { createdAt: 'desc' },
+      select: { receiverId: true, createdAt: true },
+    });
+    if (!last) {
+      const e: any = new Error('Nothing to rewind'); e.status = 404; throw e;
+    }
+    if (Date.now() - last.createdAt.getTime() > 10 * 60 * 1000) {
+      const e: any = new Error('The rewind window (10 minutes) has passed'); e.status = 410; throw e;
+    }
+    await prisma.matchLike.delete({
+      where: { senderId_receiverId: { senderId: userId, receiverId: last.receiverId } },
+    });
+    return { rewound: true, userId: last.receiverId };
+  }
+
+  /**
+   * WHO LIKED YOU (Bumble/Hinge): students from your college who liked you
+   * and are still waiting on your swipe. Anonymous by design — identity is
+   * revealed by mutual match, exactly like the deck.
+   */
+  async whoLikedMe(userId: string, limit = 20) {
+    const take = Math.min(Math.max(limit, 1), 50);
+    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
+    if (!viewer?.collegeId) return { users: [] };
+
+    // Exclude people I've already acted on (mutuals became matches; passes hid them)
+    const actioned = await prisma.matchLike.findMany({
+      where: { senderId: userId },
+      select: { receiverId: true },
+    });
+    const exclude = new Set<string>([userId, ...actioned.map((a) => a.receiverId)]);
+
+    // Blocks are bidirectional
+    const blocks = await prisma.block.findMany({
+      where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+      select: { blockerId: true, blockedId: true },
+    });
+    for (const b of blocks) {
+      exclude.add(b.blockerId);
+      exclude.add(b.blockedId);
+    }
+
+    const likers = await prisma.matchLike.findMany({
+      where: {
+        receiverId: userId,
+        action: 'LIKE',
+        sender: { isActive: true, collegeId: viewer.collegeId, id: { notIn: Array.from(exclude) } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: {
+        senderId: true,
+        createdAt: true,
+        sender: {
+          select: {
+            id: true,
+            username: true,
+            displayName: true,
+            avatarUrl: true,
+            avatarPhotoId: true,
+            bio: true,
+            course: true,
+            year: true,
+            dateOfBirth: true,
+            college: { select: { id: true, name: true, shortName: true } },
+            photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' } },
+          },
+        },
+      },
+    });
+
+    return {
+      users: likers.map((l) => ({
+        id: l.sender.id,
+        username: l.sender.username,
+        displayName: l.sender.displayName,
+        avatarUrl: l.sender.avatarUrl,
+        avatarPhotoId: l.sender.avatarPhotoId,
+        bio: l.sender.bio,
+        course: l.sender.course,
+        year: l.sender.year,
+        age: ageFrom(l.sender.dateOfBirth),
+        college: l.sender.college,
+        photos: l.sender.photos,
+        likedAt: l.createdAt,
+      })),
+    };
+  }
+
   async updatePreference(userId: string, data: {
     lookingFor?: string;
     ageRangeMin?: number;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { FileText } from 'lucide-react';
 import api from '@/services/api';
@@ -7,9 +7,20 @@ import PostCard from '@/components/feed/PostCard';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
 
+/** Reddit-style feed filters. */
+const FEED_TABS = [
+  { key: 'all', label: 'All' },
+  { key: 'NORMAL', label: 'Posts' },
+  { key: 'QUESTION', label: 'Questions' },
+  { key: 'CONFESSION', label: 'Confessions' },
+] as const;
+
+type FeedTab = (typeof FEED_TABS)[number]['key'];
+
 export default function HomePage() {
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const [tab, setTab] = useState<FeedTab>('all');
 
   const {
     data,
@@ -18,9 +29,9 @@ export default function HomePage() {
     isFetchingNextPage,
     isLoading,
   } = useInfiniteQuery({
-    queryKey: ['feed'],
+    queryKey: ['feed', tab],
     queryFn: ({ pageParam }) =>
-      api.get('/posts', { params: { cursor: pageParam, limit: 20 } }).then((r) => r.data),
+      api.get('/posts', { params: { cursor: pageParam, limit: 20, ...(tab !== 'all' && { type: tab }) } }).then((r) => r.data),
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,
   });
@@ -72,6 +83,21 @@ export default function HomePage() {
   return (
     <div>
       <CreatePost />
+
+      {/* Feed filters — Reddit-style tabs */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
+        {FEED_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`shrink-0 px-4 py-1.5 rounded-full border-nb-2 border-nb-black font-display text-xs font-bold transition-colors ${
+              tab === t.key ? 'bg-nb-lime text-nb-black' : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       {isLoading ? (
         <LoadingSpinner />

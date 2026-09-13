@@ -44,6 +44,7 @@ export interface Post {
   visibility: 'PUBLIC' | 'COLLEGE_ONLY';
   isAnonymous: boolean;
   isLikedByMe?: boolean;
+  isSavedByMe?: boolean;
   createdAt: string;
   updatedAt: string;
   author: {

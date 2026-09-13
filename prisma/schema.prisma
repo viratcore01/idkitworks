@@ -52,6 +52,7 @@ model User {
   posts            Post[]
   comments         Comment[]
   postLikes        PostLike[]
+  savedPosts       SavedPost[]
   sentLikes        MatchLike[]        @relation("SentLikes")
   receivedLikes    MatchLike[]        @relation("ReceivedLikes")
   matchesA         Match[]            @relation("MatchUserA")
@@ -165,6 +166,7 @@ model Post {
   author   User          @relation(fields: [authorId], references: [id])
   comments Comment[]
   likes    PostLike[]
+  saves    SavedPost[]
 
   @@index([authorId])
   @@index([createdAt])
@@ -203,6 +205,20 @@ model PostLike {
 
   @@id([userId, postId])
   @@map("post_likes")
+}
+
+/// Bookmarked posts (Reddit/Instagram "Save"). One row per user+post.
+model SavedPost {
+  userId    String   @map("user_id")
+  postId    String   @map("post_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@id([userId, postId])
+  @@index([userId, createdAt])
+  @@map("saved_posts")
 }
 
 // ─── MATCHING ────────────────────────────────────────────

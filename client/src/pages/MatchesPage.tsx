@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Heart, MessageSquare, X, HeartCrack, SearchX, MessageSquareOff, SlidersHorizontal, PartyPopper, UserMinus, RotateCcw, Zap, Camera, ImageOff, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Heart, MessageSquare, X, HeartCrack, SearchX, MessageSquareOff, SlidersHorizontal, PartyPopper, UserMinus, RotateCcw, Zap, Camera, ImageOff, ChevronLeft, ChevronRight, Undo2, Sparkles } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
 import Avatar from '@/components/common/Avatar';
@@ -11,7 +11,7 @@ import { formatDistanceToNow } from '@/utils/date';
 import { photoSrc, usePhotoVersion } from '@/utils/photo';
 import toast from 'react-hot-toast';
 
-type View = 'discover' | 'matches' | 'chat';
+type View = 'discover' | 'matches' | 'chat' | 'liked-you';
 
 const GENDERS = [
   { value: 'EVERYONE', label: 'Everyone' },
@@ -75,6 +75,7 @@ export default function MatchesPage() {
     queryClient.invalidateQueries({ queryKey: ['match-discover'] });
     queryClient.invalidateQueries({ queryKey: ['matches'] });
     queryClient.invalidateQueries({ queryKey: ['match-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['liked-you'] });
   };
 
   const actionMutation = useMutation({
@@ -113,6 +114,29 @@ export default function MatchesPage() {
       refreshAll();
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
     },
+  });
+
+  // REWIND (Tinder-style): undo the last pass — mis-swipes are recoverable
+  // for 10 minutes, server-enforced. Restores the card you just passed.
+  const rewindMutation = useMutation({
+    mutationFn: () => api.post('/matches/rewind').then((r) => r.data),
+    onSuccess: (data) => {
+      toast('Pass undone — here they are again');
+      refreshAll();
+      queryClient.invalidateQueries({ queryKey: ['liked-you'] });
+      // Re-fetch the deck so the rewound user reappears as the current card
+      queryClient.resetQueries({ queryKey: ['match-discover'] });
+      setDeckPage(0);
+    },
+    onError: (e: any) => {
+      toast.error(e.response?.data?.error || 'Nothing to rewind');
+    },
+  });
+
+  const { data: likedYou, isLoading: loadingLikedYou } = useQuery({
+    queryKey: ['liked-you'],
+    queryFn: () => api.get('/matches/liked-you').then((r) => r.data),
+    enabled: view === 'liked-you',
   });
 
   const savePrefsMutation = useMutation({
@@ -161,6 +185,12 @@ export default function MatchesPage() {
             className={`nb-btn text-sm ${view === 'chat' ? 'bg-nb-cyan text-white' : ''}`}
           >
             <MessageSquare size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Chat ({conversations?.length || 0})
+          </button>
+          <button
+            onClick={() => setView('liked-you')}
+            className={`nb-btn text-sm inline-flex items-center gap-1 ${view === 'liked-you' ? 'bg-nb-purple text-white' : ''}`}
+          >
+            <Sparkles size={14} strokeWidth={2.5} /> Liked you
           </button>
           {view === 'discover' && (
             <button onClick={openPrefs} className="nb-btn bg-white text-sm" title="Discovery preferences">
@@ -360,14 +390,25 @@ export default function MatchesPage() {
                 )}
 
                 {/* Like — the single big centered action */}
-                <button
-                  onClick={() => actionMutation.mutate({ receiverId: currentUser.id, action: 'like' })}
-                  disabled={actionMutation.isPending}
-                  className="nb-btn-pink w-16 h-16 mx-auto mt-6 !p-0 flex items-center justify-center rounded-full"
-                  title="Like"
-                >
-                  <Heart size={26} strokeWidth={2.5} fill="currentColor" />
-                </button>
+                <div className="flex items-center justify-center gap-4 mt-6">
+                  {/* Rewind — undo the last pass (Tinder's signature mercy button) */}
+                  <button
+                    onClick={() => rewindMutation.mutate()}
+                    disabled={rewindMutation.isPending}
+                    className="w-11 h-11 rounded-full bg-white border-nb-2 border-nb-black flex items-center justify-center hover:bg-nb-lime transition-colors disabled:opacity-50"
+                    title="Undo last pass (10 min window)"
+                  >
+                    <Undo2 size={18} strokeWidth={2.5} />
+                  </button>
+                  <button
+                    onClick={() => actionMutation.mutate({ receiverId: currentUser.id, action: 'like' })}
+                    disabled={actionMutation.isPending}
+                    className="nb-btn-pink w-16 h-16 !p-0 flex items-center justify-center rounded-full"
+                    title="Like"
+                  >
+                    <Heart size={26} strokeWidth={2.5} fill="currentColor" />
+                  </button>
+                </div>
 
                 {deck && (
                   <p className="mt-4 text-[11px] text-gray-500 font-body">
@@ -419,6 +460,45 @@ export default function MatchesPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </>
+      )}
+
+      {view === 'liked-you' && (
+        <>
+          {loadingLikedYou ? (
+            <LoadingSpinner />
+          ) : !likedYou?.users?.length ? (
+            <EmptyState
+              icon={<Sparkles strokeWidth={2.5} />}
+              title="No likes waiting"
+              description="When someone from your college likes you, they'll show up here first."
+            />
+          ) : (
+            <div className="space-y-3">
+              {likedYou.users.map((u: any) => (
+                <div key={u.id} className="nb-card p-4 flex items-center gap-3">
+                  <Avatar src={u.avatarUrl} photoId={u.avatarPhotoId} name={u.displayName} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-display font-semibold text-sm">{u.displayName}</p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {[u.course, u.college?.shortName || u.college?.name, u.age ? `${u.age} yrs` : null].filter(Boolean).join(' • ')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setView('discover');
+                      actionMutation.mutate({ receiverId: u.id, action: 'like' });
+                    }}
+                    disabled={actionMutation.isPending}
+                    className="nb-btn-pink text-xs shrink-0"
+                    title="Like back"
+                  >
+                    <Heart size={12} strokeWidth={2.5} className="inline mr-1 -mt-0.5" fill="currentColor" /> Like back
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </>
