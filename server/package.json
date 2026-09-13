@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "build": "prisma generate --schema=../prisma/schema.prisma && tsc",
+    "build": "node -e \"const fs=require('fs');for(const p of ['../node_modules/.prisma','node_modules/.prisma'])fs.rmSync(p,{recursive:true,force:true})\" && prisma generate --schema=../prisma/schema.prisma && tsc",
     "start": "node dist/server.js",
     "db:generate": "prisma generate --schema=../prisma/schema.prisma",
     "db:push": "prisma db push --schema=../prisma/schema.prisma",
