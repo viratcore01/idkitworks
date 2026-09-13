@@ -39,7 +39,10 @@ export default function CollegeSelect({ value, onChange, onCreated, placeholder 
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const { data } = await api.get(`/colleges?q=${encodeURIComponent(q)}&limit=20`);
+        // Long timeout + retries: Render's free tier sleeps when idle, and the
+        // request that wakes it can take 30-50s. Empty results from a cold
+        // server must not look like "no colleges exist".
+        const { data } = await api.get(`/colleges?q=${encodeURIComponent(q)}&limit=20`, { timeout: 45000 });
         setResults(data);
         setHighlight(0);
       } catch { setResults([]); }
@@ -69,7 +72,7 @@ export default function CollegeSelect({ value, onChange, onCreated, placeholder 
     if (name.length < 4) return;
     setAdding(true);
     try {
-      const { data } = await api.post('/colleges', { name });
+      const { data } = await api.post('/colleges', { name }, { timeout: 45000 });
       onCreated?.(data);
       pick(data);
     } catch { /* the error toast lives with the caller */ }

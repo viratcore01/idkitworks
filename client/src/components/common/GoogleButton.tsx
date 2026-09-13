@@ -31,16 +31,25 @@ export default function GoogleButton({ mode }: { mode: 'login' | 'signup' }) {
   const navigate = useNavigate();
 
   // 1. Ask the server whether Google sign-in is configured.
+  // Render's free tier sleeps when idle — the first request can take 30-50s
+  // to wake it, longer than the default axios timeout. Be patient and retry:
+  // a cold server must never permanently hide the button.
   useEffect(() => {
     let cancelled = false;
-    api
-      .get('/health')
-      .then(({ data }) => {
+    const probe = async (attempt: number): Promise<void> => {
+      try {
+        const { data } = await api.get('/health', { timeout: 45000 });
         if (!cancelled && data?.auth?.google && data?.auth?.googleClientId) {
           setEnabled({ clientId: data.auth.googleClientId });
         }
-      })
-      .catch(() => {});
+      } catch {
+        if (!cancelled && attempt < 3) {
+          await new Promise((r) => setTimeout(r, 1500));
+          return probe(attempt + 1);
+        }
+      }
+    };
+    probe(1);
     return () => {
       cancelled = true;
     };

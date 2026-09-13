@@ -9,7 +9,10 @@ const API_BASE = import.meta.env.VITE_API_URL
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 15000, // never hang forever on a dead network
+  // Render's free tier sleeps when idle; the request that wakes it can take
+  // 30-50s. Warm-server calls finish in <1s, so this ceiling only matters on
+  // cold starts — the first visitor of the day must succeed, not time out.
+  timeout: 45000,
   headers: { 'Content-Type': 'application/json' },
 });
 
