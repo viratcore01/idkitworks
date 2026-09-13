@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Zap, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
+import PasswordInput from '@/components/common/PasswordInput';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
@@ -40,7 +41,7 @@ export default function LoginPage() {
           <input
             type="email"
             className="nb-input"
-            placeholder="you@college.edu"
+            placeholder="your@email.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -49,14 +50,7 @@ export default function LoginPage() {
 
         <div>
           <label className="block font-display text-sm font-semibold mb-1.5">Password</label>
-          <input
-            type="password"
-            className="nb-input"
-            placeholder="••••••••"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+          <PasswordInput value={password} onChange={setPassword} />
         </div>
 
         <button

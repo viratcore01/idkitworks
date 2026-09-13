@@ -4,6 +4,7 @@ import { Rocket, PartyPopper, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuery } from '@tanstack/react-query';
 import CollegeSelect, { CollegeOption } from '@/components/common/CollegeSelect';
+import PasswordInput from '@/components/common/PasswordInput';
 import api from '@/services/api';
 import toast from 'react-hot-toast';
 
@@ -92,30 +93,18 @@ export default function SignupPage() {
             <input
               type="email"
               className="nb-input"
-              placeholder="you@college.edu"
+              placeholder="your@email.com"
               value={formData.email}
               onChange={(e) => update('email', e.target.value)}
             />
           </div>
           <div>
             <label className="block font-display text-sm font-semibold mb-1.5">Password</label>
-            <input
-              type="password"
-              className="nb-input"
-              placeholder="Min 8 characters"
-              value={formData.password}
-              onChange={(e) => update('password', e.target.value)}
-            />
+            <PasswordInput value={formData.password} onChange={(v) => update('password', v)} placeholder="Min 8 characters" autoComplete="new-password" />
           </div>
           <div>
             <label className="block font-display text-sm font-semibold mb-1.5">Confirm Password</label>
-            <input
-              type="password"
-              className="nb-input"
-              placeholder="Repeat password"
-              value={formData.confirmPassword}
-              onChange={(e) => update('confirmPassword', e.target.value)}
-            />
+            <PasswordInput value={formData.confirmPassword} onChange={(v) => update('confirmPassword', v)} placeholder="Repeat password" autoComplete="new-password" />
           </div>
           <button
             onClick={() => {
