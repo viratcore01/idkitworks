@@ -32,7 +32,19 @@ app.set('trust proxy', 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 
 // ── CORS (origin from env; no credentials on bare JWT headers, keep true for future cookies) ──
-app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
+// CLIENT_URL may hold ONE origin or a comma-separated list (prod domain +
+// dev/preview domains). A single stale localhost here bricks the whole site
+// for real browsers — curl tests can't catch it, only browsers enforce CORS.
+const allowedOrigins = env.CLIENT_URL.split(',').map((s) => s.trim()).filter(Boolean);
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      cb(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+  }),
+);
 
 // ── Body size cap: 100kb is plenty for JSON; kills multi-MB junk floods ──
 app.use(express.json({ limit: '100kb' }));
@@ -110,7 +122,13 @@ app.use('/api/colleges', collegeRoutes);
 
 // ── Socket.IO: authenticated + membership-checked ──
 export const io = new Server(httpServer, {
-  cors: { origin: env.CLIENT_URL, credentials: true },
+  cors: {
+    origin: (origin, cb) => {
+      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      cb(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+  },
 });
 
 io.use((socket, next) => {
