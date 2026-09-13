@@ -11,7 +11,11 @@ export const verificationApi = {
   submit: (file: File) => {
     const form = new FormData();
     form.append('id', file);
-    return api.post('/verification/id', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    // NOTE: do NOT set 'Content-Type' manually here. axios/browser must add
+    // the multipart boundary themselves; a hand-written multipart header
+    // without the boundary makes the server see an empty body →
+    // "No photo provided" even though the photo is attached.
+    return api.post('/verification/id', form);
   },
   status: () => api.get<VerificationStatus>('/verification/status'),
   queue: (page = 0) => api.get(`/verification/queue?page=${page}`),

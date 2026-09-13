@@ -13,7 +13,11 @@ const api = axios.create({
   // 30-50s. Warm-server calls finish in <1s, so this ceiling only matters on
   // cold starts — the first visitor of the day must succeed, not time out.
   timeout: 45000,
-  headers: { 'Content-Type': 'application/json' },
+  // NOTE: no default 'Content-Type' here. A hard-coded application/json default
+  // clobbers the browser's auto-generated multipart boundary on FormData
+  // uploads — the server then sees an unparseable body and every photo
+  // upload fails with "No photo provided". axios sets JSON automatically
+  // for plain objects, and the browser sets multipart for FormData.
 });
 
 // Attach access token
