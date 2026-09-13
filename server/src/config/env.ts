@@ -39,4 +39,8 @@ export const env = {
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '15m',
   JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   DATABASE_URL: process.env.DATABASE_URL || '',
+  // Google Sign-In (optional): set GOOGLE_CLIENT_ID to enable the feature.
+  // The client detects support via /api/health so the button only shows when
+  // the server can actually verify tokens.
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
 };

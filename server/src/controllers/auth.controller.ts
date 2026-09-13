@@ -3,6 +3,7 @@ import { AuthService } from '../services/auth.service';
 import { AuthRequest } from '../types';
 import { sendError } from '../utils/http-error';
 import { checkEmail } from '../utils/email-validation';
+import { googleAuth } from '../services/google-auth.service';
 
 const authService = new AuthService();
 
@@ -26,6 +27,20 @@ export class AuthController {
       res.json(result);
     } catch (error: any) {
       sendError(res, error, 400);
+    }
+  }
+
+  async google(req: Request, res: Response) {
+    try {
+      const idToken = String(req.body?.credential || '');
+      if (!idToken) {
+        const e: any = new Error('Missing Google credential'); e.status = 400; throw e;
+      }
+      const result = await googleAuth(idToken);
+      res.json(result);
+    } catch (error: any) {
+      // Verification failures are the client's fault → 401; config/env issues → their status
+      sendError(res, error, error.status || 401);
     }
   }
 

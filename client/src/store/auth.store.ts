@@ -10,6 +10,7 @@ interface AuthState {
   setUser: (user: User | null) => void;
   toggleIncognito: () => void;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<boolean>;
   signup: (data: any) => Promise<void>;
   logout: () => Promise<void>;
   fetchMe: () => Promise<void>;
@@ -35,6 +36,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Login response carries only collegeId — fetch the full profile (with the
     // college object) so the college gate evaluates correctly immediately.
     try { await get().fetchMe(); } catch {}
+  },
+
+  /** Google Sign-In: server verifies the ID token, links/creates the account.
+   *  Returns true when a NEW account was created (for the welcome toast). */
+  loginWithGoogle: async (idToken) => {
+    const { data } = await api.post('/auth/google', { credential: idToken });
+    localStorage.setItem('accessToken', data.accessToken);
+    localStorage.setItem('refreshToken', data.refreshToken);
+    set({ user: data.user, isAuthenticated: true });
+    try { await get().fetchMe(); } catch {}
+    return !!data.created;
   },
 
   signup: async (payload) => {

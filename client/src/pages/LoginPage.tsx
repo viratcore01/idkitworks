@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Zap, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import PasswordInput from '@/components/common/PasswordInput';
+import GoogleButton from '@/components/common/GoogleButton';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
@@ -69,6 +70,10 @@ export default function LoginPage() {
           )}
         </button>
       </form>
+
+      <div className="mt-5">
+        <GoogleButton mode="login" />
+      </div>
 
       <div className="mt-6 text-center">
         <p className="font-body text-sm text-gray-500">

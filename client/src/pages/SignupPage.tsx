@@ -4,6 +4,7 @@ import { Rocket, PartyPopper, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useQuery } from '@tanstack/react-query';
 import CollegeSelect, { CollegeOption } from '@/components/common/CollegeSelect';
+import GoogleButton from '@/components/common/GoogleButton';
 import PasswordInput from '@/components/common/PasswordInput';
 import api from '@/services/api';
 import toast from 'react-hot-toast';
@@ -306,6 +307,15 @@ export default function SignupPage() {
               )}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Google option shows on step 1 only — it replaces the whole wizard for
+          Google users (they pick college next via profile setup, same as the
+          password funnel lands them, so nothing about the gates changes). */}
+      {step === 1 && (
+        <div className="mt-5">
+          <GoogleButton mode="signup" />
         </div>
       )}
 

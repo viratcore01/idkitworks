@@ -80,10 +80,16 @@ const signupLimiter = rateLimit({
 app.use('/api/auth/signup', signupLimiter);
 
 // Health check (unauthenticated, cheap, for uptime monitors + load balancers)
+// Also advertises which auth methods are configured — the client reads this
+// to decide whether to render the Google button.
 app.get('/api/health', async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      auth: { google: !!env.GOOGLE_CLIENT_ID, googleClientId: env.GOOGLE_CLIENT_ID || undefined },
+    });
   } catch {
     // DB down: still 200 for the LB but flagged — or flip to 503 if you prefer fail-fast
     res.status(503).json({ status: 'degraded', database: 'unreachable' });

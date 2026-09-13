@@ -28,6 +28,7 @@ model User {
   id            String   @id @default(uuid())
   email         String   @unique
   passwordHash  String   @map("password_hash")
+  googleId      String?  @unique @map("google_id") // set when the account was created via — or linked to — Google Sign-In
   username      String   @unique
   displayName   String   @map("display_name")
   avatarUrl     String?  @map("avatar_url")
