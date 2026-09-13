@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GraduationCap, Camera, ScanLine, ShieldCheck, RefreshCw, Clock3, AlertTriangle, Check } from 'lucide-react';
 import Logo from '@/components/common/Logo';
 import ImageEditorModal from '@/components/common/ImageEditorModal';
+import { useAuthStore } from '@/store/auth.store';
 import { verificationApi, VerificationStatus } from '@/services/verification';
 
 type Phase = 'intro' | 'capture' | 'checking' | 'done';
@@ -21,6 +22,8 @@ export default function VerificationPage() {
   const [preview, setPreview] = useState<string | null>(null);
   const [editing, setEditing] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const fetchMe = useAuthStore((s) => s.fetchMe);
+  const checkStartRef = useRef(0);
 
   const { data: status, refetch } = useQuery<VerificationStatus>({
     queryKey: ['verification-status'],
@@ -36,9 +39,29 @@ export default function VerificationPage() {
     }
   }, [phase, status, queryClient]);
 
+  // Bounded wait: with no AI configured, the auto-check always ends PENDING
+  // (human review) — polling for a verdict would spin forever. After 30s stop
+  // waiting and show the review-queue state instead. Never an infinite spinner.
+  useEffect(() => {
+    if (phase !== 'checking') return;
+    if (!checkStartRef.current) checkStartRef.current = Date.now();
+    const t = setInterval(() => {
+      if (Date.now() - checkStartRef.current > 30_000) setPhase('done');
+    }, 1000);
+    return () => clearInterval(t);
+  }, [phase]);
+
+  // DONE: refresh the auth store so the route gates see the fresh status —
+  // otherwise "Continue to Skola" bounces straight back to /verify.
+  // (Hooks stay ABOVE every early return — a hook after one crashes React.)
+  useEffect(() => {
+    if (phase === 'done') fetchMe().catch(() => {});
+  }, [phase, fetchMe]);
+
   const submit = async (file: File) => {
     setError('');
     setPreview(URL.createObjectURL(file));
+    checkStartRef.current = Date.now();
     setPhase('checking');
     try {
       await verificationApi.submit(file);
@@ -88,6 +111,21 @@ export default function VerificationPage() {
   }
 
   // ── DONE ──────────────────────────────────────────────────
+  if (phase === 'done' && !status) {
+    // Status query failed (e.g. cold server mid-refresh) — still give the user
+    // a way forward instead of a blank card.
+    return (
+      <Shell>
+        <div className="nb-card max-w-md w-full mx-auto p-8 text-center">
+          <Clock3 size={40} className="mx-auto text-nb-purple" />
+          <h1 className="font-display text-2xl font-bold mt-5">Your ID is submitted</h1>
+          <p className="text-sm opacity-70 mt-2">A moderator from your college will confirm it shortly.</p>
+          <button onClick={() => navigate('/home')} className="nb-btn-primary w-full mt-6">Continue to Skola</button>
+        </div>
+      </Shell>
+    );
+  }
+
   if (phase === 'done' && status) {
     const verified = status.status === 'VERIFIED';
     return (
@@ -109,7 +147,11 @@ export default function VerificationPage() {
                 : 'Your ID is in the review queue. A moderator from your college will confirm it shortly.'}
           </p>
           <button
-            onClick={() => { queryClient.invalidateQueries({ queryKey: ['me'] }); navigate('/home'); }}
+            onClick={async () => {
+              queryClient.invalidateQueries({ queryKey: ['me'] });
+              await fetchMe().catch(() => {}); // store must carry PENDING/VERIFIED before the gate runs
+              navigate('/home');
+            }}
             className="nb-btn-primary w-full mt-6"
           >
             {verified ? 'Enter Skola' : 'Continue to Skola'}
