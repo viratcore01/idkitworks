@@ -6,7 +6,7 @@
 
 Feed · Dating · Chat — all inside your college, nothing outside it.
 
-[![Live](https://img.shields.io/badge/Live-Skola-orange?style=for-the-badge)](https://idkitworks-viratcore01s-projects.vercel.app)
+[![Live](https://img.shields.io/badge/Live-Zoclo-violet?style=for-the-badge)](https://idkitworks-viratcore01s-projects.vercel.app)
 [![Stack](https://img.shields.io/badge/Stack-React_·_Express_·_Postgres-black?style=for-the-badge)](#-tech-stack)
 [![Cost](https://img.shields.io/badge/Hosting-%E2%82%B90%2Fmonth-success?style=for-the-badge)](#-deployment--free-tier)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](#-license)
@@ -15,9 +15,9 @@ Feed · Dating · Chat — all inside your college, nothing outside it.
 
 ---
 
-## ✨ What is Skola?
+## ✨ What is Zoclo?
 
-Skola is a **college-only social super-app**: a Reddit-style community feed, a Tinder-style dating deck, and real-time chat — fused into one neobrutalist experience.
+Zoclo is a **college-only social super-app**: a Reddit-style community feed, a Tinder-style dating deck, and real-time chat — fused into one neobrutalist experience.
 
 **The core rule that shapes everything:** when a student signs up with their college, *everything* they see — feed, people, chats, notifications — belongs to that college. Cross-college content doesn't exist. It's not filtered in the UI; it's impossible at the database query level.
 
@@ -55,7 +55,7 @@ Skola is a **college-only social super-app**: a Reddit-style community feed, a T
 
 ## 🧭 The One Rule: College-Only
 
-Everything in Skola is enforced **server-side**, not hidden in the UI:
+Everything in Zoclo is enforced **server-side**, not hidden in the UI:
 
 | Surface | Enforcement |
 |---|---|
@@ -288,5 +288,7 @@ skola/
 **Built for students, by students.** ⚡
 
 [Live Site](https://idkitworks-viratcore01s-projects.vercel.app) · [Report an issue](https://github.com/viratcore01/idkitworks/issues)
+
+Contact — **[idkitworks01@gmail.com](mailto:idkitworks01@gmail.com)** · one inbox for everything (questions, college onboarding, safety, press)
 
 </div>

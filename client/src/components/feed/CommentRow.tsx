@@ -11,47 +11,47 @@ import { formatDistanceToNow } from '@/utils/date';
  * `edited`: show an "edited" tag (detail page only).
  */
 export default function CommentRow({
-  comment,
-  interactive = false,
-  clamped = !interactive,
-  edited = false,
+ comment,
+ interactive = false,
+ clamped = !interactive,
+ edited = false,
 }: {
-  comment: Comment;
-  interactive?: boolean;
-  clamped?: boolean;
-  edited?: boolean;
+ comment: Comment;
+ interactive?: boolean;
+ clamped?: boolean;
+ edited?: boolean;
 }) {
-  const isAnon = comment.isAnonymous || !comment.author;
-  const name = isAnon ? 'Anonymous Student' : comment.author!.displayName;
-  const body = (
-    <>
-      <span className="font-display font-semibold text-nb-black">{name}</span>{' '}
-      <span className={`font-body text-gray-600 ${clamped ? 'line-clamp-1' : ''}`}>
-        {comment.content}
-      </span>
-      {edited && <span className="text-[10px] italic text-gray-500 ml-1">· edited</span>}
-    </>
-  );
+ const isAnon = comment.isAnonymous || !comment.author;
+ const name = isAnon ? 'Anonymous Student' : comment.author!.displayName;
+ const body = (
+ <>
+ <span className="font-display font-semibold text-ink">{name}</span>{' '}
+ <span className={`font-body text-gray-600 ${clamped ? 'line-clamp-1' : ''}`}>
+ {comment.content}
+ </span>
+ {edited && <span className="text-[10px] italic text-gray-500 ml-1">· edited</span>}
+ </>
+ );
 
-  return (
-    <div className="flex items-start gap-2.5 min-w-0">
-      {isAnon ? (
-        <div className="w-6 h-6 shrink-0 rounded-full bg-nb-purple border-nb-2 border-nb-black flex items-center justify-center text-white">
-          <Ghost size={12} strokeWidth={2.5} />
-        </div>
-      ) : (
-        <Link
-          to={`/profile/${comment.author!.username}`}
-          className="shrink-0"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Avatar src={comment.author!.avatarUrl} photoId={comment.author!.avatarPhotoId} name={comment.author!.displayName} size="sm" className="!w-6 !h-6 !text-[10px]" />
-        </Link>
-      )}
-      <p className="text-xs leading-relaxed min-w-0 pt-0.5">
-        {isAnon || !interactive ? body : <Link to={`/profile/${comment.author!.username}`} className="hover:text-nb-orange" onClick={(e) => e.stopPropagation()}>{body}</Link>}
-      </p>
-      <span className="text-[10px] text-gray-500 shrink-0 pt-1">{formatDistanceToNow(comment.createdAt)}</span>
-    </div>
-  );
+ return (
+ <div className="flex items-start gap-2.5 min-w-0">
+ {isAnon ? (
+ <div className="w-6 h-6 shrink-0 bg-nb-lilac border-nb-2 border-ink flex items-center justify-center text-white">
+ <Ghost size={12} strokeWidth={2.5} />
+ </div>
+ ) : (
+ <Link
+ to={`/profile/${comment.author!.username}`}
+ className="shrink-0"
+ onClick={(e) => e.stopPropagation()}
+ >
+ <Avatar src={comment.author!.avatarUrl} photoId={comment.author!.avatarPhotoId} name={comment.author!.displayName} size="sm" className="!w-6 !h-6 !text-[10px]" />
+ </Link>
+ )}
+ <p className="text-xs leading-relaxed min-w-0 pt-0.5">
+ {isAnon || !interactive ? body : <Link to={`/profile/${comment.author!.username}`} className="hover:text-nb-violet" onClick={(e) => e.stopPropagation()}>{body}</Link>}
+ </p>
+ <span className="text-[10px] text-gray-500 shrink-0 pt-1">{formatDistanceToNow(comment.createdAt)}</span>
+ </div>
+ );
 }

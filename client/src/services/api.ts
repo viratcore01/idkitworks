@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-// Production: VITE_API_URL is the bare API host (e.g. https://skola-api.onrender.com)
+// Production: VITE_API_URL is the bare API host (e.g. https://zoclo-api.onrender.com)
 // — all Express routes live under /api, so the prefix is appended here.
 // Dev: same-origin '/api' via the Vite proxy.
 const API_BASE = import.meta.env.VITE_API_URL

@@ -5,7 +5,7 @@
  * they can't refresh an expired token. Embedding the 15-minute access token
  * as a query param made every photo in the app silently break 15 minutes
  * after login ("image not available"). Photos therefore use a dedicated
- * LONG-LIVED token (`skola_pt`, 30 days) fetched once after login and stored
+ * LONG-LIVED token (`skola_pt` (legacy key kept so users stay logged in), 30 days) fetched once after login and stored
  * in localStorage. If it's ever missing or rejected, we fetch a fresh one
  * once and retry — never an infinite loop.
  */

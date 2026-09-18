@@ -2,16 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════
+   ZOCLO — Youthful Maximalist Neo-Brutalism
+   Milk-cream canvas, midnight-ink linework, electric accents.
+   ═══════════════════════════════════════════════════════════ */
 :root {
-  --nb-black: #1a1a1a;
-  --nb-orange: #FF6B35;
-  --nb-pink: #FF69B4;
-  --nb-yellow: #FFD700;
-  --nb-cyan: #00D4AA;
-  --nb-cream: #FFF8EE;
-  --nb-canvas: #8C7AE6;
-  --nb-lime: #C8F169;
-  --nb-bubblegum: #FFA3DD;
+  --z-ink: #0F172A;
+  --z-violet: #6D28D9;
+  --z-pink: #F43F5E;
+  --z-yellow: #FBBF24;
+  --z-mint: #10B981;
+  --z-peri: #60A5FA;
+  --z-canvas: #FAF7F2;
+  --z-chalk: #F3EFE9;
+  --z-lilac: #C4B5FD;
+  /* legacy aliases (old var names still resolve) */
+  --nb-black: #0F172A;
+  --nb-orange: #6D28D9;
+  --nb-pink: #F43F5E;
+  --nb-yellow: #FBBF24;
+  --nb-cyan: #60A5FA;
+  --nb-cream: #FAF7F2;
+  --nb-canvas: #FAF7F2;
+  --nb-lime: #FBBF24;
+  --nb-bubblegum: #C4B5FD;
 }
 
 * {
@@ -21,15 +35,15 @@
 body {
   margin: 0;
   font-family: 'DM Sans', sans-serif;
-  background-color: var(--nb-canvas);
-  color: var(--nb-black);
+  background-color: var(--z-canvas);
+  color: var(--z-ink);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Neobrutalism Utility Classes */
+/* ── Neobrutalism Utility Classes ── */
 @layer components {
   .nb-card {
-    @apply bg-white border-nb border-nb-black rounded-nb shadow-nb;
+    @apply bg-white border-nb border-ink shadow-nb;
   }
 
   .nb-card-hover {
@@ -37,16 +51,17 @@ body {
   }
 
   .nb-card-hover:hover {
-    @apply shadow-nb-hover -translate-x-[2px] -translate-y-[2px];
+    @apply shadow-nb-hover -translate-x-[3px] -translate-y-[3px];
   }
 
   .nb-btn {
-    @apply px-5 py-2.5 border-nb border-nb-black rounded-full shadow-nb font-display font-semibold
-           transition-all duration-100 cursor-pointer select-none active:shadow-nb-active active:translate-x-[2px] active:translate-y-[2px];
+    @apply px-5 py-2.5 border-nb border-ink shadow-nb font-display font-semibold
+           transition-all duration-100 cursor-pointer select-none
+           active:shadow-none active:translate-x-[2px] active:translate-y-[2px];
   }
 
   .nb-btn-orange {
-    @apply nb-btn bg-nb-orange text-white hover:bg-nb-orange/90;
+    @apply nb-btn bg-nb-violet text-white hover:bg-nb-violet/90;
   }
 
   .nb-btn-pink {
@@ -54,69 +69,90 @@ body {
   }
 
   .nb-btn-cyan {
-    @apply nb-btn bg-nb-cyan text-white hover:bg-nb-cyan/90;
+    @apply nb-btn bg-nb-peri text-ink hover:bg-nb-peri/90;
   }
 
   .nb-btn-lime {
-    @apply nb-btn bg-nb-lime text-nb-black hover:bg-nb-lime/80;
+    @apply nb-btn bg-nb-yellow text-ink hover:bg-nb-yellow/90;
   }
 
   .nb-btn-yellow {
-    @apply nb-btn bg-nb-yellow text-nb-black hover:bg-nb-yellow/90;
+    @apply nb-btn bg-nb-yellow text-ink hover:bg-nb-yellow/90;
   }
 
   .nb-btn-ghost {
-    @apply nb-btn bg-white text-nb-black hover:bg-gray-50;
+    @apply nb-btn bg-white text-ink hover:bg-chalk;
   }
 
   .nb-btn-danger {
-    @apply nb-btn bg-nb-red text-white hover:bg-nb-red/90;
+    @apply nb-btn bg-nb-pink text-white hover:bg-nb-pink/90;
   }
 
   .nb-input {
-    @apply w-full px-4 py-2.5 border-nb border-nb-black rounded-full bg-white font-body
-           focus:outline-none focus:ring-2 focus:ring-nb-lime focus:ring-offset-2
+    @apply w-full px-4 py-2.5 border-nb border-ink bg-white font-body
+           focus:outline-none focus:ring-2 focus:ring-nb-violet focus:ring-offset-2
            placeholder:text-gray-400;
   }
 
   .nb-badge {
-    @apply inline-flex items-center px-3 py-1 border-nb-2 border-nb-black rounded-full
+    @apply inline-flex items-center px-3 py-1 border-nb-2 border-ink
            text-xs font-display font-semibold;
   }
 
   .nb-tag {
-    @apply nb-badge bg-nb-lime;
+    @apply nb-badge bg-nb-yellow;
   }
 
   .nb-avatar {
-    @apply rounded-full border-nb-2 border-nb-black object-cover;
+    @apply rounded-full object-cover border-nb-2 border-ink;
   }
 
   .nb-sidebar-link {
-    @apply flex items-center gap-3 px-4 py-3 rounded-nb font-display font-medium
-           transition-all duration-100 border-2 border-transparent;
+    @apply flex items-center gap-3 px-4 py-3 font-display font-medium
+           transition-all duration-100 border-nb-2 border-transparent;
   }
 
   .nb-sidebar-link:hover {
-    @apply bg-white border-nb-black shadow-nb-sm;
+    @apply bg-white border-ink shadow-nb-sm;
   }
 
   .nb-sidebar-link.active {
-    @apply bg-nb-lime text-nb-black border-nb-black shadow-nb-sm;
+    @apply bg-nb-yellow text-ink border-ink shadow-nb-sm;
   }
 
-  /* Full-bleed canvas: violet base with soft colour glows and a repeating
-     neo-brutalist doodle tile (sparkles, circles, plus signs) so large
-     areas of background read as designed, not flat. */
+  /* Full-bleed milk-cream canvas with a geometric doodle tile (squares,
+     plus signs, pixel steps) + soft accent glows so large areas read
+     as designed, not flat. */
   .nb-canvas-surface {
-    background-color: var(--nb-canvas);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='210' height='210'%3E%3Cg fill='none' stroke='%231a1a1a' stroke-opacity='0.20' stroke-width='3'%3E%3Ccircle cx='158' cy='42' r='9'/%3E%3Cpath d='M24 138h12M30 132v12'/%3E%3Cpath d='M96 176q6-8 12 0t12 0'/%3E%3C/g%3E%3Cpath fill='%23ffffff' fill-opacity='0.92' d='M42 26l4 12 12 4-12 4-4 12-4-12-12-4 12-4z'/%3E%3Cpath fill='%23C8F169' fill-opacity='0.95' d='M148 112l3.2 9.6 9.6 3.2-9.6 3.2-3.2 9.6-3.2-9.6-9.6-3.2 9.6-3.2z'/%3E%3Cpath fill='%23FFD700' fill-opacity='0.95' d='M92 70l2.8 8.4 8.4 2.8-8.4 2.8-2.8 8.4-2.8-8.4-8.4-2.8 8.4-2.8z'/%3E%3Ccircle cx='186' cy='182' r='4' fill='%23FFA3DD' fill-opacity='0.95'/%3E%3C/svg%3E"),
-      radial-gradient(circle at 8% 4%, rgba(255, 163, 221, 0.5), rgba(255, 163, 221, 0) 32%),
-      radial-gradient(circle at 94% 92%, rgba(200, 241, 105, 0.45), rgba(200, 241, 105, 0) 34%),
-      radial-gradient(circle at 85% 8%, rgba(255, 214, 0, 0.22), rgba(255, 214, 0, 0) 26%);
+    background-color: var(--z-canvas);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='210' height='210'%3E%3Cg fill='none' stroke='%230F172A' stroke-opacity='0.16' stroke-width='2'%3E%3Crect x='150' y='34' width='16' height='16'/%3E%3Cpath d='M24 138h12M30 132v12'/%3E%3Cpath d='M96 176q6-8 12 0t12 0'/%3E%3C/g%3E%3Cpath fill='%236D28D9' fill-opacity='0.90' d='M42 26l4 12 12 4-12 4-4 12-4-12-12-4 12-4z'/%3E%3Cpath fill='%2310B981' fill-opacity='0.85' d='M148 112l3.2 9.6 9.6 3.2-9.6 3.2-3.2 9.6-3.2-9.6-9.6-3.2 9.6-3.2z'/%3E%3Cpath fill='%23FBBF24' fill-opacity='0.90' d='M92 70l2.8 8.4 8.4 2.8-8.4 2.8-2.8 8.4-2.8-8.4-8.4-2.8 8.4-2.8z'/%3E%3Ccircle cx='186' cy='182' r='4' fill='%23F43F5E' fill-opacity='0.85'/%3E%3C/svg%3E"),
+      radial-gradient(circle at 8% 4%, rgba(196, 181, 253, 0.55), rgba(196, 181, 253, 0) 32%),
+      radial-gradient(circle at 94% 92%, rgba(96, 165, 250, 0.40), rgba(96, 165, 250, 0) 34%),
+      radial-gradient(circle at 85% 8%, rgba(251, 191, 36, 0.18), rgba(251, 191, 36, 0) 26%);
     background-size: 210px 210px, auto, auto, auto;
     background-repeat: repeat, no-repeat, no-repeat, no-repeat;
     background-attachment: fixed;
+  }
+
+  /* Retro separator: repeating horizontal ink dashes between sections */
+  .nb-separator {
+    @apply w-full border-0;
+    height: 6px;
+    background-image: repeating-linear-gradient(
+      to right,
+      var(--z-ink) 0 10px,
+      transparent 10px 16px
+    );
+    opacity: 0.35;
+  }
+
+  /* Windows 98-style close button — square, beveled, hard shadow */
+  .nb-close98 {
+    @apply w-6 h-6 grid place-items-center text-ink font-display font-bold
+           border-nb border-ink bg-white text-xs leading-none
+           active:shadow-none active:translate-x-[1px] active:translate-y-[1px]
+           transition-all duration-75;
+    box-shadow: 2px 2px 0 0 var(--z-ink);
   }
 }
 
@@ -144,9 +180,9 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--nb-black);
+  background: var(--z-ink);
   border-radius: 100px;
-  border: 2px solid var(--nb-canvas);
+  border: 2px solid var(--z-canvas);
 }
 
 /* Animations */
@@ -171,7 +207,7 @@ body {
 
 /* Flash highlight when jumping to a comment (e.g. from a reply) */
 @keyframes commentGlow {
-  0% { background-color: rgba(200, 241, 105, 0.55); box-shadow: 0 0 0 3px rgba(200, 241, 105, 0.55); }
+  0% { background-color: rgba(251, 191, 36, 0.5); box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.5); }
   100% { background-color: transparent; box-shadow: 0 0 0 3px transparent; }
 }
 
