@@ -64,7 +64,8 @@ export class MatchController {
   async getStats(req: AuthRequest, res: Response) {
     try {
       const stats = await service.getStats(req.user!.id);
-      res.json(stats);
+      // Merge the "likes you" count so the deck chip is one request.
+      res.json({ ...stats, ...(await service.likesYouCount(req.user!.id)) });
     } catch (error: any) {
       sendError(res, error, 400);
     }

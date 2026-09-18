@@ -41,6 +41,7 @@ export class UserService {
     course: true,
     year: true,
     gender: true,
+    relationshipGoal: true,
     dateOfBirth: true,
     isVerified: true,
     verificationStatus: true,
@@ -177,6 +178,7 @@ export class UserService {
       college: user.college,
       course: user.course,
       year: user.year,
+      relationshipGoal: user.relationshipGoal,
       // Age is public on dating profiles; exact DOB never leaves the server.
       age: this.ageOf(user.dateOfBirth),
       gender: user.gender,

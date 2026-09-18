@@ -1,8 +1,13 @@
 import { prisma } from '../config/prisma';
 import { publish } from '../config/bus';
 
-/** Pass memory: passed profiles resurface after this many days (Tinder-style). */
-const PASS_RESURFACE_DAYS = 30;
+/**
+ * Loop-chain deck: fresh profiles come first (newest first). Once they run
+ * out, previously-passed profiles re-enter AFTER them, ordered by oldest
+ * pass first — so ✗ sends a profile to the BACK of the chain and the deck
+ * cycles forever. New profiles join the FRONT; the cycle just keeps going.
+ * (LIKEd profiles stay hidden until unmatched; blocked/inactive never show.)
+ */
 
 /** True when the user has no photos at all — deck & swipes are locked. */
 async function needsPhotoGate(userId: string): Promise<boolean> {
@@ -27,6 +32,23 @@ function photoGateResponse(page: number) {
     totalRemaining: 0,
   };
 }
+
+/** Shared select-clause for deck cards (fresh + recycled). */
+const DECK_SELECT = {
+  id: true,
+  username: true,
+  displayName: true,
+  avatarUrl: true,
+  bio: true,
+  course: true,
+  year: true,
+  gender: true,
+  dateOfBirth: true,      college: { select: { id: true, name: true, shortName: true } },
+      interests: { include: { interest: true } },
+      photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' as const } },
+      isVerified: true,
+      relationshipGoal: true,
+};
 
 function ageFrom(dob: Date | null): number | null {
   if (!dob) return null;
@@ -64,15 +86,22 @@ export class MatchService {
 
     const pref = viewer.matchPreference;
 
-    // Everyone this user has already LIKEd or PASSed (within the resurface window)
-    const windowStart = new Date(Date.now() - PASS_RESURFACE_DAYS * 24 * 3600 * 1000);
+    // Viewer's own interests power the shared-interest dealbreaker.
+    const viewerInterestIds = new Set(
+      (await prisma.userInterest.findMany({ where: { userId }, select: { interestId: true } })).map((ui) => ui.interestId),
+    );
+    // the deck permanently (pending the other person's answer); passes only
+    // shape ORDER (they re-enter at the back of the chain), never visibility.
     const actioned = await prisma.matchLike.findMany({
-      where: {
-        senderId: userId,
-        OR: [{ action: 'LIKE' }, { action: 'PASS', createdAt: { gte: windowStart } }],
-      },
-      select: { receiverId: true },
+      where: { senderId: userId },
+      select: { receiverId: true, action: true, createdAt: true },
     });
+    const likedIds = actioned.filter((a) => a.action === 'LIKE').map((a) => a.receiverId);
+    // oldest pass first — the back of the loop chain
+    const passedIds = actioned
+      .filter((a) => a.action === 'PASS')
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((a) => a.receiverId);
 
     // Blocks are bidirectional
     const blocks = await prisma.block.findMany({
@@ -80,8 +109,7 @@ export class MatchService {
       select: { blockerId: true, blockedId: true },
     });
 
-    const excludeIds = new Set<string>([userId]);
-    for (const a of actioned) excludeIds.add(a.receiverId);
+    const excludeIds = new Set<string>([userId, ...likedIds, ...passedIds]);
     for (const b of blocks) {
       excludeIds.add(b.blockerId);
       excludeIds.add(b.blockedId);
@@ -113,46 +141,109 @@ export class MatchService {
       where.gender = wantedGender;
     }
 
+    // ── DEALBREAKERS (each opted-in by the viewer; off by default) ──
+    // Verified-only: just isVerified.
+    if (pref?.onlyVerified) {
+      where.isVerified = true;
+    }
+    // Minimum year (seniors-only etc.). Users with no year set can't prove it — excluded.
+    if (pref?.minYear != null) {
+      where.year = { gte: pref.minYear };
+    }
+    // Intent matching: restrict to profiles whose relationship goal is one
+    // the viewer is open to. Users who never set a goal always remain
+    // visible (undisclosed intent must not silently exclude anyone); a
+    // disclosed goal that isn't in the viewer's list is filtered out.
+    if (pref?.openToGoals?.length) {
+      where.OR = [{ relationshipGoal: null }, { relationshipGoal: { in: pref.openToGoals } }];
+    }
+    // Shared-interest minimum: need N common interests with the viewer.
+    // SELF-GUARD: a viewer with zero interests can share none with anyone —
+    // the filter would permanently empty their own deck, so it skips itself.
+    if ((pref?.sharedInterestMin ?? 0) > 0 && viewerInterestIds.size > 0) {
+      where.interests = {
+        some: { interestId: { in: Array.from(viewerInterestIds) } },
+      };
+    }
+
     const total = await prisma.user.count({ where });
 
-    const users = await prisma.user.findMany({
+    // ── The loop chain ──
+    // Page space = fresh profiles first (orderBy createdAt desc), then the
+    // passed profiles stitched after them, oldest pass first. A pagination
+    // page may therefore mix fresh + recycled; the client only ever shows
+    // the top card, which is exactly the queue front.
+    const fresh = await prisma.user.findMany({
       where,
-      skip: page * take,
-      take,
       orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        username: true,
-        displayName: true,
-        avatarUrl: true,
-        bio: true,
-        course: true,
-        year: true,
-        gender: true,
-        dateOfBirth: true,
-        college: { select: { id: true, name: true, shortName: true } },
-        interests: { include: { interest: true } },
-        photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' } },
-      },
+      select: DECK_SELECT,
     });
 
+    // Recycled: passed profiles only (fresh already excludes them — the two
+    // lists are disjoint, so the chain can never duplicate a card).
+    const recycledExclude = new Set<string>([userId, ...likedIds]);
+    for (const b of blocks) {
+      recycledExclude.add(b.blockerId);
+      recycledExclude.add(b.blockedId);
+    }
+    const recycledWhere = { ...where, id: { notIn: Array.from(recycledExclude) } };
+    const recycledAll = passedIds.length
+      ? await prisma.user.findMany({
+          where: recycledWhere,
+          orderBy: { createdAt: 'desc' },
+          select: DECK_SELECT,
+        })
+      : [];
+    const recycled = passedIds
+      .map((pid) => recycledAll.find((u) => u.id === pid))
+      .filter(Boolean as any);
+
+    const chain = [...fresh, ...recycled];
+
+    // "LIKES YOU" priority (Hinge/Tinder Gold pattern, free for everyone):
+    // people who already liked you surface at the FRONT of the chain, newest
+    // like first — like back = instant match. They keep their fresh/recycled
+    // badge state; the client adds a 'likes you' badge from the flag.
+    const likedMeRows = await prisma.matchLike.findMany({
+      where: { receiverId: userId, action: 'LIKE' },
+      select: { senderId: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    const likedMeSet = new Set(likedMeRows.map((r) => r.senderId));
+    const likedMeFront = chain.filter((u: any) => likedMeSet.has(u.id));
+    const rest = chain.filter((u: any) => !likedMeSet.has(u.id));
+    const ordered = [...likedMeFront, ...rest];
+
+    const pageSlice = ordered.slice(page * take, page * take + take);
+    const passedSet = new Set(passedIds);
+
     return {
-      users: users.map((u) => ({
+      users: pageSlice.map((u: any) => ({
         id: u.id,
         username: u.username,
         displayName: u.displayName,
         avatarUrl: u.avatarUrl,
-        photos: u.photos.map((p) => ({ id: p.id, slot: p.slot })),
+        photos: u.photos.map((p: any) => ({ id: p.id, slot: p.slot })),
         bio: u.bio,
         course: u.course,
         year: u.year,
         age: ageFrom(u.dateOfBirth),
         college: u.college,
-        interests: u.interests.map((ui) => ui.interest),
+        interests: u.interests.map((ui: any) => ui.interest),
+        isVerified: u.isVerified,
+        relationshipGoal: u.relationshipGoal,
+        theyLikedMe: likedMeSet.has(u.id),
+        sharedInterests: (pref?.sharedInterestMin ?? 0) > 0
+          ? u.interests.filter((ui: any) => viewerInterestIds.has(ui.interestId)).length
+          : undefined,
+        // true when this card came from the passed tail of the chain
+        recycled: passedSet.has(u.id),
       })),
       page,
-      hasMore: (page + 1) * take < total,
-      totalRemaining: Math.max(total - page * take, 0),
+      // the chain is closed: "hasMore" wraps via the client resetting to page 0
+      hasMore: (page + 1) * take < chain.length,
+      totalRemaining: Math.max(chain.length - page * take, 0),
+      totalFresh: fresh.length,
     };
   }
 
@@ -257,11 +348,24 @@ export class MatchService {
 
         // Realtime: let both users know instantly (badges, match modals)
         publish('match:new', { matchId: match.id, userIds: [senderId, receiverId] });
+        publish('notification:new', { userIds: [senderId, receiverId] });
 
         return { matched: true, match };
       }
 
-      return { matched: false };
+      // One-sided like → notify the receiver (Hinge-style: likes are free to
+      // see). Deduped: only on the FIRST like, never on action updates.
+      // Fire-and-forget after the swipe transaction so a notification hiccup
+      // can never fail the like itself.
+      if (!mutual) {
+        prisma.notification.create({
+          data: { recipientId: receiverId, actorId: senderId, type: 'LIKE' } as any,
+        }).then(() => publish('notification:new', { userIds: [receiverId] })).catch(() => {});
+      }
+
+      // Same-action re-swipe that didn't (re)match: report it as a duplicate
+      // so clients can show "already actioned" instead of counting it as new.
+      return { matched: false, duplicate: existing?.action === action };
     });
 
     return result;
@@ -352,6 +456,12 @@ export class MatchService {
     return { likesSent, likeCap: LIKE_CAP, likesReceived, totalMatches };
   }
 
+  /** How many waiting likes the viewer hasn't acted on — powers the deck chip. */
+  async likesYouCount(userId: string) {
+    const count = await prisma.matchLike.count({ where: { receiverId: userId, action: 'LIKE' } });
+    return { likesYou: count };
+  }
+
   /**
    * REWIND (Tinder's signature): undo the last PASS so a mis-swipe doesn't
    * lock the person away for the resurface window. Only the most recent
@@ -382,6 +492,10 @@ export class MatchService {
     ageRangeMin?: number;
     ageRangeMax?: number;
     genderPreference?: string;
+    openToGoals?: string[];
+    onlyVerified?: boolean;
+    minYear?: number | null;
+    sharedInterestMin?: number;
     collegePreference?: string;
   }) {
     // Clamp inputs — server is the source of truth (floor 16 = app minimum age)
@@ -391,6 +505,20 @@ export class MatchService {
     const genderPref = ['EVERYONE', 'MALE', 'FEMALE', 'OTHER'].includes(data.genderPreference || '') ? data.genderPreference : undefined;
     // PRODUCT RULE: college isolation is not a preference — ignore any client value.
     const collegePref: string | undefined = undefined;
+
+    // Intent matching: keep only known goals, dedupe, cap the list.
+    const VALID_GOALS = ['DATING', 'RELATIONSHIP', 'FRIENDS', 'CASUAL', 'NOT_SURE'];
+    const openToGoals = Array.isArray(data.openToGoals)
+      ? [...new Set(data.openToGoals.filter((g) => VALID_GOALS.includes(g)))].slice(0, VALID_GOALS.length)
+      : undefined;
+    // Dealbreakers
+    const onlyVerified = typeof data.onlyVerified === 'boolean' ? data.onlyVerified : undefined;
+    const minYear = data.minYear === null || data.minYear === undefined
+      ? null
+      : [1, 2, 3, 4, 5].includes(Number(data.minYear)) ? Number(data.minYear) : undefined;
+    const sharedInterestMin = data.sharedInterestMin != null
+      ? Math.min(Math.max(Math.round(Number(data.sharedInterestMin)), 0), 10)
+      : undefined;
 
     const finalMin = ageMin ?? undefined;
     const finalMax = ageMax ?? undefined;
@@ -403,6 +531,10 @@ export class MatchService {
         ageRangeMin: finalMin,
         ageRangeMax: finalMax,
         genderPreference: (genderPref as any) || 'EVERYONE',
+        openToGoals: openToGoals || [],
+        ...(onlyVerified !== undefined && { onlyVerified }),
+        ...(minYear !== undefined && { minYear }),
+        ...(sharedInterestMin !== undefined && { sharedInterestMin }),
         collegePreference: collegePref, // always null — college scope is not optional
       },
       update: {
@@ -410,6 +542,10 @@ export class MatchService {
         ...(finalMin !== undefined && { ageRangeMin: finalMin }),
         ...(finalMax !== undefined && { ageRangeMax: finalMax }),
         ...(genderPref && { genderPreference: genderPref as any }),
+        ...(openToGoals !== undefined && { openToGoals }),
+        ...(onlyVerified !== undefined && { onlyVerified }),
+        ...(minYear !== undefined && { minYear }),
+        ...(sharedInterestMin !== undefined && { sharedInterestMin }),
         // Force any legacy cross-college preference back to null
         collegePreference: null,
       },
@@ -418,6 +554,6 @@ export class MatchService {
 
   async getPreference(userId: string) {
     const pref = await prisma.matchPreference.findUnique({ where: { userId } });
-    return pref || { lookingFor: 'DATING', ageRangeMin: null, ageRangeMax: null, genderPreference: 'EVERYONE', collegePreference: null, visibility: true };
+    return pref || { lookingFor: 'DATING', ageRangeMin: null, ageRangeMax: null, genderPreference: 'EVERYONE', openToGoals: [], onlyVerified: false, minYear: null, sharedInterestMin: 0, collegePreference: null, visibility: true };
   }
 }

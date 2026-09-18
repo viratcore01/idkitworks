@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Heart, MessageSquare, X, HeartCrack, SearchX, MessageSquareOff, SlidersHorizontal, PartyPopper, UserMinus, RotateCcw, Zap, Camera, ImageOff, ChevronLeft, ChevronRight, Undo2 } from 'lucide-react';
+import { Search, Heart, MessageSquare, X, HeartCrack, SearchX, MessageSquareOff, SlidersHorizontal, PartyPopper, UserMinus, RotateCcw, Zap, Camera, ImageOff, ChevronLeft, ChevronRight, Undo2, BadgeCheck, Sparkles } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
 import Avatar from '@/components/common/Avatar';
@@ -20,21 +20,60 @@ const GENDERS = [
  { value: 'OTHER', label: 'Other' },
 ];
 
+/** Relationship goals (intent matching) — mirrors the server's VALID_GOALS. */
+const GOALS = [
+ { value: 'DATING', label: 'Dating', hint: 'Casual going-out, see where it goes' },
+ { value: 'RELATIONSHIP', label: 'Relationship', hint: 'Looking for something serious' },
+ { value: 'FRIENDS', label: 'Friends', hint: 'Friendship only, nothing romantic' },
+ { value: 'CASUAL', label: 'Casual', hint: 'Low-key, no pressure' },
+ { value: 'NOT_SURE', label: 'Not sure yet', hint: 'Open to whatever happens' },
+];
+
+const GOAL_LABEL: Record<string, string> = Object.fromEntries(GOALS.map((g) => [g.value, g.label]));
+
+/** Chip styling per goal — the card/profile badge colors. */
+const GOAL_CHIP: Record<string, string> = {
+ DATING: 'bg-nb-pink text-white',
+ RELATIONSHIP: 'bg-nb-violet text-white',
+ FRIENDS: 'bg-nb-mint text-ink',
+ CASUAL: 'bg-nb-yellow text-ink',
+ NOT_SURE: 'bg-nb-lilac text-ink',
+};
+
 export default function MatchesPage() {
  const [view, setView] = useState<View>('discover');
  const [deckPage, setDeckPage] = useState(0);
  const [matchBanner, setMatchBanner] = useState<{ name: string; username: string } | null>(null);
  const [showPrefs, setShowPrefs] = useState(false);
- const [prefs, setPrefs] = useState({ genderPreference: 'EVERYONE', ageRangeMin: 16, ageRangeMax: 60 });
+ const [prefs, setPrefs] = useState({
+ genderPreference: 'EVERYONE',
+ ageRangeMin: 16,
+ ageRangeMax: 60,
+ openToGoals: [] as string[],
+ onlyVerified: false,
+ minYear: null as number | null,
+ sharedInterestMin: 0,
+ });
  const [photoIdx, setPhotoIdx] = useState(0);
  const queryClient = useQueryClient();
- const navigate = useNavigate();
-
- const { data: deck, isLoading: loadingDiscover } = useQuery({
+ const navigate = useNavigate();  const { data: deck, isLoading: loadingDiscover } = useQuery({
  queryKey: ['match-discover', deckPage],
  queryFn: () => api.get('/matches/discover', { params: { page: deckPage } }).then((r) => r.data),
  enabled: view === 'discover',
+ // Keep the previous page's card visible while the next page loads —
+ // swiping feels instant even across page boundaries.
+ placeholderData: (prev: any) => prev,
  });
+
+ // LOOP CHAIN: when the server reports this page has drained (hasMore=false
+ // but the pool isn't empty), wrap to page 0 — the passed tail cycles back
+ // around automatically. Fetching page 0 while page N is still mounted
+ // gives a seamless loop instead of a dead "no more people" screen.
+ useEffect(() => {
+ if (deck && !deck.hasMore && deck.totalRemaining > 0 && deck.users.length <= 1 && deckPage > 0) {
+ setDeckPage(0);
+ }
+ }, [deck, deckPage]);
 
  const { data: matchesData, isLoading: loadingMatches } = useQuery({
  queryKey: ['matches'],
@@ -50,6 +89,12 @@ export default function MatchesPage() {
  const { data: savedPrefs } = useQuery({
  queryKey: ['match-preferences'],
  queryFn: () => api.get('/matches/preferences').then((r) => r.data),
+ });
+
+ // Waiting likes — powers the "N waiting" chip on the deck header
+ const { data: matchStats } = useQuery({
+ queryKey: ['match-stats'],
+ queryFn: () => api.get('/matches/stats').then((r) => r.data),
  });
 
  const users = deck?.users || [];
@@ -132,7 +177,11 @@ export default function MatchesPage() {
  });
 
  const savePrefsMutation = useMutation({
- mutationFn: () => api.patch('/matches/preferences', prefs),
+ mutationFn: () => api.patch('/matches/preferences', {
+ ...prefs,
+ // empty selection = open to every goal — send [] not undefined
+ openToGoals: prefs.openToGoals,
+ }),
  onSuccess: () => {
  toast.success('Preferences saved');
  setShowPrefs(false);
@@ -148,6 +197,10 @@ export default function MatchesPage() {
  genderPreference: savedPrefs.genderPreference || 'EVERYONE',
  ageRangeMin: savedPrefs.ageRangeMin || 16,
  ageRangeMax: savedPrefs.ageRangeMax || 60,
+ openToGoals: savedPrefs.openToGoals || [],
+ onlyVerified: !!savedPrefs.onlyVerified,
+ minYear: savedPrefs.minYear ?? null,
+ sharedInterestMin: savedPrefs.sharedInterestMin ?? 0,
  });
  }
  setShowPrefs(true);
@@ -255,6 +308,68 @@ export default function MatchesPage() {
  <span className="font-display font-bold text-sm w-8 text-center">{prefs.ageRangeMax}</span>
  </div>
 
+ {/* ── Looking for (intent matching) ── */}
+ <label className="block font-display font-semibold text-sm mb-2">Looking for</label>
+ <div className="flex gap-2 mb-2 flex-wrap">
+ {GOALS.map((g) => {
+ const on = prefs.openToGoals.includes(g.value);
+ return (
+ <button
+ key={g.value}
+ onClick={() => setPrefs((p) => ({
+ ...p,
+ openToGoals: on ? p.openToGoals.filter((x) => x !== g.value) : [...p.openToGoals, g.value],
+ }))}
+ className={`nb-btn text-xs px-3 py-1.5 ${on ? 'bg-nb-pink text-white' : 'bg-white'}`}
+ title={g.hint}
+ >
+ {g.label}
+ </button>
+ );
+ })}
+ </div>
+ <p className="text-[11px] text-gray-500 mb-4 font-body">
+ {prefs.openToGoals.length === 0
+ ? 'Nothing picked — every goal can appear in your deck.'
+ : `Only these goals (plus people who haven't set one) will show up.`}
+ </p>
+
+ {/* ── Dealbreakers ── */}
+ <label className="block font-display font-semibold text-sm mb-2">Dealbreakers</label>
+ <div className="space-y-2 mb-4">
+ <button
+ onClick={() => setPrefs((p) => ({ ...p, onlyVerified: !p.onlyVerified }))}
+ className={`w-full text-left nb-btn text-xs px-3 py-2 flex items-center gap-2 ${prefs.onlyVerified ? 'bg-nb-yellow' : 'bg-white'}`}
+ >
+ <span className={`w-4 h-4 border-nb-2 border-ink inline-block ${prefs.onlyVerified ? 'bg-ink' : 'bg-white'}`} />
+ Verified students only
+ </button>
+ <div className="flex items-center gap-2">
+ <span className="font-body text-xs text-gray-600 shrink-0">Year</span>
+ {[null, 2, 3, 4].map((y) => (
+ <button
+ key={String(y)}
+ onClick={() => setPrefs((p) => ({ ...p, minYear: y }))}
+ className={`nb-btn text-xs px-2.5 py-1 ${prefs.minYear === y ? 'bg-nb-violet text-white' : 'bg-white'}`}
+ >
+ {y === null ? 'Any' : `${y}+`}
+ </button>
+ ))}
+ </div>
+ <div className="flex items-center gap-2">
+ <span className="font-body text-xs text-gray-600 shrink-0">Shared interests</span>
+ {[0, 1, 2, 3].map((n) => (
+ <button
+ key={n}
+ onClick={() => setPrefs((p) => ({ ...p, sharedInterestMin: n }))}
+ className={`nb-btn text-xs px-2.5 py-1 ${prefs.sharedInterestMin === n ? 'bg-nb-violet text-white' : 'bg-white'}`}
+ >
+ {n === 0 ? 'Off' : `${n}+`}
+ </button>
+ ))}
+ </div>
+ </div>
+
  <div className="flex gap-2 justify-end">
  <button onClick={() => setShowPrefs(false)} className="nb-btn bg-white text-sm">Cancel</button>
  <button onClick={() => savePrefsMutation.mutate()} disabled={savePrefsMutation.isPending} className="nb-btn-orange text-sm">
@@ -355,6 +470,27 @@ export default function MatchesPage() {
  )}
 
  <h2 className="font-display font-bold text-xl">{currentUser.displayName}</h2>
+ {currentUser.relationshipGoal && (
+ <span className={`nb-badge ${GOAL_CHIP[currentUser.relationshipGoal] || 'bg-white text-ink'} text-[10px] inline-flex items-center gap-1 mb-1`}>
+ {GOAL_LABEL[currentUser.relationshipGoal] || currentUser.relationshipGoal}
+ </span>
+ )}
+ {currentUser.isVerified && <BadgeCheck size={15} strokeWidth={2.5} className="text-nb-mint inline-block align-text-bottom" />}
+ {currentUser.sharedInterests != null && currentUser.sharedInterests > 0 && (
+ <span className="nb-badge bg-nb-yellow text-ink text-[10px] inline-flex items-center gap-1 mb-1">
+ <Sparkles size={10} strokeWidth={3} /> {currentUser.sharedInterests} shared interest{currentUser.sharedInterests === 1 ? '' : 's'}
+ </span>
+ )}
+ {currentUser.theyLikedMe && (
+ <span className="nb-badge bg-nb-pink text-white text-[10px] inline-flex items-center gap-1 mb-1" title="They already liked you — like back to match instantly">
+ <Heart size={10} strokeWidth={3} fill="currentColor" /> likes you
+ </span>
+ )}
+ {currentUser.recycled && (
+ <span className="nb-badge bg-nb-peri text-ink text-[10px] inline-flex items-center gap-1 mb-1" title="You passed on this profile earlier — it's back around in your loop">
+ <RotateCcw size={10} strokeWidth={3} /> back in your loop
+ </span>
+ )}
  <p className="text-sm text-gray-500 font-body">@{currentUser.username}</p>
 
  <p className="mt-2 text-sm font-body">
@@ -399,6 +535,9 @@ export default function MatchesPage() {
  {deck && (
  <p className="mt-4 text-[11px] text-gray-500 font-body">
  {deck.totalRemaining} student{deck.totalRemaining === 1 ? '' : 's'} in your deck
+ {!!matchStats?.likesYou && (
+ <span className="ml-1 text-nb-pink font-semibold">• {matchStats.likesYou} waiting to match with you</span>
+ )}
  </p>
  )}
  </div>

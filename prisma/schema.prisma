@@ -41,6 +41,9 @@ model User {
   avatarColor   String?  @map("avatar_color")
   avatarPhotoId String?  @unique @map("avatar_photo_id")
   isVerified    Boolean  @default(false) @map("is_verified")
+  // What this person is on the app for — shown on cards/profiles, and the
+  // basis of intent matching: DATING | RELATIONSHIP | FRIENDS | CASUAL | NOT_SURE
+  relationshipGoal String? @map("relationship_goal")
   verificationStatus String @default("UNVERIFIED") @map("verification_status") // UNVERIFIED | PENDING | VERIFIED | REJECTED
   isActive      Boolean  @default(true) @map("is_active")
   role          String   @default("user")
@@ -230,6 +233,14 @@ model MatchPreference {
   ageRangeMin        Int?     @map("age_range_min")
   ageRangeMax        Int?     @map("age_range_max")
   genderPreference   String   @default("EVERYONE") @map("gender_preference")
+  // INTENT MATCHING: which relationship goals may enter the deck (multi).
+  // Empty list = open to every goal. Goals never silently exclude anyone
+  // unless the viewer opts in — intent is a preference, not a wall.
+  openToGoals        String[] @default([]) @map("open_to_goals")
+  // DEALBREAKERS — hard filters the viewer opts into:
+  onlyVerified       Boolean  @default(false) @map("only_verified")
+  minYear            Int?     @map("min_year") // null = any year
+  sharedInterestMin  Int      @default(0) @map("shared_interest_min") // 0 = off, 1+ = require N common interests
   locationPreference String?  @map("location_preference")
   collegePreference  String?  @map("college_preference")
   visibility         Boolean  @default(true)

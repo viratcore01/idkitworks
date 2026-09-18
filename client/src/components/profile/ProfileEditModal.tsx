@@ -35,6 +35,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  dateOfBirth: profile.dateOfBirth ? String(profile.dateOfBirth).slice(0, 10) : '',
  course: profile.course || '',
  year: profile.year || 1,
+ relationshipGoal: profile.relationshipGoal || '',
  interestIds: (profile.interests || []).map((i: any) => i.id),
  });
  const [slots, setSlots] = useState<{ id: string; slot: number }[]>(profile.photos || []);
@@ -269,6 +270,28 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  ))}
  </select>
  </div>
+ </div>
+
+ {/* What I'm here for — powers intent matching on other people's decks */}
+ <label className="block font-display text-sm font-semibold mb-1.5">Looking for</label>
+ <div className="flex gap-1.5 mb-4 flex-wrap">
+ {[
+ { value: '', label: 'Rather not say' },
+ { value: 'DATING', label: 'Dating' },
+ { value: 'RELATIONSHIP', label: 'Relationship' },
+ { value: 'FRIENDS', label: 'Friends' },
+ { value: 'CASUAL', label: 'Casual' },
+ { value: 'NOT_SURE', label: 'Not sure yet' },
+ ].map((g) => (
+ <button
+ key={g.value || 'none'}
+ type="button"
+ onClick={() => setForm((f) => ({ ...f, relationshipGoal: g.value }))}
+ className={`nb-btn text-xs px-3 py-1.5 ${form.relationshipGoal === g.value ? 'bg-nb-pink text-white' : 'bg-white'}`}
+ >
+ {g.label}
+ </button>
+ ))}
  </div>
 
  <div className="grid grid-cols-2 gap-3 mb-3">

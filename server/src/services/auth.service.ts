@@ -305,6 +305,7 @@ export class AuthService {
     year?: number;
     gender?: string;
     dateOfBirth?: string;
+    relationshipGoal?: string | null;
     interestIds?: string[];
   }) {
     // ── Server-side validation (real apps never trust the client) ──
@@ -333,6 +334,15 @@ export class AuthService {
     if (data.gender !== undefined) {
       if (!['MALE', 'FEMALE', 'OTHER', 'UNKNOWN'].includes(data.gender)) throw new Error('Invalid gender');
       update.gender = data.gender;
+    }
+    if (data.relationshipGoal !== undefined) {
+      if (data.relationshipGoal === null || data.relationshipGoal === '') {
+        update.relationshipGoal = null;
+      } else if (['DATING', 'RELATIONSHIP', 'FRIENDS', 'CASUAL', 'NOT_SURE'].includes(data.relationshipGoal)) {
+        update.relationshipGoal = data.relationshipGoal;
+      } else {
+        throw new Error('Invalid relationship goal');
+      }
     }
     if (data.dateOfBirth !== undefined && data.dateOfBirth !== null && data.dateOfBirth !== '') {
       const dob = new Date(data.dateOfBirth);
@@ -408,6 +418,7 @@ export class AuthService {
       course: user.course,
       year: user.year,
       gender: user.gender,
+      relationshipGoal: user.relationshipGoal,
       dateOfBirth: user.dateOfBirth,
       age: user.dateOfBirth
         ? Math.floor((Date.now() - user.dateOfBirth.getTime()) / (365.25 * 24 * 3600 * 1000))
