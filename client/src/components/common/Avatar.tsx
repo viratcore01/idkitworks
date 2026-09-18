@@ -57,6 +57,8 @@ export default function Avatar({ src, photoId, name, size = 'md', className = ''
         key={`${resolved}`}
         src={resolved}
         alt={name}
+        loading="lazy"
+        decoding="async"
         onError={onError}
         className={`nb-avatar ${sizeClasses[size]} ${className}`}
       />

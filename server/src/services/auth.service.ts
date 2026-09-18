@@ -8,6 +8,7 @@ import {
 } from '../utils/jwt';
 import { env } from '../config/env';
 import { JwtPayload } from '../types';
+import { invalidateUser } from '../utils/user-cache';
 
 /**
  * Constant dummy hash for the login timing-oracle fix: when the email does
@@ -365,6 +366,7 @@ export class AuthService {
         const e: any = new Error('Your college is already set. Contact support to change it.'); e.status = 403; throw e;
       }
       update.collegeId = data.collegeId || null;
+      invalidateUser(userId); // the auth gate resolves collegeId per request
     }
 
     // If updating interests, replace all (validate they exist)

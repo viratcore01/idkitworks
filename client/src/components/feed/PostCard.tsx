@@ -149,10 +149,10 @@ export default function PostCard({ post, detailView = false }: Props) {
       {post.mediaUrl && (
         <div className="mt-3 border-nb-2 border-nb-black rounded-nb overflow-hidden">
           {post.mediaType === 'IMAGE' && (
-            <img src={post.mediaUrl} alt="" className="w-full object-cover" />
+            <img src={post.mediaUrl} alt="" loading="lazy" decoding="async" className="w-full object-cover" />
           )}
           {post.mediaType === 'VIDEO' && (
-            <video src={post.mediaUrl} controls className="w-full" />
+            <video src={post.mediaUrl} controls preload="metadata" className="w-full" />
           )}
         </div>
       )}

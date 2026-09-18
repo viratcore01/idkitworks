@@ -351,16 +351,18 @@ model Report {
 
   @@index([status])
   @@map("reports")
-}
-
-model Block {
+}model Block {
   blockerId  String   @map("blocker_id")
   blockedId  String   @map("blocked_id")
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   blocker User @relation("BlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
   blocked User @relation("BlockBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
 
   @@id([blockerId, blockedId])
+  // PERF: the feed loads BOTH directions of the block list on EVERY request
+  // ("who did I block + who blocked me"); without these it is a table scan.
+  @@index([blockerId])
+  @@index([blockedId])
   @@map("blocks")
 }

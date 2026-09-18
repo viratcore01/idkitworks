@@ -4,6 +4,7 @@ import { PostService } from '../services/post.service';
 import { AuthRequest } from '../types';
 import { prisma } from '../config/prisma';
 import { sendError } from '../utils/http-error';
+import { invalidateUser } from '../utils/user-cache';
 
 const reportService = new ReportService();
 const postService = new PostService();
@@ -109,6 +110,7 @@ export class AdminController {
         where: { id: req.params.id as string },
         data: { isActive: false },
       });
+      invalidateUser(req.params.id as string); // kick them out on their next request, not in 30s
       res.json({ message: 'User banned' });
     } catch (error: any) {
       sendError(res, error, 400);
@@ -133,6 +135,7 @@ export class AdminController {
         where: { id: req.params.id as string },
         data: { isActive: true },
       });
+      invalidateUser(req.params.id as string);
       res.json({ message: 'User unbanned' });
     } catch (error: any) {
       sendError(res, error, 400);

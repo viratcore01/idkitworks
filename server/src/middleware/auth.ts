@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt';
 import { prisma } from '../config/prisma';
 import { AuthRequest, AuthUser } from '../types';
+import { cachedLiveUser } from '../utils/user-cache';
 
 /**
  * Auth for image-serving routes: <img> tags can't send Authorization headers,
@@ -27,10 +28,16 @@ export async function photoAuth(req: AuthRequest, res: Response, next: NextFunct
       // A ?pt= value that isn't a photo token is never accepted.
       return res.status(401).json({ error: 'Invalid token' });
     }
-    const dbUser = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: { isActive: true, collegeId: true },
-    });
+    // PERF: same 30s auth cache — a feed with 20 avatars = 20 image requests,
+    // each previously hitting the DB just to re-read the same row.
+    const dbUser = await cachedLiveUser(payload.userId, () =>
+      prisma.user
+        .findUnique({
+          where: { id: payload.userId },
+          select: { isActive: true, collegeId: true },
+        })
+        .then((u) => (u ? { isActive: u.isActive, collegeId: u.collegeId, verificationStatus: 'UNVERIFIED' } : null)),
+    );
     if (!dbUser || !dbUser.isActive) return res.status(401).json({ error: 'Account unavailable' });
     req.user = {
       id: payload.userId,
@@ -61,10 +68,16 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
 
   try {
     const payload = verifyAccessToken(token);
-    const dbUser = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: { isActive: true, collegeId: true, verificationStatus: true },
-    });
+    // PERF: cached for 30s — every avatar <img> used to pay its own DB
+    // round-trip here. Mutations that change this state call invalidateUser().
+    const dbUser = await cachedLiveUser(payload.userId, () =>
+      prisma.user
+        .findUnique({
+          where: { id: payload.userId },
+          select: { isActive: true, collegeId: true, verificationStatus: true },
+        })
+        .then((u) => (u ? { isActive: u.isActive, collegeId: u.collegeId, verificationStatus: u.verificationStatus } : null)),
+    );
 
     if (!dbUser || !dbUser.isActive) {
       return res.status(401).json({ error: 'Account unavailable' });

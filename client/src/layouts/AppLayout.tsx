@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '@/store/auth.store';
 import { getSocket } from '@/services/realtime';
 import { useVerificationUnlock } from '@/hooks/useVerificationUnlock';
+import { useKeepAlive } from '@/hooks/useKeepAlive';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import MobileNav from '@/components/layout/MobileNav';
@@ -14,6 +15,10 @@ export default function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Render free tier sleeps after ~15 min idle → the 30-50 s "app froze" wake.
+  // Ping health while the tab is open so the server never dozes mid-session.
+  useKeepAlive(!!user);
 
   // Global realtime badges: incoming messages/matches/notifications refresh the
   // relevant queries instantly — no polling required for live counts.

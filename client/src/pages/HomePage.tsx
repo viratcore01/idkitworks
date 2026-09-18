@@ -28,12 +28,16 @@ export default function HomePage() {
     hasNextPage,
     isFetchingNextPage,
     isLoading,
+    isFetching,
   } = useInfiniteQuery({
     queryKey: ['feed', tab],
     queryFn: ({ pageParam }) =>
       api.get('/posts', { params: { cursor: pageParam, limit: 20, ...(tab !== 'all' && { type: tab }) } }).then((r) => r.data),
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,
+    // PERF: switching tabs shows the cached list immediately and refetches in
+    // the background, instead of blanking to a spinner every switch.
+    placeholderData: (prev) => prev,
   });
 
   const posts = data?.pages.flatMap((p) => p.posts) || [];
@@ -101,7 +105,7 @@ export default function HomePage() {
 
       {isLoading ? (
         <LoadingSpinner />
-      ) : posts.length === 0 ? (
+      ) : posts.length === 0 && !isFetching ? (
         <EmptyState
           icon={<FileText strokeWidth={2.5} />}
           title="Nothing here yet"

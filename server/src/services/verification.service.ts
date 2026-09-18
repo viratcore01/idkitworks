@@ -1,5 +1,6 @@
 import { prisma } from '../config/prisma';
 import { publish } from '../config/bus';
+import { invalidateUser } from '../utils/user-cache';
 
 /**
  * Student-ID verification — HUMAN-ONLY by product decision.
@@ -48,6 +49,7 @@ export class VerificationService {
     });
 
     await prisma.user.update({ where: { id: userId }, data: { verificationStatus: 'PENDING' } });
+    invalidateUser(userId); // the verification gate reads this flag per request
 
     return { id: record.id, status: 'PENDING' as const };
   }
@@ -86,6 +88,8 @@ export class VerificationService {
     if (recordStatus === 'VERIFIED' || recordStatus === 'REJECTED') {
       publish('notification:new', { userIds: [userId] });
     }
+    // Auth gate reads verificationStatus — flip it everywhere immediately.
+    invalidateUser(userId);
   }
 
   /** Where am I in the flow? (image bytes never leave the server) */
