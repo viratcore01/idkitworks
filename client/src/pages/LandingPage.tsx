@@ -463,7 +463,7 @@ function ChatMockCard() {
  </span>
  <div className="min-w-0">
  <p className="font-display font-bold text-sm leading-tight">3 unread</p>
- <p className="text-[11px] font-body text-ink/60 truncate">all from your campus</p>
+ <p className="text-[11px] font-body text-ink/75 truncate">all from your campus</p>
  </div>
  </div>
  );
@@ -767,7 +767,7 @@ export default function LandingPage() {
  Zero outsiders.
  </h1>
 
- <p className="mt-5 text-base sm:text-lg text-ink/75 max-w-xl leading-relaxed">
+ <p className="mt-5 text-base sm:text-lg text-ink/85 max-w-xl leading-relaxed">
  Zoclo fuses a Reddit-style <span className="font-semibold">feed</span>, a Tinder-style{' '}
  <span className="font-semibold">dating deck</span> and real-time{' '}
  <span className="font-semibold">chat</span> into one hyperlocal app — locked to your
@@ -938,7 +938,7 @@ export default function LandingPage() {
  <h2 className="mt-4 font-display font-bold text-3xl sm:text-5xl tracking-tight">
  Everything stays inside your college.
  </h2>
- <p className="mt-4 text-ink/75 text-base sm:text-lg">
+ <p className="mt-4 text-ink/85 text-base sm:text-lg">
  Not a filter. A wall. Scope is enforced server-side on every request — your college is
  resolved from the live database, so it can't be spoofed, widened or bypassed.
  </p>
@@ -1254,7 +1254,7 @@ export default function LandingPage() {
  <h2 className="mt-6 font-display font-bold text-3xl sm:text-5xl tracking-tight leading-tight">
  Your campus is already talking.
  </h2>
- <p className="mt-4 text-ink/75 text-base sm:text-lg max-w-xl mx-auto">
+ <p className="mt-4 text-ink/85 text-base sm:text-lg max-w-xl mx-auto">
  Feed. Dating. Chat. One college-only app — verified humans, free forever.
  </p>
  <div className="mt-8 flex justify-center">
@@ -1266,7 +1266,7 @@ export default function LandingPage() {
  Open Zoclo — it's free <ArrowRight size={18} strokeWidth={2.75} />
  </NewTabLink>
  </div>
- <p className="mt-4 text-xs font-display font-semibold tracking-widest text-ink/60 uppercase">
+ <p className="mt-4 text-xs font-display font-semibold tracking-widest text-ink/75 uppercase">
  Opens the app in a new tab · No credit card · No alumni
  </p>
  </div>

@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640">
+<rect width="640" height="640" fill="#FAF7F2"/>
+<!-- violet burst (big) -->
+<polygon transform="translate(52,58)" fill="#6D28D9" points="44,0 16.5,7 31,31 7,16.5 0,44 -7,16.5 -31,31 -16.5,7 -44,0 -16.5,-7 -31,-31 -7,-16.5 0,-44 7,-16.5 31,-31 16.5,-7"/>
+<!-- yellow bolt (big) -->
+<path transform="translate(180,26)" d="M16 0 L54 0 L35 35 L54 35 L11 92 L24 46 L5 46 Z" fill="#FBBF24" stroke="#0F172A" stroke-width="3" stroke-linejoin="round"/>
+<!-- pixel heart (big) -->
+<g transform="translate(320,40)" fill="#F43F5E">
+<rect x="0" y="0" width="8" height="8"/><rect x="8" y="0" width="8" height="8"/><rect x="24" y="0" width="8" height="8"/><rect x="32" y="0" width="8" height="8"/>
+<rect x="0" y="8" width="40" height="8"/><rect x="8" y="16" width="24" height="8"/><rect x="16" y="24" width="8" height="8"/>
+</g>
+<!-- win98 bar (big) -->
+<g transform="translate(410,36)">
+<rect x="0" y="0" width="180" height="42" fill="#FFFFFF" stroke="#0F172A" stroke-width="3"/>
+<rect x="4" y="4" width="172" height="14" fill="#6D28D9"/>
+<rect x="128" y="8" width="10" height="4" fill="#FAF7F2"/>
+<rect x="148" y="7.5" width="9" height="9" fill="none" stroke="#FAF7F2" stroke-width="2.5"/>
+<path d="M165 8 l9 9 M174 8 l-9 9" stroke="#FAF7F2" stroke-width="2.5"/>
+</g>
+<!-- ink grid (big) -->
+<g transform="translate(40,190)" stroke="#0F172A" stroke-width="2.5" opacity="0.5" fill="none">
+<path d="M0 0 H84 M0 28 H84 M0 56 H84 M0 84 H84 M0 0 V84 M28 0 V84 M56 0 V84 M84 0 V84"/>
+</g>
+<!-- smiley (big) -->
+<g transform="translate(190,210)">
+<circle cx="26" cy="26" r="24" fill="#FBBF24" stroke="#0F172A" stroke-width="3"/>
+<circle cx="17" cy="22" r="3.5" fill="#0F172A"/><circle cx="35" cy="22" r="3.5" fill="#0F172A"/>
+<path d="M14 32 q12 11 24 0" fill="none" stroke="#0F172A" stroke-width="3" stroke-linecap="round"/>
+</g>
+<!-- heart (big) -->
+<path transform="translate(330,200)" d="M24 42 C13 32 2 24 2 14 A11 11 0 0 1 24 10 A11 11 0 0 1 46 14 C46 24 35 32 24 42 Z" fill="#F43F5E" stroke="#0F172A" stroke-width="3" stroke-linejoin="round"/>
+<!-- violet arrows (big) -->
+<g transform="translate(450,230)" fill="#6D28D9">
+<polygon points="0,0 24,12 0,24"/><polygon points="30,0 54,12 30,24"/><polygon points="60,0 84,12 60,24"/>
+</g>
+<!-- cube (big) -->
+<g transform="translate(540,470)">
+<polygon points="0,12 21,0 42,12 21,24" fill="#FBBF24"/>
+<polygon points="0,12 21,24 21,50 0,38" fill="#6D28D9"/>
+<polygon points="42,12 21,24 21,50 42,38" fill="#0F172A"/>
+</g>
+<!-- mint sparkle (big) -->
+<path transform="translate(70,420)" d="M22 0 L28 16 L44 22 L28 28 L22 44 L16 28 L0 22 L16 16 Z" fill="#10B981"/>
+<!-- crown (big) -->
+<g transform="translate(180,520)">
+<path d="M0 36 L0 12 L13 23 L22 2 L31 23 L44 12 L44 36 Z" fill="#6D28D9" stroke="#0F172A" stroke-width="3" stroke-linejoin="round"/>
+<path d="M50 10 l7 -7 M54 20 l9 0 M50 30 l7 7" stroke="#0F172A" stroke-width="3" stroke-linecap="round" fill="none"/>
+</g>
+<!-- yellow burst (big) -->
+<polygon transform="translate(360,520)" fill="#FBBF24" points="26,0 9.9,4.1 18.4,18.4 4.1,9.9 0,26 -4.1,9.9 -18.4,18.4 -9.9,4.1 -26,0 -9.9,-4.1 -18.4,-18.4 -4.1,-9.9 0,-26 4.1,-9.9 18.4,-18.4 9.9,-4.1"/>
+<!-- peri dots -->
+<g transform="translate(500,120)" fill="#60A5FA">
+<circle cx="5" cy="5" r="5"/><circle cx="21" cy="5" r="5"/><circle cx="37" cy="5" r="5"/><circle cx="53" cy="5" r="5"/>
+</g>
+<!-- squiggle -->
+<path transform="translate(520,330)" d="M0 20 q14 -24 28 0 t28 0" fill="none" stroke="#0F172A" stroke-width="3.5" opacity="0.55" stroke-linecap="round"/>
+<!-- pink hatch -->
+<g transform="translate(40,560)" stroke="#F43F5E" stroke-width="3.5" opacity="0.75" stroke-linecap="round" fill="none">
+<path d="M0 32 L32 0 M11 38 L43 6 M22 44 L54 12"/>
+</g>
+</svg>

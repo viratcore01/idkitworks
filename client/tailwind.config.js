@@ -29,12 +29,13 @@ export default {
       colors: {
         ink: tokens.ink,
         chalk: tokens.chalk,
+        cream: tokens.cream,
         // Darkened gray ramp for secondary text on cream/white (AA-safe)
         gray: {
           300: '#8A8F98',
-          400: '#5F6368',
-          500: '#4B5563',
-          600: '#374151',
+          400: '#4B5563',
+          500: '#374151',
+          600: '#273241',
           700: '#1F2937',
         },
         /* ── Zoclo canonical palette (use these) ── */

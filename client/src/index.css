@@ -120,17 +120,16 @@ body {
     @apply bg-nb-yellow text-ink border-ink shadow-nb-sm;
   }
 
-  /* Full-bleed milk-cream canvas with a geometric doodle tile (squares,
-     plus signs, pixel steps) + soft accent glows so large areas read
-     as designed, not flat. */
+  /* Full-bleed Zoclo doodle field: big, sparse retro shapes over cream.
+     A translucent cream veil sits between the shapes and any content,
+     so text never fights the doodles — cards and copy stay readable. */
   .nb-canvas-surface {
     background-color: var(--z-canvas);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='210' height='210'%3E%3Cg fill='none' stroke='%230F172A' stroke-opacity='0.16' stroke-width='2'%3E%3Crect x='150' y='34' width='16' height='16'/%3E%3Cpath d='M24 138h12M30 132v12'/%3E%3Cpath d='M96 176q6-8 12 0t12 0'/%3E%3C/g%3E%3Cpath fill='%236D28D9' fill-opacity='0.90' d='M42 26l4 12 12 4-12 4-4 12-4-12-12-4 12-4z'/%3E%3Cpath fill='%2310B981' fill-opacity='0.85' d='M148 112l3.2 9.6 9.6 3.2-9.6 3.2-3.2 9.6-3.2-9.6-9.6-3.2 9.6-3.2z'/%3E%3Cpath fill='%23FBBF24' fill-opacity='0.90' d='M92 70l2.8 8.4 8.4 2.8-8.4 2.8-2.8 8.4-2.8-8.4-8.4-2.8 8.4-2.8z'/%3E%3Ccircle cx='186' cy='182' r='4' fill='%23F43F5E' fill-opacity='0.85'/%3E%3C/svg%3E"),
-      radial-gradient(circle at 8% 4%, rgba(196, 181, 253, 0.55), rgba(196, 181, 253, 0) 32%),
-      radial-gradient(circle at 94% 92%, rgba(96, 165, 250, 0.40), rgba(96, 165, 250, 0) 34%),
-      radial-gradient(circle at 85% 8%, rgba(251, 191, 36, 0.18), rgba(251, 191, 36, 0) 26%);
-    background-size: 210px 210px, auto, auto, auto;
-    background-repeat: repeat, no-repeat, no-repeat, no-repeat;
+    background-image:
+      linear-gradient(rgba(250, 247, 242, 0.45), rgba(250, 247, 242, 0.45)),
+      url('/zoclo-tile.svg');
+    background-size: auto, 640px 640px;
+    background-repeat: repeat, repeat;
     background-attachment: fixed;
   }
 
