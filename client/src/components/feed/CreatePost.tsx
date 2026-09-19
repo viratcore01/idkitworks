@@ -1,17 +1,26 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Ghost, Zap } from 'lucide-react';
+import { Ghost, Zap, FileText } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
 import toast from 'react-hot-toast';
 
+const POST_TYPES = [
+  { value: 'NORMAL', label: 'Post', icon: Zap },
+  { value: 'CONFESSION', label: 'Confess', icon: Ghost },
+  { value: 'QUESTION', label: 'Question', icon: FileText },
+] as const;
+
+type PostType = (typeof POST_TYPES)[number]['value'];
+
 interface Props {
- type?: 'NORMAL' | 'CONFESSION';
+  type?: PostType;
 }
 
-export default function CreatePost({ type = 'NORMAL' }: Props) {
- const [content, setContent] = useState('');
- const [isAnonymous, setIsAnonymous] = useState(false);
+export default function CreatePost({ type: initialType = 'NORMAL' }: Props) {
+  const [content, setContent] = useState('');
+  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [type, setType] = useState<PostType>(initialType);
  const { user, isIncognito } = useAuthStore();
  const queryClient = useQueryClient();
 
@@ -41,9 +50,27 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
  mutation.mutate();
  };
 
- return (
- <div className="nb-card p-4 mb-4 animate-slide-up">
- <div className="flex gap-3">
+return (
+  <div className="nb-card p-4 mb-4 animate-slide-up">
+  <div className="flex flex-col gap-3">
+    {/* Type selector */}
+    <div className="flex gap-2 overflow-x-auto pb-1">
+      {POST_TYPES.map((t) => (
+        <button
+          key={t.value}
+          type="button"
+          onClick={() => setType(t.value as PostType)}
+          className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 border-nb-2 font-display text-xs font-bold transition-colors ${
+            type === t.value ? 'bg-ink text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+          }`}
+        >
+          <t.icon size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />
+          {t.label}
+        </button>
+      ))}
+    </div>
+
+    <div className="flex gap-3">
  {!effectiveAnonymous && (
  <div className="w-10 h-10 bg-nb-violet border-nb-2 border-ink flex items-center justify-center text-white font-bold text-sm shrink-0">
  {user?.displayName?.[0]?.toUpperCase() || '?'}
@@ -58,13 +85,15 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
  <div className="flex-1">
  <textarea
  className="w-full border-nb-2 border-ink p-3 font-body text-sm resize-none focus:outline-none focus:ring-2 focus:ring-nb-violet min-h-[80px] bg-white"
- placeholder={
- type === 'CONFESSION'
- ? 'Confess something anonymously...'
- : effectiveAnonymous
- ? 'Posting anonymously...'
- : "What's happening?"
- }
+placeholder={
+    type === 'CONFESSION'
+      ? 'Confess something anonymously...'
+      : type === 'QUESTION'
+      ? 'Ask a question...'
+      : effectiveAnonymous
+      ? 'Posting anonymously...'
+      : "What's happening?"
+  }
  value={content}
  onChange={(e) => setContent(e.target.value)}
  />
@@ -102,6 +131,7 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
  <><Zap size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Post</>
  )}
  </button>
+ </div>
  </div>
  </div>
  </div>

@@ -7,7 +7,7 @@ import PostCard from '@/components/feed/PostCard';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
 
-/** Reddit-style feed filters. */
+/** Reddit-style feed filters. Each tab (except All) shows ONLY that post type. */
 const FEED_TABS = [
  { key: 'all', label: 'All' },
  { key: 'NORMAL', label: 'Posts' },
@@ -114,13 +114,23 @@ export default function HomePage() {
  ) : posts.length === 0 && !isFetching ? (
  <EmptyState
  icon={<FileText strokeWidth={2.5} />}
- title="Nothing here yet"
- description="Be the first to drop a post. Start a conversation, share something, or just say hi."
+ title={
+ tab === 'QUESTION' ? 'No questions yet'
+ : tab === 'CONFESSION' ? 'No confessions yet'
+ : tab === 'NORMAL' ? 'No posts yet'
+ : 'Nothing here yet'
+ }
+ description={
+ tab === 'QUESTION' ? 'Be the first to ask something — pick "Question" in the composer above.'
+ : tab === 'CONFESSION' ? 'Be the first to confess — pick "Confess" in the composer above. Totally anonymous.'
+ : tab === 'NORMAL' ? 'Be the first to drop a post.'
+ : 'Be the first to drop a post. Start a conversation, share something, or just say hi.'
+ }
  />
  ) : (
  <>
  {posts.map((post) => (
- <PostCard key={post.id} post={post} />
+ <PostCard key={post.id} post={post} activeTab={tab} />
  ))}
 
  <div ref={loadMoreRef} className="py-4">

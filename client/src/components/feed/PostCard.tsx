@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Ghost, MessageCircle, Heart, ChevronRight, Bookmark, Share2, Flag } from 'lucide-react';
+import { Ghost, MessageCircle, Heart, ChevronRight, Bookmark, Share2, Flag, FileText, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
@@ -13,9 +13,11 @@ interface Props {
  post: Post;
  /** Post detail page: hides inline previews (comments render below) and keeps inline reply box */
  detailView?: boolean;
+ /** Home feed tab — when a specific type is selected, each card carries a type badge */
+ activeTab?: 'all' | 'NORMAL' | 'QUESTION' | 'CONFESSION';
 }
 
-export default function PostCard({ post, detailView = false }: Props) {
+export default function PostCard({ post, detailView = false, activeTab = 'all' }: Props) {
  const navigate = useNavigate();
  const queryClient = useQueryClient();
 
@@ -118,6 +120,16 @@ export default function PostCard({ post, detailView = false }: Props) {
  {post.type === 'CONFESSION' && (
  <span className="nb-badge bg-nb-lilac text-ink text-[10px] inline-flex items-center gap-1">
  <Ghost size={12} strokeWidth={2.5} /> CONFESS
+ </span>
+ )}
+ {post.type === 'QUESTION' && (
+ <span className="nb-badge bg-nb-yellow text-ink text-[10px] inline-flex items-center gap-1">
+ <FileText size={12} strokeWidth={2.5} /> QUESTION
+ </span>
+ )}
+ {activeTab !== 'all' && post.type === 'NORMAL' && (
+ <span className="nb-badge bg-white text-gray-500 text-[10px] inline-flex items-center gap-1">
+ <Zap size={12} strokeWidth={2.5} /> POST
  </span>
  )}
  </div>
