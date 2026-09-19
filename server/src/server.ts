@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -30,6 +31,10 @@ app.set('trust proxy', 1);
 
 // ── Security headers ──
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+
+// ── PERF: gzip every JSON response. College-list + feed + deck payloads are
+// easily 100KB+ raw; on campus WiFi compression is worth hundreds of ms. ──
+app.use(compression());
 
 // ── CORS (origin from env; no credentials on bare JWT headers, keep true for future cookies) ──
 // CLIENT_URL may hold ONE origin or a comma-separated list (prod domain +

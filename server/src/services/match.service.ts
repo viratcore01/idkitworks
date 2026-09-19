@@ -84,7 +84,26 @@ export class MatchService {
 
     // PHOTO GATE: without at least one photo the deck stays locked —
     // matching is for real people, not empty circles.
-    const viewerPhotoCount = await prisma.userPhoto.count({ where: { userId } });
+    // PERF: photoCount, interests, actioned likes/passes, blocks and likedMe
+    // are independent — ONE parallel wave instead of five sequential
+    // round-trips (at ~30ms each that alone halves deck latency).
+    const [viewerPhotoCount, viewerInterestRows, actioned, blocks, likedMeRows] = await Promise.all([
+      prisma.userPhoto.count({ where: { userId } }),
+      prisma.userInterest.findMany({ where: { userId }, select: { interestId: true } }),
+      prisma.matchLike.findMany({
+        where: { senderId: userId },
+        select: { receiverId: true, action: true, createdAt: true },
+      }),
+      prisma.block.findMany({
+        where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+        select: { blockerId: true, blockedId: true },
+      }),
+      prisma.matchLike.findMany({
+        where: { receiverId: userId, action: 'LIKE' },
+        select: { senderId: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
     if (viewerPhotoCount === 0) {
       return photoGateResponse(page);
     }
@@ -92,27 +111,15 @@ export class MatchService {
     const pref = viewer.matchPreference;
 
     // Viewer's own interests power the shared-interest dealbreaker.
-    const viewerInterestIds = new Set(
-      (await prisma.userInterest.findMany({ where: { userId }, select: { interestId: true } })).map((ui) => ui.interestId),
-    );
+    const viewerInterestIds = new Set(viewerInterestRows.map((ui) => ui.interestId));
     // the deck permanently (pending the other person's answer); passes only
     // shape ORDER (they re-enter at the back of the chain), never visibility.
-    const actioned = await prisma.matchLike.findMany({
-      where: { senderId: userId },
-      select: { receiverId: true, action: true, createdAt: true },
-    });
     const likedIds = actioned.filter((a) => a.action === 'LIKE').map((a) => a.receiverId);
     // oldest pass first — the back of the loop chain
     const passedIds = actioned
       .filter((a) => a.action === 'PASS')
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((a) => a.receiverId);
-
-    // Blocks are bidirectional
-    const blocks = await prisma.block.findMany({
-      where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
-      select: { blockerId: true, blockedId: true },
-    });
 
     const excludeIds = new Set<string>([userId, ...likedIds, ...passedIds]);
     for (const b of blocks) {
@@ -175,36 +182,34 @@ export class MatchService {
       };
     }
 
-    const total = await prisma.user.count({ where });
-
     // ── The loop chain ──
     // Page space = fresh profiles first (orderBy createdAt desc), then the
     // passed profiles stitched after them, oldest pass first. A pagination
     // page may therefore mix fresh + recycled; the client only ever shows
     // the top card, which is exactly the queue front.
-    const fresh = await prisma.user.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      select: DECK_SELECT,
-    });
-
-    // Recycled: passed profiles only (fresh already excludes them — the two
-    // lists are disjoint, so the chain can never duplicate a card).
+    // PERF: fresh + recycled run in parallel (independent result sets).
     const recycledExclude = new Set<string>([userId, ...likedIds]);
     for (const b of blocks) {
       recycledExclude.add(b.blockerId);
       recycledExclude.add(b.blockedId);
     }
     const recycledWhere = { ...where, id: { notIn: Array.from(recycledExclude) } };
-    const recycledAll = passedIds.length
-      ? await prisma.user.findMany({
-          where: recycledWhere,
-          orderBy: { createdAt: 'desc' },
-          select: DECK_SELECT,
-        })
-      : [];
+    const [fresh, recycledAll] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        select: DECK_SELECT,
+      }),
+      passedIds.length
+        ? prisma.user.findMany({
+            where: recycledWhere,
+            orderBy: { createdAt: 'desc' },
+            select: DECK_SELECT,
+          })
+        : Promise.resolve([] as never[]),
+    ]);
     const recycled = passedIds
-      .map((pid) => recycledAll.find((u) => u.id === pid))
+      .map((pid) => (recycledAll as any[]).find((u) => u.id === pid))
       .filter(Boolean as any);
 
     const chain = [...fresh, ...recycled];
@@ -213,11 +218,7 @@ export class MatchService {
     // people who already liked you surface at the FRONT of the chain, newest
     // like first — like back = instant match. They keep their fresh/recycled
     // badge state; the client adds a 'likes you' badge from the flag.
-    const likedMeRows = await prisma.matchLike.findMany({
-      where: { receiverId: userId, action: 'LIKE' },
-      select: { senderId: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    // (likedMeRows was fetched in the first parallel wave.)
     const likedMeSet = new Set(likedMeRows.map((r) => r.senderId));
     const likedMeFront = chain.filter((u: any) => likedMeSet.has(u.id));
     const rest = chain.filter((u: any) => !likedMeSet.has(u.id));

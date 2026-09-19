@@ -85,15 +85,19 @@ export default function MatchesPage() {
  queryFn: () => api.get('/messages/conversations').then((r) => r.data),
  });
 
+ // PERF: preferences are only needed when the filters modal opens — don't
+ // fetch them (and pay the round-trip) on every page mount.
  const { data: savedPrefs } = useQuery({
  queryKey: ['match-preferences'],
  queryFn: () => api.get('/matches/preferences').then((r) => r.data),
+ enabled: showPrefs,
  });
 
  // Waiting likes — powers the "N waiting" chip on the deck header
  const { data: matchStats } = useQuery({
  queryKey: ['match-stats'],
  queryFn: () => api.get('/matches/stats').then((r) => r.data),
+ enabled: view === 'discover',
  });
 
  const users = deck?.users || [];

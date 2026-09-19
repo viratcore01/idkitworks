@@ -90,17 +90,19 @@ export class PostService {
     const limit = Math.min(query.limit || 20, 50);
     const cursor = query.cursor;
 
-    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
+    // PERF: viewer + blocks are independent — one parallel wave instead of
+    // two sequential round-trips (feed is the app's hottest endpoint).
+    const [viewer, blocks] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } }),
+      prisma.block.findMany({
+        where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+        select: { blockerId: true, blockedId: true },
+      }),
+    ]);
     if (!viewer?.collegeId) {
       // College-only product: no college → no feed.
       return { posts: [], nextCursor: null };
     }
-
-    // Blocks remove people from your feed entirely — both directions.
-    const blocks = await prisma.block.findMany({
-      where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
-      select: { blockerId: true, blockedId: true },
-    });
     const blockedIds = Array.from(
       new Set(blocks.flatMap((b) => [b.blockerId, b.blockedId]).filter((id) => id !== userId)),
     );
@@ -126,6 +128,8 @@ export class PostService {
           select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, college: true, course: true, year: true },
         },
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
+        // PERF: `likes` was previously ALSO counted via _count — two queries
+        // where one does. We only need did-I-like/did-I-save here.
         likes: { where: { userId }, select: { userId: true } },
         saves: { where: { userId }, select: { userId: true } },
         comments: {
