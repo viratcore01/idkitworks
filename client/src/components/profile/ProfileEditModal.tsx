@@ -19,6 +19,15 @@ const GENDERS = [
  { value: 'UNKNOWN', label: 'Prefer not to say' },
 ];
 
+/** Relationship goals (intent matching) — mirrors the server's VALID_GOALS. */
+const GOALS = [
+ { value: 'DATING', label: 'Dating' },
+ { value: 'RELATIONSHIP', label: 'Relationship' },
+ { value: 'HOOKUP', label: 'Hookup' },
+ { value: 'CASUAL', label: 'Casual' },
+ { value: 'NOT_SURE', label: 'Not sure yet' },
+];
+
 const MAX_PHOTOS = 4;
 const MAX_MB = 5;
 
@@ -35,7 +44,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  dateOfBirth: profile.dateOfBirth ? String(profile.dateOfBirth).slice(0, 10) : '',
  course: profile.course || '',
  year: profile.year || 1,
- relationshipGoal: profile.relationshipGoal || '',
+ relationshipGoals: (profile.relationshipGoals || []) as string[],
  interestIds: (profile.interests || []).map((i: any) => i.id),
  });
  const [slots, setSlots] = useState<{ id: string; slot: number }[]>(profile.photos || []);
@@ -272,27 +281,39 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  </div>
  </div>
 
- {/* What I'm here for — powers intent matching on other people's decks */}
- <label className="block font-display text-sm font-semibold mb-1.5">Looking for</label>
- <div className="flex gap-1.5 mb-4 flex-wrap">
- {[
- { value: '', label: 'Rather not say' },
- { value: 'DATING', label: 'Dating' },
- { value: 'RELATIONSHIP', label: 'Relationship' },
- { value: 'HOOKUP', label: 'Hookup' },
- { value: 'CASUAL', label: 'Casual' },
- { value: 'NOT_SURE', label: 'Not sure yet' },
- ].map((g) => (
+ {/* What I'm here for — MULTI-SELECT. Powers intent matching on other
+ people's decks: a viewer's "Looking for" filter matches anyone whose
+ selections overlap theirs. Empty = rather not say. */}
+ <label className="block font-display text-sm font-semibold mb-1.5">
+ Looking for <span className="font-normal text-gray-500">(select any that apply)</span>
+ </label>
+ <div className="flex gap-1.5 mb-1 flex-wrap">
+ {GOALS.map((g) => {
+ const on = form.relationshipGoals.includes(g.value);
+ return (
  <button
- key={g.value || 'none'}
+ key={g.value}
  type="button"
- onClick={() => setForm((f) => ({ ...f, relationshipGoal: g.value }))}
- className={`nb-btn text-xs px-3 py-1.5 ${form.relationshipGoal === g.value ? 'bg-nb-pink text-white' : 'bg-white'}`}
+ onClick={() =>
+ setForm((f) => ({
+ ...f,
+ relationshipGoals: on
+ ? f.relationshipGoals.filter((x) => x !== g.value)
+ : [...f.relationshipGoals, g.value],
+ }))
+ }
+ className={`nb-btn text-xs px-3 py-1.5 ${on ? 'bg-nb-pink text-white' : 'bg-white'}`}
  >
  {g.label}
  </button>
- ))}
+ );
+ })}
  </div>
+ <p className="text-[11px] text-gray-500 mb-4 font-body">
+ {form.relationshipGoals.length === 0
+ ? 'Nothing picked — shown as "rather not say".'
+ : 'People filtering for any of these will see you in their deck.'}
+ </p>
 
  <div className="grid grid-cols-2 gap-3 mb-3">
  <div>

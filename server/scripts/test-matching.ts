@@ -51,7 +51,7 @@ async function main() {
         collegeId: college.id, gender, dateOfBirth: new Date('2004-01-15'),
         year: 2,
         isVerified: true, verificationStatus: 'VERIFIED',
-        relationshipGoal: 'DATING',
+        relationshipGoals: ['DATING'],
         photos: withPhoto ? { create: { data: Buffer.from('x'), mimeType: 'image/png', slot: 0 } } : undefined,
       },
     });
@@ -106,7 +106,7 @@ async function main() {
     { userId: A.id, interestId: skate.id }, { userId: A.id, interestId: chess.id },
     { userId: B.id, interestId: skate.id }, { userId: B.id, interestId: anime.id },
   ] });
-  await prisma.user.update({ where: { id: B.id }, data: { relationshipGoal: 'CASUAL' } });
+  await prisma.user.update({ where: { id: B.id }, data: { relationshipGoals: ['CASUAL'] } });
   // Unmatch → re-mutual → snapshot must refresh
   const m0 = await prisma.match.findFirst({ where: { OR: [{ userA: A.id, userB: B.id }, { userA: B.id, userB: A.id }] } });
   await api(tokA, 'DELETE', `/matches/${m0!.id}`);
@@ -116,7 +116,7 @@ async function main() {
   check('re-mutual → re-match', !!rematch && rematch.data.matched === true);
   check('diverged goals excluded from criteria', rematch.data.criteria?.goals?.length === 0, JSON.stringify(rematch.data.criteria));
   check('only the shared interest appears', rematch.data.criteria?.interests?.length === 1 && rematch.data.criteria.interests[0].name === 'skateboarding', JSON.stringify(rematch.data.criteria?.interests));
-  await prisma.user.update({ where: { id: B.id }, data: { relationshipGoal: 'DATING' } });
+  await prisma.user.update({ where: { id: B.id }, data: { relationshipGoals: ['DATING'] } });
 
   // ── 3. Concurrent double-like race (two simultaneous B-likes from A) ──
   console.log('━━ 3. Race: simultaneous likes ━━');
@@ -179,7 +179,7 @@ async function main() {
   check('passed user re-enters passer’s chain as recycled', !!cCard && cCard.recycled === true, JSON.stringify(deckA.map((u: any) => u.username)));
   r = await api(tokC, 'GET', '/matches/discover?page=0&limit=50');
   const deckC = r.data.users || [];
-  check('deck cards carry goal/verified/theyLikedMe fields', deckC.length === 0 || ('relationshipGoal' in deckC[0] && 'theyLikedMe' in deckC[0]));
+  check('deck cards carry goals/verified/theyLikedMe fields', deckC.length === 0 || ('relationshipGoals' in deckC[0] && 'theyLikedMe' in deckC[0]));
 
   // B likes C → C's deck must show B FIRST with theyLikedMe
   await api(tokB, 'POST', '/matches/like', { receiverId: C.id });

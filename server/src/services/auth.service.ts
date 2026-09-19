@@ -388,7 +388,7 @@ export class AuthService {
           course: null,
           year: null,
           gender: 'UNKNOWN',
-          relationshipGoal: null,
+          relationshipGoals: [],
           isVerified: false,
           verificationStatus: 'UNVERIFIED',
           isActive: false,
@@ -450,7 +450,7 @@ export class AuthService {
     year?: number;
     gender?: string;
     dateOfBirth?: string;
-    relationshipGoal?: string | null;
+    relationshipGoals?: string[] | null;
     interestIds?: string[];
   }) {
     // ── Server-side validation (real apps never trust the client) ──
@@ -480,13 +480,17 @@ export class AuthService {
       if (!['MALE', 'FEMALE', 'OTHER', 'UNKNOWN'].includes(data.gender)) throw new Error('Invalid gender');
       update.gender = data.gender;
     }
-    if (data.relationshipGoal !== undefined) {
-      if (data.relationshipGoal === null || data.relationshipGoal === '') {
-        update.relationshipGoal = null;
-      } else if (['DATING', 'RELATIONSHIP', 'HOOKUP', 'CASUAL', 'NOT_SURE'].includes(data.relationshipGoal)) {
-        update.relationshipGoal = data.relationshipGoal;
+    // MULTI-SELECT "Looking for": dedupe, keep only known goals, empty list =
+    // "rather not say" (stored as [] — must never silently filter anyone out).
+    if (data.relationshipGoals !== undefined) {
+      if (data.relationshipGoals === null || (Array.isArray(data.relationshipGoals) && data.relationshipGoals.length === 0)) {
+        update.relationshipGoals = [];
+      } else if (Array.isArray(data.relationshipGoals)) {
+        const VALID = ['DATING', 'RELATIONSHIP', 'HOOKUP', 'CASUAL', 'NOT_SURE'];
+        const goals = [...new Set(data.relationshipGoals.filter((g) => typeof g === 'string' && VALID.includes(g)))];
+        update.relationshipGoals = goals;
       } else {
-        throw new Error('Invalid relationship goal');
+        throw new Error('Invalid relationship goals');
       }
     }
     if (data.dateOfBirth !== undefined && data.dateOfBirth !== null && data.dateOfBirth !== '') {
@@ -563,7 +567,7 @@ export class AuthService {
       course: user.course,
       year: user.year,
       gender: user.gender,
-      relationshipGoal: user.relationshipGoal,
+      relationshipGoals: user.relationshipGoals,
       dateOfBirth: user.dateOfBirth,
       age: user.dateOfBirth
         ? Math.floor((Date.now() - user.dateOfBirth.getTime()) / (365.25 * 24 * 3600 * 1000))

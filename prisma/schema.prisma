@@ -43,8 +43,10 @@ model User {
   avatarColor   String?  @map("avatar_color")
   avatarPhotoId String?  @unique @map("avatar_photo_id")
   isVerified    Boolean  @default(false) @map("is_verified")
-  // What this person is on the app for — shown on cards/profiles, and the   // basis of intent matching: DATING | RELATIONSHIP | HOOKUP | CASUAL | NOT_SURE
-  relationshipGoal String? @map("relationship_goal")
+  // What this person is on the app for — shown on cards/profiles, and the
+  // basis of intent matching. MULTI-SELECT of DATING | RELATIONSHIP | HOOKUP |
+  // CASUAL | NOT_SURE. Empty list = "rather not say" (never filters anyone out).
+  relationshipGoals String[] @default([]) @map("relationship_goals")
   verificationStatus String @default("UNVERIFIED") @map("verification_status") // UNVERIFIED | PENDING | VERIFIED | REJECTED
   isActive      Boolean  @default(true) @map("is_active")
   role          String   @default("user")

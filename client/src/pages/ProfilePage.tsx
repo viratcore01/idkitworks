@@ -130,20 +130,20 @@ export default function ProfilePage() {
  {profile.age && (
  <span className="nb-badge bg-nb-yellow text-ink text-[10px]">{profile.age} yrs</span>
  )}
- {profile.relationshipGoal && (
- <span className={`nb-badge text-[10px] ${
- profile.relationshipGoal === 'RELATIONSHIP' ? 'bg-nb-violet text-white' :
- profile.relationshipGoal === 'DATING' ? 'bg-nb-pink text-white' :
- profile.relationshipGoal === 'HOOKUP' ? 'bg-nb-mint text-ink' :
- profile.relationshipGoal === 'CASUAL' ? 'bg-nb-yellow text-ink' :
+ {(profile.relationshipGoals || []).map((g: string) => (
+ <span key={g} className={`nb-badge text-[10px] ${
+ g === 'RELATIONSHIP' ? 'bg-nb-violet text-white' :
+ g === 'DATING' ? 'bg-nb-pink text-white' :
+ g === 'HOOKUP' ? 'bg-nb-mint text-ink' :
+ g === 'CASUAL' ? 'bg-nb-yellow text-ink' :
  'bg-nb-lilac text-ink'
  }`}>
- {profile.relationshipGoal === 'RELATIONSHIP' ? 'Relationship' :
- profile.relationshipGoal === 'DATING' ? 'Dating' :
- profile.relationshipGoal === 'HOOKUP' ? 'Hookup' :
- profile.relationshipGoal === 'CASUAL' ? 'Casual' : 'Not sure yet'}
+ {g === 'RELATIONSHIP' ? 'Relationship' :
+ g === 'DATING' ? 'Dating' :
+ g === 'HOOKUP' ? 'Hookup' :
+ g === 'CASUAL' ? 'Casual' : 'Not sure yet'}
  </span>
- )}
+ ))}
  </div>
  <p className="text-sm text-gray-500 font-body">@{profile.username}</p>
 

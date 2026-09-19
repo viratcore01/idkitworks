@@ -481,11 +481,11 @@ export default function MatchesPage() {
  )}
 
  <h2 className="font-display font-bold text-xl">{currentUser.displayName}</h2>
- {currentUser.relationshipGoal && (
- <span className={`nb-badge ${GOAL_CHIP[currentUser.relationshipGoal] || 'bg-white text-ink'} text-[10px] inline-flex items-center gap-1 mb-1`}>
- {GOAL_LABEL[currentUser.relationshipGoal] || currentUser.relationshipGoal}
+ {(currentUser.relationshipGoals || []).map((g: string) => (
+ <span key={g} className={`nb-badge ${GOAL_CHIP[g] || 'bg-white text-ink'} text-[10px] inline-flex items-center gap-1 mb-1`}>
+ {GOAL_LABEL[g] || g}
  </span>
- )}
+ ))}
  {currentUser.isVerified && <BadgeCheck size={15} strokeWidth={2.5} className="text-nb-mint inline-block align-text-bottom" />}
  {currentUser.sharedInterests != null && currentUser.sharedInterests > 0 && (
  <span className="nb-badge bg-nb-yellow text-ink text-[10px] inline-flex items-center gap-1 mb-1">

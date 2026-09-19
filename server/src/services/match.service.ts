@@ -47,7 +47,7 @@ const DECK_SELECT = {
       interests: { include: { interest: true } },
       photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' as const } },
       isVerified: true,
-      relationshipGoal: true,
+      relationshipGoals: true,
 };
 
 function ageFrom(dob: Date | null): number | null {
@@ -146,12 +146,18 @@ export class MatchService {
     if (pref?.minYear != null) {
       where.year = { gte: pref.minYear };
     }
-    // Intent matching: restrict to profiles whose relationship goal is one
-    // the viewer is open to. Users who never set a goal always remain
-    // visible (undisclosed intent must not silently exclude anyone); a
-    // disclosed goal that isn't in the viewer's list is filtered out.
+    // Intent matching: restrict to profiles with at least one goal the viewer
+    // is open to. Multi-select on both sides — the filter is "our selections
+    // overlap". Users who never set a goal always remain visible (undisclosed
+    // intent must not silently exclude anyone).
     if (pref?.openToGoals?.length) {
-      where.OR = [{ relationshipGoal: null }, { relationshipGoal: { in: pref.openToGoals } }];
+      // OR scope = (their goals overlap mine) OR (they listed no goal at all).
+      // NOTE: Prisma's top-level `where.OR` REPLACES sibling-AND semantics —
+      // the hasSome condition must live INSIDE this OR, not beside it.
+      where.OR = [
+        { relationshipGoals: { hasSome: pref.openToGoals } },
+        { relationshipGoals: { isEmpty: true } },
+      ];
     }
     // Shared-interest minimum: need N common interests with the viewer.
     // SELF-GUARD: a viewer with zero interests can share none with anyone —
@@ -227,7 +233,7 @@ export class MatchService {
         college: u.college,
         interests: u.interests.map((ui: any) => ui.interest),
         isVerified: u.isVerified,
-        relationshipGoal: u.relationshipGoal,
+        relationshipGoals: u.relationshipGoals,
         theyLikedMe: likedMeSet.has(u.id),
         sharedInterests: (pref?.sharedInterestMin ?? 0) > 0
           ? u.interests.filter((ui: any) => viewerInterestIds.has(ui.interestId)).length
@@ -340,17 +346,17 @@ export class MatchService {
         const [uMe, uThem] = await Promise.all([
           tx.user.findUnique({
             where: { id: senderId },
-            select: { relationshipGoal: true, interests: { select: { interestId: true, interest: { select: { id: true, name: true } } } } },
+            select: { relationshipGoals: true, interests: { select: { interestId: true, interest: { select: { id: true, name: true } } } } },
           }),
           tx.user.findUnique({
             where: { id: receiverId },
-            select: { relationshipGoal: true, interests: { select: { interestId: true, interest: { select: { id: true, name: true } } } } },
+            select: { relationshipGoals: true, interests: { select: { interestId: true, interest: { select: { id: true, name: true } } } } },
           }),
         ]);
-        const commonGoals =
-          uMe?.relationshipGoal && uMe.relationshipGoal === uThem?.relationshipGoal
-            ? [uMe.relationshipGoal]
-            : [];
+        // Multi-select: the match chip lists the INTERSECTION of both users'
+        // goal selections ("you both listed Dating") — order follows the
+        // sender's own preference order.
+        const commonGoals = (uMe?.relationshipGoals ?? []).filter((g) => uThem?.relationshipGoals?.includes(g));
         const myInterests = new Map((uMe?.interests ?? []).map((ui) => [ui.interestId, ui.interest]));
         const commonInterests = (uThem?.interests ?? [])
           .filter((ui) => myInterests.has(ui.interestId))
@@ -553,7 +559,7 @@ export class MatchService {
         college: s.college,
         interests: s.interests.map((ui: any) => ui.interest),
         isVerified: s.isVerified,
-        relationshipGoal: s.relationshipGoal,
+        relationshipGoals: s.relationshipGoals,
         likedAt: r.createdAt,
       });
       if (users.length >= take) break;
