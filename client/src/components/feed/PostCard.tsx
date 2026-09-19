@@ -118,13 +118,13 @@ export default function PostCard({ post, detailView = false, activeTab = 'all' }
  )}
  </span>
  {post.type === 'CONFESSION' && (
- <span className="nb-badge bg-nb-lilac text-ink text-[10px] inline-flex items-center gap-1">
- <Ghost size={12} strokeWidth={2.5} /> CONFESS
+ <span className="nb-badge bg-nb-lilac text-ink text-[10px] inline-flex items-center gap-1" title="Anonymous confession">
+ <Ghost size={12} strokeWidth={2.5} /> Confession
  </span>
  )}
  {post.type === 'QUESTION' && (
- <span className="nb-badge bg-nb-yellow text-ink text-[10px] inline-flex items-center gap-1">
- <FileText size={12} strokeWidth={2.5} /> QUESTION
+ <span className="nb-badge bg-nb-yellow text-ink text-[10px] inline-flex items-center gap-1" title="Question post">
+ <FileText size={12} strokeWidth={2.5} /> Question
  </span>
  )}
  {activeTab !== 'all' && post.type === 'NORMAL' && (
