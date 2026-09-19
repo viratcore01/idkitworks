@@ -394,7 +394,11 @@ export class MatchService {
         publish('match:new', { matchId: match.id, userIds: [senderId, receiverId] });
         publish('notification:new', { userIds: [senderId, receiverId] });
 
-        return { matched: true, match, criteria };
+        // RESPONSE SCOPE: only the two people IN the match ever receive the
+        // criteria (this response goes to the acting sender alone; the partner
+        // gets theirs via the recipient-scoped MATCH notification). Trimmed to
+        // the shape the client needs — no raw Prisma row.
+        return { matched: true, matchId: match.id, criteria };
       }
 
       // One-sided like → notify the receiver (Hinge-style: likes are free to

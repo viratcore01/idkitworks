@@ -80,20 +80,6 @@ export default function MatchesPage() {
  // Always on: the tab badge needs a live count even before the tab is opened
  });
 
- // MATCHED-ON BASIS: the MATCH notifications carry the criteria snapshot
- // ("you both listed Dating · chess"). Reused here so the matches list shows
- // exactly what brought each pair together.
- const { data: notifData } = useQuery({
- queryKey: ['notifications'],
- queryFn: () => api.get('/notifications').then((r) => r.data),
- });
- const criteriaByPartnerId: Record<string, any> = {};
- for (const n of (notifData?.notifications || []) as any[]) {
- if (n.type === 'MATCH' && n.matchId && n.actor?.id) {
- criteriaByPartnerId[n.actor.id] = n.metadata || null;
- }
- }
-
  const { data: conversations, isLoading: loadingConversations } = useQuery({
  queryKey: ['conversations'],
  queryFn: () => api.get('/messages/conversations').then((r) => r.data),
@@ -595,26 +581,6 @@ export default function MatchesPage() {
  <div className="flex-1 min-w-0">
  <p className="font-display font-semibold text-sm">{match.partner.displayName}</p>
  <p className="text-xs text-gray-500 truncate">{match.partner.bio || 'No bio yet'}</p>
- {(() => {
- const criteria = criteriaByPartnerId[match.partner.id];
- const goals: string[] = criteria?.goals || [];
- const interests: any[] = criteria?.interests || [];
- if (!goals.length && !interests.length) return null;
- return (
- <div className="flex flex-wrap items-center gap-1 mt-1">
- <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Matched on:</span>
- {goals.map((g) => (
- <span key={g} className="nb-badge bg-nb-violet text-white text-[10px] px-1.5 py-0.5">{GOAL_LABEL[g] || g}</span>
- ))}
- {interests.slice(0, 3).map((i) => (
- <span key={i.id} className="nb-badge bg-nb-peri text-ink text-[10px] px-1.5 py-0.5">{i.name}</span>
- ))}
- {interests.length > 3 && (
- <span className="text-[10px] text-gray-400">+{interests.length - 3} more</span>
- )}
- </div>
- );
- })()}
  </div>
  {conv && (
  <Link
