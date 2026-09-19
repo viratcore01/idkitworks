@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Heart, MessageSquare, X, HeartCrack, SearchX, MessageSquareOff, SlidersHorizontal, PartyPopper, UserMinus, RotateCcw, Zap, Camera, ImageOff, ChevronLeft, ChevronRight, Undo2, BadgeCheck, Sparkles } from 'lucide-react';
+import { Search, Heart, MessageSquare, X, HeartCrack, SearchX, MessageSquareOff, SlidersHorizontal, PartyPopper, UserMinus, RotateCcw, Zap, Camera, ImageOff, ChevronLeft, ChevronRight, Undo2, BadgeCheck, Sparkles, Lock } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
 import Avatar from '@/components/common/Avatar';
@@ -79,6 +79,20 @@ export default function MatchesPage() {
  queryFn: () => api.get('/matches').then((r) => r.data),
  // Always on: the tab badge needs a live count even before the tab is opened
  });
+
+ // MATCHED-ON BASIS: the MATCH notifications carry the criteria snapshot
+ // ("you both listed Dating · chess"). Reused here so the matches list shows
+ // exactly what brought each pair together.
+ const { data: notifData } = useQuery({
+ queryKey: ['notifications'],
+ queryFn: () => api.get('/notifications').then((r) => r.data),
+ });
+ const criteriaByPartnerId: Record<string, any> = {};
+ for (const n of (notifData?.notifications || []) as any[]) {
+ if (n.type === 'MATCH' && n.matchId && n.actor?.id) {
+ criteriaByPartnerId[n.actor.id] = n.metadata || null;
+ }
+ }
 
  const { data: conversations, isLoading: loadingConversations } = useQuery({
  queryKey: ['conversations'],
@@ -327,7 +341,11 @@ export default function MatchesPage() {
  </div>
 
  {/* ── Looking for (intent matching) ── */}
- <label className="block font-display font-semibold text-sm mb-2">Looking for</label>
+ {/* SYNCED with the profile's "Looking for" — one setting, two doors. */}
+ <label className="block font-display font-semibold text-sm mb-1">Looking for</label>
+ <p className="text-[11px] text-gray-500 mb-2 font-body">
+ Same setting as on your profile — change it here or there, it stays in sync.
+ </p>
  <div className="flex gap-2 mb-2 flex-wrap">
  {GOALS.map((g) => {
  const on = prefs.openToGoals.includes(g.value);
@@ -346,10 +364,14 @@ export default function MatchesPage() {
  );
  })}
  </div>
- <p className="text-[11px] text-gray-500 mb-4 font-body">
+ <p className="text-[11px] text-gray-500 mb-4 font-body flex items-start gap-1">
+ <Lock size={11} strokeWidth={2.5} className="mt-0.5 shrink-0" />
+ <span>
  {prefs.openToGoals.length === 0
- ? 'Nothing picked — every goal can appear in your deck.'
- : `Only these goals (plus people who haven't set one) will show up.`}
+ ? 'Nothing picked — every goal can appear in your deck. '
+ : 'Only these goals (plus people who haven\'t set one) will show up. '}
+ Private: only you see this — nobody else ever does.
+ </span>
  </p>
 
  {/* ── Dealbreakers ── */}
@@ -481,11 +503,7 @@ export default function MatchesPage() {
  )}
 
  <h2 className="font-display font-bold text-xl">{currentUser.displayName}</h2>
- {(currentUser.relationshipGoals || []).map((g: string) => (
- <span key={g} className={`nb-badge ${GOAL_CHIP[g] || 'bg-white text-ink'} text-[10px] inline-flex items-center gap-1 mb-1`}>
- {GOAL_LABEL[g] || g}
- </span>
- ))}
+
  {currentUser.isVerified && <BadgeCheck size={15} strokeWidth={2.5} className="text-nb-mint inline-block align-text-bottom" />}
  {currentUser.sharedInterests != null && currentUser.sharedInterests > 0 && (
  <span className="nb-badge bg-nb-yellow text-ink text-[10px] inline-flex items-center gap-1 mb-1">
@@ -577,6 +595,26 @@ export default function MatchesPage() {
  <div className="flex-1 min-w-0">
  <p className="font-display font-semibold text-sm">{match.partner.displayName}</p>
  <p className="text-xs text-gray-500 truncate">{match.partner.bio || 'No bio yet'}</p>
+ {(() => {
+ const criteria = criteriaByPartnerId[match.partner.id];
+ const goals: string[] = criteria?.goals || [];
+ const interests: any[] = criteria?.interests || [];
+ if (!goals.length && !interests.length) return null;
+ return (
+ <div className="flex flex-wrap items-center gap-1 mt-1">
+ <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Matched on:</span>
+ {goals.map((g) => (
+ <span key={g} className="nb-badge bg-nb-violet text-white text-[10px] px-1.5 py-0.5">{GOAL_LABEL[g] || g}</span>
+ ))}
+ {interests.slice(0, 3).map((i) => (
+ <span key={i.id} className="nb-badge bg-nb-peri text-ink text-[10px] px-1.5 py-0.5">{i.name}</span>
+ ))}
+ {interests.length > 3 && (
+ <span className="text-[10px] text-gray-400">+{interests.length - 3} more</span>
+ )}
+ </div>
+ );
+ })()}
  </div>
  {conv && (
  <Link

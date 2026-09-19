@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import {
  MessageSquare, Ban, FileText, BadgeCheck, CircleHelp, ShieldAlert,
- Heart, UserMinus, MoreVertical, Flag, Pencil, Calendar, GraduationCap, Sparkles, Ghost, EyeOff,
+ Heart, UserMinus, MoreVertical, Flag, Pencil, Calendar, GraduationCap, Sparkles, Ghost, EyeOff, Lock,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
@@ -130,14 +130,15 @@ export default function ProfilePage() {
  {profile.age && (
  <span className="nb-badge bg-nb-yellow text-ink text-[10px]">{profile.age} yrs</span>
  )}
- {(profile.relationshipGoals || []).map((g: string) => (
- <span key={g} className={`nb-badge text-[10px] ${
+ {isOwnProfile && (profile.relationshipGoals || []).map((g: string) => (
+ <span key={g} className={`nb-badge text-[10px] inline-flex items-center gap-1 ${
  g === 'RELATIONSHIP' ? 'bg-nb-violet text-white' :
  g === 'DATING' ? 'bg-nb-pink text-white' :
  g === 'HOOKUP' ? 'bg-nb-mint text-ink' :
  g === 'CASUAL' ? 'bg-nb-yellow text-ink' :
  'bg-nb-lilac text-ink'
- }`}>
+ }`} title="Only you can see this">
+ <Lock size={9} strokeWidth={3} />
  {g === 'RELATIONSHIP' ? 'Relationship' :
  g === 'DATING' ? 'Dating' :
  g === 'HOOKUP' ? 'Hookup' :

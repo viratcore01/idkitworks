@@ -56,6 +56,11 @@ function ageFrom(dob: Date | null): number | null {
   return Math.floor(diff / (365.25 * 24 * 3600 * 1000));
 }
 
+/**
+ * The ONE source of truth for "Looking for" (intent matching): the user's own
+ * profile goals (User.relationshipGoals). Discovery filters, the deck and the
+ * match-criteria snapshot all read it — there is no separate hidden preference.
+ */
 export class MatchService {
   /**
    * The swipe deck: one page at a time (keyset pagination via offset is fine here —
@@ -146,16 +151,18 @@ export class MatchService {
     if (pref?.minYear != null) {
       where.year = { gte: pref.minYear };
     }
-    // Intent matching: restrict to profiles with at least one goal the viewer
-    // is open to. Multi-select on both sides — the filter is "our selections
-    // overlap". Users who never set a goal always remain visible (undisclosed
-    // intent must not silently exclude anyone).
-    if (pref?.openToGoals?.length) {
+    // ── SYNC RULE: "Looking for" lives ON THE PROFILE (User.relationshipGoals).
+    // The deck filter reads it directly — editing it in the profile or via the
+    // matches preferences endpoint edits the same field. Users who never set a
+    // goal always remain visible (undisclosed intent must not silently
+    // exclude anyone).
+    const myGoals = viewer.relationshipGoals?.length ? viewer.relationshipGoals : (pref?.openToGoals ?? []);
+    if (myGoals.length) {
       // OR scope = (their goals overlap mine) OR (they listed no goal at all).
       // NOTE: Prisma's top-level `where.OR` REPLACES sibling-AND semantics —
       // the hasSome condition must live INSIDE this OR, not beside it.
       where.OR = [
-        { relationshipGoals: { hasSome: pref.openToGoals } },
+        { relationshipGoals: { hasSome: myGoals } },
         { relationshipGoals: { isEmpty: true } },
       ];
     }
@@ -233,7 +240,10 @@ export class MatchService {
         college: u.college,
         interests: u.interests.map((ui: any) => ui.interest),
         isVerified: u.isVerified,
-        relationshipGoals: u.relationshipGoals,
+        // PRIVACY: goals are intent data, not display data — other people's
+        // selections never leave the server. The common basis is revealed
+        // AFTER a mutual match, via match.criteria.
+        relationshipGoals: undefined,
         theyLikedMe: likedMeSet.has(u.id),
         sharedInterests: (pref?.sharedInterestMin ?? 0) > 0
           ? u.interests.filter((ui: any) => viewerInterestIds.has(ui.interestId)).length
@@ -559,7 +569,8 @@ export class MatchService {
         college: s.college,
         interests: s.interests.map((ui: any) => ui.interest),
         isVerified: s.isVerified,
-        relationshipGoals: s.relationshipGoals,
+        // PRIVACY: same rule as the deck — their goals stay on the server.
+        relationshipGoals: undefined,
         likedAt: r.createdAt,
       });
       if (users.length >= take) break;
@@ -602,6 +613,10 @@ export class MatchService {
     sharedInterestMin?: number;
     collegePreference?: string;
   }) {
+    // SYNC RULE: openToGoals IS the profile's "Looking for" (multi-select).
+    // Writing it here updates User.relationshipGoals, so the profile edit and
+    // the discovery filter can never drift apart. (Profile edits flow through
+    // auth.service.updateProfile → the same column.)
     // Clamp inputs — server is the source of truth (floor 16 = app minimum age)
     const ageMin = data.ageRangeMin != null ? Math.min(Math.max(Math.round(data.ageRangeMin), 16), 99) : undefined;
     const ageMax = data.ageRangeMax != null ? Math.min(Math.max(Math.round(data.ageRangeMax), 16), 99) : undefined;
@@ -615,6 +630,9 @@ export class MatchService {
     const openToGoals = Array.isArray(data.openToGoals)
       ? [...new Set(data.openToGoals.filter((g) => VALID_GOALS.includes(g)))].slice(0, VALID_GOALS.length)
       : undefined;
+    if (openToGoals !== undefined) {
+      await prisma.user.update({ where: { id: userId }, data: { relationshipGoals: openToGoals } });
+    }
     // Dealbreakers
     const minYear = data.minYear === null || data.minYear === undefined
       ? null
@@ -654,7 +672,22 @@ export class MatchService {
   }
 
   async getPreference(userId: string) {
-    const pref = await prisma.matchPreference.findUnique({ where: { userId } });
-    return pref || { lookingFor: 'DATING', ageRangeMin: null, ageRangeMax: null, genderPreference: 'EVERYONE', openToGoals: [], minYear: null, sharedInterestMin: 0, collegePreference: null, visibility: true };
+    // SYNC RULE: openToGoals is read from the profile (single source of truth).
+    const [pref, user] = await Promise.all([
+      prisma.matchPreference.findUnique({ where: { userId } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { relationshipGoals: true } }),
+    ]);
+    const goals = user?.relationshipGoals ?? [];
+    return {
+      lookingFor: pref?.lookingFor ?? 'DATING',
+      ageRangeMin: pref?.ageRangeMin ?? null,
+      ageRangeMax: pref?.ageRangeMax ?? null,
+      genderPreference: pref?.genderPreference ?? 'EVERYONE',
+      openToGoals: goals,
+      minYear: pref?.minYear ?? null,
+      sharedInterestMin: pref?.sharedInterestMin ?? 0,
+      collegePreference: pref?.collegePreference ?? null,
+      visibility: pref?.visibility ?? true,
+    };
   }
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Save, Hourglass, Camera, Plus, Calendar } from 'lucide-react';
+import { X, Save, Hourglass, Camera, Plus, Calendar, Lock } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
@@ -309,10 +309,14 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  );
  })}
  </div>
- <p className="text-[11px] text-gray-500 mb-4 font-body">
+ <p className="text-[11px] text-gray-500 mb-4 font-body flex items-start gap-1">
+ <Lock size={11} strokeWidth={2.5} className="mt-0.5 shrink-0" />
+ <span>
  {form.relationshipGoals.length === 0
- ? 'Nothing picked — shown as "rather not say".'
- : 'People filtering for any of these will see you in their deck.'}
+ ? 'Nothing picked — shown as "rather not say". '
+ : ''}
+ Only you can see this. We use it to match you with people looking for the same things — after you match, you both see what you have in common.
+ </span>
  </p>
 
  <div className="grid grid-cols-2 gap-3 mb-3">

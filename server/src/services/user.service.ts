@@ -40,7 +40,6 @@ export class UserService {
     college: true,    course: true,
     year: true,
     gender: true,
-    relationshipGoals: true,
     dateOfBirth: true,
     isVerified: true,
     verificationStatus: true,
@@ -177,7 +176,10 @@ export class UserService {
       college: user.college,
       course: user.course,
       year: user.year,
-      relationshipGoals: user.relationshipGoals,
+      // PRIVACY: "Looking for" is intent data — it powers the deck filter on
+      // the SERVER but is never shown to other users. Only the owner receives
+      // it; everyone else gets nothing, not even the count.
+      ...(isOwn ? { relationshipGoals: user.relationshipGoals } : {}),
       // Age is public on dating profiles; exact DOB never leaves the server.
       age: this.ageOf(user.dateOfBirth),
       gender: user.gender,
