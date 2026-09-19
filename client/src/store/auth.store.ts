@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import api from '@/services/api';
 import { ensurePhotoToken } from '@/utils/photo';
+import { disconnectSocket } from '@/services/realtime';
+import { queryClient } from '@/services/queryClient';
 import { User } from '@/types';
 
 interface AuthState {
@@ -14,6 +16,8 @@ interface AuthState {
   loginWithGoogle: (idToken: string) => Promise<boolean>;
   signup: (data: any) => Promise<void>;
   logout: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  deactivateAccount: () => Promise<void>;
   fetchMe: () => Promise<void>;
   updateProfile: (data: any) => Promise<void>;
   applyCollegeChange: (college: User['college']) => void;
@@ -64,6 +68,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: async () => {
     const refreshToken = localStorage.getItem('refreshToken');
     try { await api.post('/auth/logout', { refreshToken }); } catch {}
+    disconnectSocket();
+    queryClient.clear();
+    localStorage.clear();
+    set({ user: null, isAuthenticated: false, isIncognito: false });
+  },
+
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    await api.patch('/auth/password', { currentPassword, newPassword });
+    // Server kills ALL sessions — behave like a logout everywhere.
+    disconnectSocket();
+    queryClient.clear();
+    localStorage.clear();
+    set({ user: null, isAuthenticated: false, isIncognito: false });
+  },
+
+  deactivateAccount: async () => {
+    await api.delete('/auth/me');
+    disconnectSocket();
+    queryClient.clear();
     localStorage.clear();
     set({ user: null, isAuthenticated: false, isIncognito: false });
   },

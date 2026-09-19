@@ -26,7 +26,25 @@ export class MessageService {
         ],
       },
     });
-    if (blocked) throw new Error('Cannot message this user');
+    if (blocked) {
+      const e: any = new Error('Cannot message this user');
+      e.status = 403;
+      e.code = 'BLOCKED';
+      throw e;
+    }
+
+    // PRODUCT RULE: chat is gated on an ACTIVE match — no messaging strangers.
+    // (Unmatch keeps history readable via getMessages, but no NEW threads.)
+    const [mA, mB] = [userId, otherUserId].sort();
+    const match = await prisma.match.findUnique({
+      where: { userA_userB: { userA: mA, userB: mB } },
+      select: { status: true },
+    });
+    if (!match || match.status !== 'ACTIVE') {
+      const e: any = new Error('Match required to message');
+      e.status = 403;
+      throw e;
+    }
 
     // Existing chat between exactly THIS PAIR — both members, no one else.
     // (The old lookup scanned the other user's whole conversation history and
@@ -127,11 +145,12 @@ export class MessageService {
       where: { conversationId_userId: { conversationId, userId } },
     });
     if (!member) throw new Error('Not a member of this conversation');
+    const take = Math.min(Math.max(limit || 50, 1), 100);
 
     const messages = await prisma.message.findMany({
       // Deleted messages stay in the thread as tombstones (WhatsApp-style)
       where: { conversationId },
-      take: limit + 1,
+      take: take + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       orderBy: { createdAt: 'desc' },
       include: {
@@ -139,8 +158,8 @@ export class MessageService {
       },
     });
 
-    const hasMore = messages.length > limit;
-    const data = hasMore ? messages.slice(0, limit) : messages;
+    const hasMore = messages.length > take;
+    const data = hasMore ? messages.slice(0, take) : messages;
 
     return {
       messages: data.reverse().map((m) => ({
@@ -201,6 +220,13 @@ export class MessageService {
     const trimmed = String(content || '').trim();
     if (!trimmed) throw new Error('Message cannot be empty');
     if (trimmed.length > 2000) throw new Error('Message must be under 2000 characters');
+    // Unvalidated mediaUrl is a stored-XSS/phish vector — allowlist https only.
+    let safeMediaUrl: string | undefined;
+    if (mediaUrl !== undefined && mediaUrl !== null && String(mediaUrl).trim() !== '') {
+      const u = String(mediaUrl).trim();
+      if (!/^https:\/\//i.test(u) || u.length > 2048) throw new Error('Invalid media URL');
+      safeMediaUrl = u;
+    }
 
     // Blocks stop new messages even in an existing thread
     const members = await prisma.conversationMember.findMany({
@@ -215,11 +241,16 @@ export class MessageService {
           { blockerId: id, blockedId: senderId },
         ]) },
       });
-      if (blocked) throw new Error('Cannot message this user');
+      if (blocked) {
+        const e: any = new Error('Cannot message this user');
+        e.status = 403;
+        e.code = 'BLOCKED';
+        throw e;
+      }
     }
 
     const message = await prisma.message.create({
-      data: { conversationId, senderId, content: trimmed, mediaUrl },
+      data: { conversationId, senderId, content: trimmed, mediaUrl: safeMediaUrl },
       include: {
         sender: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true } },
       },

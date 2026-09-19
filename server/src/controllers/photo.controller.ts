@@ -4,6 +4,7 @@ import { prisma } from '../config/prisma';
 import { env } from '../config/env';
 import { AuthRequest } from '../types';
 import { sendError } from '../utils/http-error';
+import { isPlausibleImage } from '../utils/image-validation';
 
 /** Max 4 photos per user: slot 0 = profile pic, slots 1-3 = gallery. */
 const MAX_PHOTOS = 4;
@@ -22,6 +23,10 @@ export async function uploadPhoto(req: AuthRequest, res: Response) {
       return res.status(400).json({ error: 'Only JPG, PNG, WebP or GIF images are allowed' });
     }
     if (file.size > MAX_BYTES) return res.status(400).json({ error: 'Image must be under 5 MB' });
+    // Magic-byte check: a renamed executable with mimetype image/png dies here.
+    if (!isPlausibleImage(file.buffer, file.mimetype)) {
+      return res.status(400).json({ error: 'File is not a valid image' });
+    }
 
     const slot = Math.min(Math.max(parseInt(req.body?.slot, 10) || 0, 0), MAX_PHOTOS - 1);
     const userId = req.user!.id;
@@ -96,10 +101,14 @@ export async function getPhoto(req: AuthRequest, res: Response) {
     if (!photo || !photo.user.isActive) return res.status(404).json({ error: 'Photo not found' });
 
     // PRODUCT RULE: college-only visibility — also allow the owner themselves
-    // (they may be mid-setup without a college yet).
-    const sameCollege = !req.user!.collegeId || photo.user.collegeId === req.user!.collegeId;
+    // (they may be mid-setup without a college yet). A viewer WITHOUT a
+    // college sees nothing except their own photos.
     const isOwner = photo.userId === req.user!.id;
-    if (!sameCollege && !isOwner) return res.status(404).json({ error: 'Photo not found' });
+    if (!isOwner) {
+      if (!req.user!.collegeId || !photo.user.collegeId || photo.user.collegeId !== req.user!.collegeId) {
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+    }
 
     res.setHeader('Content-Type', photo.mimeType);
     res.setHeader('Cache-Control', 'private, max-age=3600');

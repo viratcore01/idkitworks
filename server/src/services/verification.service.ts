@@ -1,6 +1,7 @@
 import { prisma } from '../config/prisma';
 import { publish } from '../config/bus';
 import { invalidateUser } from '../utils/user-cache';
+import { isPlausibleImage } from '../utils/image-validation';
 
 /**
  * Student-ID verification — HUMAN-ONLY by product decision.

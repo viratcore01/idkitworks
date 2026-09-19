@@ -55,7 +55,7 @@ export class PostService {
       const e: any = new Error('Join your college before posting'); e.status = 403; throw e;
     }
 
-    return prisma.post.create({
+    const post = await prisma.post.create({
       data: {
         authorId,
         content,
@@ -72,6 +72,18 @@ export class PostService {
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
       },
     });
+    // PRIVACY: the create response is masked exactly like reads — the raw
+    // authorId of an anonymous post must never cross the wire, not even to
+    // its own author (the client keys ownership off isMine).
+    if (post.isAnonymous) {
+      return {
+        ...post,
+        isMine: true,
+        author: { ...ANON_AUTHOR, college: null, course: null, year: null },
+        authorId: ANON_AUTHOR.id,
+      };
+    }
+    return { ...post, isMine: true };
   }
 
   async getFeed(userId: string, query: FeedQuery) {
@@ -199,13 +211,25 @@ export class PostService {
   }
 
   /** Guard used by likes/comments: live post AND same college as the actor. */
-  private async assertLivePost(postId: string, actorCollegeId?: string | null) {
+  private async assertLivePost(postId: string, actorCollegeId?: string | null, actorId?: string) {
     const post = await prisma.post.findUnique({
       where: { id: postId },
       select: { deletedAt: true, authorId: true, author: { select: { collegeId: true, isActive: true } } },
     });
     if (!post || post.deletedAt) throw new Error('Post not found');
     if (actorCollegeId && post.author.collegeId !== actorCollegeId) throw new Error('Post not found');
+    // Blocks are a hard wall: neither direction may interact with the other's posts.
+    if (actorId && post.authorId !== actorId) {
+      const blocked = await prisma.block.findFirst({
+        where: {
+          OR: [
+            { blockerId: actorId, blockedId: post.authorId },
+            { blockerId: post.authorId, blockedId: actorId },
+          ],
+        },
+      });
+      if (blocked) throw new Error('Post not found');
+    }
     return post;
   }  /**
    * Edit own post. STRICT WHITELIST: only content is editable from the API —
@@ -236,7 +260,7 @@ export class PostService {
   }
 
   async toggleLike(postId: string, userId: string, actorCollegeId?: string | null) {
-    await this.assertLivePost(postId, actorCollegeId);
+    await this.assertLivePost(postId, actorCollegeId, userId);
 
     const existing = await prisma.postLike.findUnique({
       where: { userId_postId: { userId, postId } },
@@ -275,7 +299,8 @@ export class PostService {
 
   /** Flat list of all live comments (top-level + replies); client nests them. */
   async getComments(postId: string, userId: string, limit = 20, cursor?: string, viewerCollegeId?: string | null) {
-    await this.assertLivePost(postId, viewerCollegeId);
+    await this.assertLivePost(postId, viewerCollegeId, userId);
+    const take = Math.min(Math.max(limit || 20, 1), 50);
 
     const comments = await prisma.comment.findMany({
       // Deleted comments stay as tombstones when they have replies (Reddit-style);
@@ -284,7 +309,7 @@ export class PostService {
         postId,
         OR: [{ deletedAt: null }, { replies: { some: { deletedAt: null } } }],
       },
-      take: limit + 1,
+      take: take + 1,
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       orderBy: { createdAt: 'asc' },
       include: {
@@ -295,8 +320,8 @@ export class PostService {
       },
     });
 
-    const hasMore = comments.length > limit;
-    const data = hasMore ? comments.slice(0, limit) : comments;
+    const hasMore = comments.length > take;
+    const data = hasMore ? comments.slice(0, take) : comments;
 
     return {
       comments: data.map((c) => ({
@@ -312,7 +337,7 @@ export class PostService {
   }
 
   async createComment(postId: string, authorId: string, content: string, isAnonymous = false, parentCommentId?: string, actorCollegeId?: string | null) {
-    await this.assertLivePost(postId, actorCollegeId);
+    await this.assertLivePost(postId, actorCollegeId, authorId);
 
     const trimmed = String(content || '').trim();
     if (!trimmed) throw new Error('Comment cannot be empty');
@@ -408,7 +433,7 @@ export class PostService {
    * via the unique (userId, postId) pair — the losing create is a no-op.
    */
   async toggleSave(postId: string, userId: string, actorCollegeId?: string | null) {
-    await this.assertLivePost(postId, actorCollegeId);
+    await this.assertLivePost(postId, actorCollegeId, userId);
     const existing = await prisma.savedPost.findUnique({
       where: { userId_postId: { userId, postId } },
     });

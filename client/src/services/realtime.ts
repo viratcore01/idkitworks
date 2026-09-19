@@ -44,3 +44,10 @@ export function getSocket(): Socket | null {
 export function joinConversation(conversationId: string) {
   getSocket()?.emit('join-conversation', conversationId);
 }
+
+/** Tear the connection down (logout, account switch, deactivation) so the
+ * next session never inherits the previous user's rooms or handshake token. */
+export function disconnectSocket() {
+  try { socket?.disconnect(); } catch {}
+  socket = null;
+}

@@ -74,6 +74,25 @@ export class AuthController {
     }
   }
 
+  async changePassword(req: AuthRequest, res: Response) {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      await authService.changePassword(req.user!.id, currentPassword, newPassword);
+      res.json({ message: 'Password changed. Please log in again on all devices.' });
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  async deactivate(req: AuthRequest, res: Response) {
+    try {
+      await authService.deactivate(req.user!.id);
+      res.json({ message: 'Account deactivated' });
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
   async me(req: AuthRequest, res: Response) {
     try {
       const user = await authService.getMe(req.user!.id);

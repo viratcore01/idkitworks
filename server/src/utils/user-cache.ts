@@ -19,6 +19,7 @@ interface CachedUser {
   isActive: boolean;
   collegeId: string | null;
   verificationStatus: string;
+  role: string;
   at: number;
 }
 

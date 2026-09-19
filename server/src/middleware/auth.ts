@@ -24,8 +24,13 @@ export async function photoAuth(req: AuthRequest, res: Response, next: NextFunct
 
   try {
     const payload = verifyAccessToken(token);
-    if (purpose && payload.purpose !== purpose) {
-      // A ?pt= value that isn't a photo token is never accepted.
+    if (purpose === 'photo') {
+      // A ?pt= value must be a dedicated photo token — never a short-lived access token.
+      if (payload.purpose !== 'photo') {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    } else if ((payload as any).purpose === 'photo') {
+      // Photo tokens are scoped to <img> serving only — they can never act as API credentials.
       return res.status(401).json({ error: 'Invalid token' });
     }
     // PERF: same 30s auth cache — a feed with 20 avatars = 20 image requests,
@@ -34,16 +39,16 @@ export async function photoAuth(req: AuthRequest, res: Response, next: NextFunct
       prisma.user
         .findUnique({
           where: { id: payload.userId },
-          select: { isActive: true, collegeId: true },
+          select: { isActive: true, collegeId: true, role: true },
         })
-        .then((u) => (u ? { isActive: u.isActive, collegeId: u.collegeId, verificationStatus: 'UNVERIFIED' } : null)),
+        .then((u) => (u ? { isActive: u.isActive, collegeId: u.collegeId, role: u.role, verificationStatus: 'UNVERIFIED' } : null)),
     );
     if (!dbUser || !dbUser.isActive) return res.status(401).json({ error: 'Account unavailable' });
     req.user = {
       id: payload.userId,
       email: payload.email,
       username: payload.username,
-      role: payload.role,
+      role: (dbUser as any).role || payload.role,
       collegeId: dbUser.collegeId,
     };
     next();
@@ -68,15 +73,20 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
 
   try {
     const payload = verifyAccessToken(token);
+    if ((payload as any).purpose === 'photo') {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
     // PERF: cached for 30s — every avatar <img> used to pay its own DB
     // round-trip here. Mutations that change this state call invalidateUser().
+    // Role is read live from the DB (never trusted from the JWT) so
+    // promote/demote takes effect within the cache TTL.
     const dbUser = await cachedLiveUser(payload.userId, () =>
       prisma.user
         .findUnique({
           where: { id: payload.userId },
-          select: { isActive: true, collegeId: true, verificationStatus: true },
+          select: { isActive: true, collegeId: true, verificationStatus: true, role: true },
         })
-        .then((u) => (u ? { isActive: u.isActive, collegeId: u.collegeId, verificationStatus: u.verificationStatus } : null)),
+        .then((u) => (u ? { isActive: u.isActive, collegeId: u.collegeId, verificationStatus: u.verificationStatus, role: u.role } : null)),
     );
 
     if (!dbUser || !dbUser.isActive) {
@@ -87,7 +97,7 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       id: payload.userId,
       email: payload.email,
       username: payload.username,
-      role: payload.role,
+      role: (dbUser as any).role || payload.role,
       collegeId: dbUser.collegeId,
       verificationStatus: dbUser.verificationStatus,
     };
@@ -130,14 +140,32 @@ export function isSuperAdmin(user?: AuthUser): boolean {
  * Enforced HERE, on the server, per request: the client hiding screens is
  * convenience, this is the actual wall. Admins are exempt (they must be able
  * to reach the review queue and every page regardless of their own status).
+ *
+ * STALE-CACHE GUARD: auth state is cached for 30s. If the cache says
+ * UNVERIFIED we do ONE live re-read before rejecting — otherwise a student
+ * approved seconds ago stares at "must be verified" until the TTL expires.
+ * (Fail-closed on the live read: any DB error still rejects.)
  */
-export function verificationRequired(req: AuthRequest, res: Response, next: NextFunction) {
+export async function verificationRequired(req: AuthRequest, res: Response, next: NextFunction) {
   if (req.user?.role === 'admin' || req.user?.role === 'super_admin') return next();
-  if (req.user?.verificationStatus !== 'VERIFIED') {
-    return res.status(403).json({
-      error: 'Your student ID must be verified by a moderator first',
-      code: 'VERIFICATION_REQUIRED',
+  if (req.user?.verificationStatus === 'VERIFIED') return next();
+  try {
+    const live = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { verificationStatus: true },
     });
+    if (live?.verificationStatus === 'VERIFIED') {
+      req.user!.verificationStatus = 'VERIFIED';
+      const { setCachedUser, getCachedUser } = await import('../utils/user-cache');
+      const cached = getCachedUser(req.user!.id);
+      if (cached) setCachedUser(req.user!.id, { ...cached, verificationStatus: 'VERIFIED' });
+      return next();
+    }
+  } catch {
+    /* fall through to the 403 below */
   }
-  next();
+  return res.status(403).json({
+    error: 'Your student ID must be verified by a moderator first',
+    code: 'VERIFICATION_REQUIRED',
+  });
 }

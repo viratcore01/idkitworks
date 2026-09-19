@@ -281,7 +281,12 @@ export class MatchService {
         ],
       },
     });
-    if (blocked) throw new Error('Cannot interact with this user');
+    if (blocked) {
+      const e: any = new Error('Cannot interact with this user');
+      e.status = 403;
+      e.code = 'BLOCKED';
+      throw e;
+    }
 
     if (action === 'LIKE') {
       const windowStart = new Date(Date.now() - LIKE_WINDOW_HOURS * 3600 * 1000);
@@ -483,6 +488,77 @@ export class MatchService {
   async likesYouCount(userId: string) {
     const count = await prisma.matchLike.count({ where: { receiverId: userId, action: 'LIKE' } });
     return { likesYou: count };
+  }
+
+  /**
+   * WHO LIKES YOU (Hinge/Tinder-Gold pattern, free): the people whose LIKE is
+   * still waiting for an answer — newest first. Same-college, active, unblocked
+   * only; people already in an ACTIVE match live in the matches list instead.
+   * Powers the "N waiting" grid; liking back from here is an instant match.
+   */
+  async likesYou(userId: string, limit = 50) {
+    const take = Math.min(Math.max(limit, 1), 50);
+    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
+    if (!viewer?.collegeId) return { users: [] };
+
+    const blocks = await prisma.block.findMany({
+      where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+      select: { blockerId: true, blockedId: true },
+    });
+    const blockedIds = new Set(blocks.flatMap((b) => [b.blockerId, b.blockedId]));
+    // Already-answered likes (I swiped back either way) leave the waiting list.
+    const answered = await prisma.matchLike.findMany({
+      where: { senderId: userId },
+      select: { receiverId: true },
+    });
+    const answeredIds = new Set(answered.map((a) => a.receiverId));
+    // ACTIVE matches live in the matches list, not here.
+    const active = await prisma.match.findMany({
+      where: { status: 'ACTIVE', OR: [{ userA: userId }, { userB: userId }] },
+      select: { userA: true, userB: true },
+    });
+    const matchedIds = new Set(active.flatMap((m) => [m.userA, m.userB]));
+
+    const rows = await prisma.matchLike.findMany({
+      where: { receiverId: userId, action: 'LIKE' },
+      orderBy: { createdAt: 'desc' },
+      take: take + blockedIds.size + answeredIds.size + matchedIds.size + 1,
+      include: {
+        sender: {
+          select: {
+            ...DECK_SELECT,
+            collegeId: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    const users = [];
+    for (const r of rows) {
+      const s: any = r.sender;
+      if (!s?.isActive) continue;
+      if (s.collegeId !== viewer.collegeId) continue;
+      if (blockedIds.has(s.id) || answeredIds.has(s.id) || matchedIds.has(s.id)) continue;
+      users.push({
+        id: s.id,
+        username: s.username,
+        displayName: s.displayName,
+        avatarUrl: s.avatarUrl,
+        photos: s.photos.map((p: any) => ({ id: p.id, slot: p.slot })),
+        bio: s.bio,
+        course: s.course,
+        year: s.year,
+        age: ageFrom(s.dateOfBirth),
+        college: s.college,
+        interests: s.interests.map((ui: any) => ui.interest),
+        isVerified: s.isVerified,
+        relationshipGoal: s.relationshipGoal,
+        likedAt: r.createdAt,
+      });
+      if (users.length >= take) break;
+    }
+    return { users };
   }
 
   /**

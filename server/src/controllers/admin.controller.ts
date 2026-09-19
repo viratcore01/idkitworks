@@ -18,10 +18,10 @@ export class AdminController {
   // Reports
   async createReport(req: AuthRequest, res: Response) {
     try {
-      const report = await reportService.createReport(req.user!.id, req.body);
-      res.status(201).json(report);
+      const { report, deduped } = await reportService.createReport(req.user!.id, req.body);
+      res.status(deduped ? 200 : 201).json(deduped ? { ...report, deduped: true } : report);
     } catch (error: any) {
-      sendError(res, error, 400);
+      sendError(res, error, error.status || 400);
     }
   }
 

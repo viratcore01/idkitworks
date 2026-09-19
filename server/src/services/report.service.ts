@@ -12,15 +12,58 @@ export class ReportService {
     reason: string;
     description?: string;
   }) {
-    return prisma.report.create({
+    const targetType = String(data.targetType || '').toUpperCase();
+    const reason = String(data.reason || '').toUpperCase();
+    const targetId = String(data.targetId || '');
+    const ALLOWED_TARGETS = ['POST', 'COMMENT', 'USER', 'MESSAGE'];
+    const ALLOWED_REASONS = ['INAPPROPRIATE', 'SPAM', 'HARASSMENT', 'FAKE_PROFILE', 'OTHER'];
+    if (!ALLOWED_TARGETS.includes(targetType)) {
+      const e: any = new Error('Invalid report target'); e.status = 400; throw e;
+    }
+    if (!ALLOWED_REASONS.includes(reason)) {
+      const e: any = new Error('Invalid report reason'); e.status = 400; throw e;
+    }
+    if (!targetId) {
+      const e: any = new Error('Report target is required'); e.status = 400; throw e;
+    }
+    if (data.description !== undefined && (typeof data.description !== 'string' || data.description.length > 1000)) {
+      const e: any = new Error('Description must be under 1000 characters'); e.status = 400; throw e;
+    }
+
+    // Target must exist (and not be soft-deleted) — reporting ghosts spams the queue.
+    let exists = false;
+    if (targetType === 'POST') {
+      exists = !!(await prisma.post.findFirst({ where: { id: targetId, deletedAt: null } }));
+    } else if (targetType === 'COMMENT') {
+      exists = !!(await prisma.comment.findFirst({ where: { id: targetId, deletedAt: null } }));
+    } else if (targetType === 'USER') {
+      if (targetId === reporterId) {
+        const e: any = new Error('You cannot report yourself'); e.status = 400; throw e;
+      }
+      exists = !!(await prisma.user.findFirst({ where: { id: targetId, isActive: true } }));
+    } else {
+      exists = !!(await prisma.message.findFirst({ where: { id: targetId, deletedAt: null } }));
+    }
+    if (!exists) {
+      const e: any = new Error('Reported content not found'); e.status = 404; throw e;
+    }
+
+    // Dedupe: one pending report per reporter+target — the queue shows it once.
+    const dup = await prisma.report.findFirst({
+      where: { reporterId, targetType: targetType as any, targetId, status: 'PENDING' },
+    });
+    if (dup) return { report: dup, deduped: true };
+
+    const report = await prisma.report.create({
       data: {
         reporterId,
-        targetType: data.targetType as any,
-        targetId: data.targetId,
-        reason: data.reason as any,
+        targetType: targetType as any,
+        targetId,
+        reason: reason as any,
         description: data.description,
       },
     });
+    return { report, deduped: false };
   }
 
   /**

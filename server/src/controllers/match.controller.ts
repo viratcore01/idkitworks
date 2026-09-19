@@ -71,6 +71,15 @@ export class MatchController {
     }
   }
 
+  async likesYou(req: AuthRequest, res: Response) {
+    try {
+      const limit = parseInt(req.query.limit as string) || undefined;
+      res.json(await service.likesYou(req.user!.id, limit));
+    } catch (error: any) {
+      sendError(res, error, 400);
+    }
+  }
+
   async rewind(req: AuthRequest, res: Response) {
     try {
       const result = await service.rewindLastPass(req.user!.id);

@@ -74,7 +74,7 @@ export class AuthService {
       typeof input?.email !== 'string' || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email) ||
       typeof input?.username !== 'string' || !/^[a-zA-Z0-9_]{3,20}$/.test(input.username) ||
       typeof input?.displayName !== 'string' || input.displayName.trim().length < 2 ||
-      typeof input?.password !== 'string' || input.password.length < 6 ||
+      typeof input?.password !== 'string' || input.password.length < 6 || input.password.length > 128 ||
       typeof input?.collegeId !== 'string' || !input.collegeId
     ) {
       const e: any = new Error('Invalid signup details'); e.status = 400; throw e;
@@ -170,6 +170,12 @@ export class AuthService {
     if (typeof email !== 'string' || typeof password !== 'string') {
       const e: any = new Error('Invalid email or password'); e.status = 401; throw e;
     }
+    // Overlong passwords can never be valid (signup caps at 128) — reject
+    // before bcrypt burns CPU on a 100kb payload.
+    if (password.length > 128) {
+      await comparePassword(password.slice(0, 128), DUMMY_HASH);
+      throw new Error('Invalid email or password');
+    }
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
@@ -257,6 +263,42 @@ export class AuthService {
 
   async logout(refreshToken: string): Promise<void> {
     await prisma.refreshToken.deleteMany({ where: { token: refreshToken } });
+  }
+
+  /**
+   * Change password for a logged-in user. Verifies the current password,
+   * then logs out EVERYWHERE (all refresh tokens die) — a password change
+   * after a device theft must actually end the thief's session.
+   */
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+      const e: any = new Error('Invalid password'); e.status = 400; throw e;
+    }
+    if (newPassword.length < 6 || newPassword.length > 128) {
+      const e: any = new Error('New password must be 6-128 characters'); e.status = 400; throw e;
+    }
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive) {
+      const e: any = new Error('Account unavailable'); e.status = 401; throw e;
+    }
+    const ok = await comparePassword(currentPassword, user.passwordHash);
+    if (!ok) {
+      const e: any = new Error('Current password is incorrect'); e.status = 403; throw e;
+    }
+    await prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(newPassword) } });
+    await prisma.refreshToken.deleteMany({ where: { userId } });
+    invalidateUser(userId);
+  }
+
+  /**
+   * Self-serve deactivation: the account is locked out everywhere immediately
+   * (isActive=false is checked in auth, login, refresh and socket layers) and
+   * all sessions die. Content is preserved for safety/moderation review.
+   */
+  async deactivate(userId: string): Promise<void> {
+    await prisma.user.update({ where: { id: userId }, data: { isActive: false } });
+    await prisma.refreshToken.deleteMany({ where: { userId } });
+    invalidateUser(userId);
   }
 
   async getMe(userId: string) {

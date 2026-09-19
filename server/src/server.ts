@@ -133,11 +133,14 @@ export const io = new Server(httpServer, {
 
 io.use((socket, next) => {
   // Handshake must carry a valid access token — no anonymous sockets.
+  // Photo tokens (?pt=, 30d) are scoped to <img> serving and rejected here.
   const token = (socket.handshake.auth?.token as string) || '';
   if (!token) return next(new Error('Authentication required'));
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET) as { userId: string };
+    const payload = jwt.verify(token, env.JWT_SECRET) as { userId: string; purpose?: string };
+    if ((payload as any).purpose === 'photo') return next(new Error('Invalid token'));
     (socket.data as { userId: string }).userId = payload.userId;
+    // Live ban check is done on connection (async) — see below.
     next();
   } catch {
     next(new Error('Invalid or expired token'));
@@ -146,6 +149,11 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
   const userId = (socket.data as { userId: string }).userId;
+  // Live account check: a banned/deleted account's sockets are dropped even
+  // if the 15-min access token hasn't expired yet.
+  prisma.user.findUnique({ where: { id: userId }, select: { isActive: true } }).then((u) => {
+    if (!u || !u.isActive) socket.disconnect(true);
+  }).catch(() => {});
 
   // Per-user message throttle: a burst of sends is spam or a buggy client.
   // 30 msgs / 10s is far above any real typing pace (WhatsApp-class clients
@@ -158,10 +166,27 @@ io.on('connection', (socket) => {
   // Join a conversation room ONLY if you are a member of it
   socket.on('join-conversation', async (conversationId: string) => {
     try {
+      if (typeof conversationId !== 'string' || !conversationId) return;
       const member = await prisma.conversationMember.findUnique({
         where: { conversationId_userId: { conversationId, userId } },
       });
-      if (member) socket.join(`conversation:${conversationId}`);
+      if (!member) return;
+      // Block-aware: a block after joining must not keep the room open.
+      const members = await prisma.conversationMember.findMany({
+        where: { conversationId },
+        select: { userId: true },
+      });
+      const otherIds = members.map((m) => m.userId).filter((id) => id !== userId);
+      if (otherIds.length) {
+        const blocked = await prisma.block.findFirst({
+          where: { OR: otherIds.flatMap((id) => [
+            { blockerId: userId, blockedId: id },
+            { blockerId: id, blockedId: userId },
+          ]) },
+        });
+        if (blocked) return;
+      }
+      socket.join(`conversation:${conversationId}`);
     } catch {
       /* ignore bad payloads */
     }
