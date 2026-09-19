@@ -155,9 +155,11 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   const userId = (socket.data as { userId: string }).userId;
   // Live account check: a banned/deleted account's sockets are dropped even
-  // if the 15-min access token hasn't expired yet.
-  prisma.user.findUnique({ where: { id: userId }, select: { isActive: true } }).then((u) => {
-    if (!u || !u.isActive) socket.disconnect(true);
+  // if the 15-min access token hasn't expired yet. Also joins the college's
+  // feed room so new posts push to everyone on campus instantly.
+  prisma.user.findUnique({ where: { id: userId }, select: { isActive: true, collegeId: true } }).then((u) => {
+    if (!u || !u.isActive) return socket.disconnect(true);
+    if (u.collegeId) socket.join(`college:${u.collegeId}`);
   }).catch(() => {});
 
   // Per-user message throttle: a burst of sends is spam or a buggy client.
@@ -242,6 +244,11 @@ subscribe('match:new', ({ userIds = [] }: any) => {
 });
 subscribe('notification:new', ({ userIds = [] }: any) => {
   for (const uid of userIds) io.to(`user:${uid}`).emit('notification-new', {});
+});
+// LIVE FEED: a new post pings everyone's feed page — clients refetch the
+// (already cached) feed once instead of polling blindly every 30s.
+subscribe('feed:new', ({ collegeId }: any) => {
+  if (collegeId) io.to(`college:${collegeId}`).emit('feed-new', { collegeId });
 });
 
 // ── 404 for unknown API routes ──

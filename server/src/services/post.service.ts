@@ -72,9 +72,12 @@ export class PostService {
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
       },
     });
-    // PRIVACY: the create response is masked exactly like reads — the raw
-    // authorId of an anonymous post must never cross the wire, not even to
-    // its own author (the client keys ownership off isMine).
+    // LIVE FEED: push instead of poll — everyone in the college's feed page
+    // refetches instantly. (Polling stays as the fallback.) The create
+    // response is masked exactly like reads: the raw authorId of an anonymous
+    // post must never cross the wire, not even to its own author (the client
+    // keys ownership off isMine).
+    publish('feed:new', { collegeId: author.collegeId, postId: post.id });
     if (post.isAnonymous) {
       return {
         ...post,

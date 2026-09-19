@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, Glasses, Bell, X, Users, FileText } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
+import { getSocket } from '@/services/realtime';
 import Avatar from '@/components/common/Avatar';
 import Logo from '@/components/common/Logo';
 import { bestAvatarSrc, photoSrc } from '@/utils/photo';
@@ -65,8 +66,25 @@ export default function Topbar() {
  const { data: unreadData } = useQuery({
  queryKey: ['unread-notifications'],
  queryFn: () => api.get('/notifications/unread-count').then((r) => r.data),
- refetchInterval: 30000,
+ refetchInterval: 60_000,
  });
+ const queryClient = useQueryClient();
+
+ // PUSH: the server emits notification-new the moment something happens —
+ // refetch immediately instead of waiting out the polling interval (which
+ // now only covers missed events while the socket is down).
+ useEffect(() => {
+ const socket = getSocket();
+ if (!socket) return;
+ const onNew = () => {
+ queryClient.invalidateQueries({ queryKey: ['unread-notifications'] });
+ queryClient.invalidateQueries({ queryKey: ['notifications'] });
+ };
+ socket.on('notification-new', onNew);
+ return () => {
+ socket.off('notification-new', onNew);
+ };
+ }, [queryClient]);
 
  const unreadCount = unreadData?.count || 0;
 

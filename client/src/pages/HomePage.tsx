@@ -1,7 +1,8 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText } from 'lucide-react';
 import api from '@/services/api';
+import { getSocket } from '@/services/realtime';
 import CreatePost from '@/components/feed/CreatePost';
 import PostCard from '@/components/feed/PostCard';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
@@ -21,6 +22,20 @@ export default function HomePage() {
  const observerRef = useRef<IntersectionObserver | null>(null);
  const loadMoreRef = useRef<HTMLDivElement>(null);
  const [tab, setTab] = useState<FeedTab>('all');
+ const queryClient = useQueryClient();
+
+ // LIVE FEED (push): the server emits feed-new whenever anyone on campus
+ // posts. Refetching the cached feed once beats polling blindly — the 60s
+ // interval below is only a fallback for missed events while disconnected.
+ useEffect(() => {
+ const socket = getSocket();
+ if (!socket) return;
+ const onNew = () => queryClient.invalidateQueries({ queryKey: ['feed'] });
+ socket.on('feed-new', onNew);
+ return () => {
+ socket.off('feed-new', onNew);
+ };
+ }, [queryClient]);
 
   const {
   data,
@@ -39,10 +54,9 @@ export default function HomePage() {
   // PERF: switching tabs shows the cached list immediately and refetches in
   // the background, instead of blanking to a spinner every switch.
   placeholderData: (prev) => prev,
-  // LIVE FEED: newest posts surface at the top on their own — a 30s poll
-  // plus a refetch whenever the tab regains focus (returning from a post,
-  // unlocking the phone, switching back from chat). No manual reload needed.
-  refetchInterval: 30_000,
+  // LIVE FEED: push events above handle the instant case; this slower poll
+  // plus a refetch when the tab regains focus covers missed events.
+  refetchInterval: 60_000,
   refetchOnWindowFocus: true,
   });
 
