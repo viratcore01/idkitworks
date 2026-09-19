@@ -10,6 +10,7 @@ import SignupPage from '@/pages/SignupPage';
 import ProfileSetupPage from '@/pages/ProfileSetupPage';
 import VerificationPage from '@/pages/VerificationPage';
 import AdminVerifyPage from '@/pages/AdminVerifyPage';
+import AdminConsole from '@/pages/AdminConsole';
 import HomePage from '@/pages/HomePage';
 import MatchesPage from '@/pages/MatchesPage';
 import ProfilePage from '@/pages/ProfilePage';
@@ -57,10 +58,19 @@ function VerifiedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
- const { isAuthenticated, isLoading } = useAuthStore();
- if (isLoading) return <LoadingScreen />;
- if (isAuthenticated) return <Navigate to="/home" />;
- return <>{children}</>;
+  const { isAuthenticated, isLoading } = useAuthStore();
+  if (isLoading) return <LoadingScreen />;
+  if (isAuthenticated) return <Navigate to="/home" />;
+  return <>{children}</>;
+}
+
+/** Staff-only pages (moderator console): non-staff bounce to home. */
+function StaffRoute({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated, isLoading } = useAuthStore();
+  if (isLoading) return <LoadingScreen />;
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') return <Navigate to="/home" replace />;
+  return <>{children}</>;
 }
 
 function LoadingScreen() {
@@ -123,7 +133,12 @@ export default function App() {
  </ProtectedRoute>
  } />
 
- {/* Admin verification review queue (college-scoped) */}
+  {/* Moderator console: overview, IDs, reports, users, content */}
+  <Route path="/admin" element={
+  <StaffRoute><AdminConsole /></StaffRoute>
+  } />
+
+  {/* Admin verification review queue (college-scoped) */}
  <Route path="/admin/verify" element={
  <ProtectedRoute><AdminVerifyPage /></ProtectedRoute>
  } />

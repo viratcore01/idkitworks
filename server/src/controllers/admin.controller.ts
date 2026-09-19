@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { ReportService } from '../services/report.service';
 import { PostService } from '../services/post.service';
+import { AdminService } from '../services/admin.service';
 import { AuthRequest } from '../types';
 import { prisma } from '../config/prisma';
 import { sendError } from '../utils/http-error';
@@ -8,6 +9,7 @@ import { invalidateUser } from '../utils/user-cache';
 
 const reportService = new ReportService();
 const postService = new PostService();
+const adminService = new AdminService();
 
 /**
  * PRODUCT RULE: college-scoped moderation.
@@ -27,27 +29,75 @@ export class AdminController {
 
   async getReports(req: AuthRequest, res: Response) {
     try {
-      const { status } = req.query;
+      const { status, collegeId, limit } = req.query;
       const reports = await reportService.getReports(status as string, {
         collegeId: req.user!.collegeId,
         role: req.user!.role,
-      });
+      }, collegeId as string, limit ? parseInt(limit as string) : undefined);
       res.json(reports);
     } catch (error: any) {
-      sendError(res, error, 400);
+      sendError(res, error, error.status || 400);
     }
   }
 
   async resolveReport(req: AuthRequest, res: Response) {
     try {
-      const result = await reportService.resolveReport(req.params.id as string, {
-        id: req.user!.id,
-        collegeId: req.user!.collegeId,
-        role: req.user!.role,
-      }, req.body.action);
+      const result = await adminService.resolveReport(
+        req.user!.id, req.user!.role, req.params.id as string, String(req.body?.action || 'dismiss'),
+      );
       res.json(result);
     } catch (error: any) {
-      sendError(res, error, 400);
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Moderator console: per-college health overview (?collegeId= for super-admins). */
+  async overview(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.overview(req.user!.id, req.user!.role, req.query.collegeId as string));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Moderator console: searchable user directory. */
+  async listUsers(req: AuthRequest, res: Response) {
+    try {
+      const { q, collegeId, filter, page, limit } = req.query;
+      res.json(await adminService.listUsers(req.user!.id, req.user!.role, {
+        q: q as string,
+        collegeId: collegeId as string,
+        filter: filter as string,
+        page: page ? parseInt(page as string) : undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+      }));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Super-admin only: promote/demote moderators. */
+  async setRole(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.setRole(req.user!.id, req.user!.role, req.params.id as string, String(req.body?.role || '')));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Moderator console: proactive content browser (?type=post|comment). */
+  async browseContent(req: AuthRequest, res: Response) {
+    try {
+      const { type, q, collegeId, page, limit } = req.query;
+      res.json(await adminService.browseContent(req.user!.id, req.user!.role, {
+        type: type as string,
+        q: q as string,
+        collegeId: collegeId as string,
+        page: page ? parseInt(page as string) : undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+      }));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
     }
   }
 

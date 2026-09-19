@@ -151,11 +151,11 @@ export default function SettingsPage() {
  <button onClick={() => navigate('/verify')} className="nb-btn-orange text-sm">Verify now</button>
  </div>
  )}
- {(user?.role === 'admin' || user?.role === 'super_admin') && (
- <button onClick={() => navigate('/admin/verify')} className="nb-btn-ghost text-sm mt-4 w-full">
- <ShieldCheck size={16} className="inline mr-1.5" /> Open ID review queue
- </button>
- )}
+  {(user?.role === 'admin' || user?.role === 'super_admin') && (
+  <button onClick={() => navigate('/admin')} className="nb-btn-ghost text-sm mt-4 w-full">
+  <ShieldCheck size={16} className="inline mr-1.5" /> Open moderator console
+  </button>
+  )}
  </div>
 
   {/* Danger Zone */}

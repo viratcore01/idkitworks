@@ -70,25 +70,30 @@ export class ReportService {
    * Reports visible to the requesting admin. Reports don't carry a college, so the
    * scope is derived from the REPORTER's college at query time.
    */
-  async getReports(status: string | undefined, viewer: { collegeId: string | null; role: string }, limit = 50) {
+  async getReports(status: string | undefined, viewer: { collegeId: string | null; role: string }, requestedCollegeId?: string, limit = 50) {
     const isSuper = viewer.role === 'super_admin';
 
-    const collegeFilter = isSuper
-      ? {}
-      : viewer.collegeId
+    // Super-admins may narrow to one college (?collegeId=); college admins
+    // are always scoped to their own.
+    let collegeFilter: any;
+    if (isSuper) {
+      collegeFilter = requestedCollegeId ? { reporter: { collegeId: requestedCollegeId } } : {};
+    } else {
+      collegeFilter = viewer.collegeId
         ? { reporter: { collegeId: viewer.collegeId } }
         : // A college-less admin sees nothing (cannot be scoped safely)
           { id: '__none__' };
+    }
 
     return prisma.report.findMany({
       where: {
         ...(status ? { status: status as any } : {}),
         ...collegeFilter,
       },
-      take: limit,
+      take: Math.min(Math.max(limit, 1), 100),
       orderBy: { createdAt: 'desc' },
       include: {
-        reporter: { select: { id: true, username: true, displayName: true } },
+        reporter: { select: { id: true, username: true, displayName: true, college: { select: { shortName: true, name: true } } } },
       },
     });
   }

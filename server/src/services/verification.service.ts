@@ -117,10 +117,18 @@ export class VerificationService {
   }
 
   /** Admin queue: pending verifications for the admin's college (image included for human review). */
-  async reviewQueue(collegeId: string | null, isSuper: boolean, page = 0, limit = 20) {
+  async reviewQueue(collegeId: string | null, isSuper: boolean, page = 0, limit = 20, requestedCollegeId?: string) {
     const take = Math.min(Math.max(limit, 1), 50);
     const where: any = { status: 'PENDING' };
-    if (!isSuper && collegeId) where.user = { collegeId };
+    // Super-admins moderate every college, optionally narrowed (?collegeId=).
+    // College admins are locked to their own college, always.
+    if (isSuper) {
+      if (requestedCollegeId) where.user = { collegeId: requestedCollegeId };
+    } else if (collegeId) {
+      where.user = { collegeId };
+    } else {
+      return { total: 0, items: [], hasMore: false };
+    }
     const [records, total] = await Promise.all([
       prisma.idVerification.findMany({
         where,
@@ -153,7 +161,9 @@ export class VerificationService {
       include: { user: { select: { collegeId: true } } },
     });
     if (!record || !record.imageData) return null;
-    if (!isSuper && viewerCollegeId && record.user.collegeId !== viewerCollegeId) return null;
+    if (isSuper) return { data: Buffer.from(record.imageData), mime: record.mimeType || 'image/png' };
+    // College admins must HAVE a college and it must match the student's.
+    if (!viewerCollegeId || record.user.collegeId !== viewerCollegeId) return null;
     return { data: Buffer.from(record.imageData), mime: record.mimeType || 'image/png' };
   }
 
@@ -164,7 +174,7 @@ export class VerificationService {
       include: { user: { select: { collegeId: true } } },
     });
     if (!record) { const e: any = new Error('Verification not found'); e.status = 404; throw e; }
-    if (!isSuper && viewerCollegeId && record.user.collegeId !== viewerCollegeId) {
+    if (!isSuper && (!viewerCollegeId || record.user.collegeId !== viewerCollegeId)) {
       const e: any = new Error('Verification not found'); e.status = 404; throw e;
     }
     if (record.status !== 'PENDING') { const e: any = new Error('Already decided'); e.status = 400; throw e; }

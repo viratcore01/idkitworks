@@ -31,7 +31,10 @@ export async function status(req: AuthRequest, res: Response) {
 export async function queue(req: AuthRequest, res: Response) {
   try {
     const page = Math.max(parseInt(req.query.page as string) || 0, 0);
-    const result = await service.reviewQueue(req.user!.collegeId || null, isSuperAdmin(req.user), page);
+    const result = await service.reviewQueue(
+      req.user!.collegeId || null, isSuperAdmin(req.user), page,
+      undefined, req.query.collegeId as string,
+    );
     res.json(result);
   } catch (error: any) {
     sendError(res, error, 400);
