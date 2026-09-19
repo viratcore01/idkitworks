@@ -7,10 +7,10 @@ import PostCard from '@/components/feed/PostCard';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
 
-/** Reddit-style feed filters. Each tab (except All) shows ONLY that post type. */
+/** Feed sections. "All" shows everything; a type tab shows ONLY that type,
+ * and whatever you post from the composer while it's active gets that type. */
 const FEED_TABS = [
  { key: 'all', label: 'All' },
- { key: 'NORMAL', label: 'Posts' },
  { key: 'QUESTION', label: 'Questions' },
  { key: 'CONFESSION', label: 'Confessions' },
 ] as const;
@@ -92,9 +92,9 @@ export default function HomePage() {
 
  return (
  <div>
- <CreatePost />
+ <CreatePost type={tab === 'all' ? 'NORMAL' : tab} />
 
- {/* Feed filters — Reddit-style tabs */}
+ {/* Feed sections — Reddit-style tabs */}
  <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
  {FEED_TABS.map((t) => (
  <button
@@ -117,13 +117,11 @@ export default function HomePage() {
  title={
  tab === 'QUESTION' ? 'No questions yet'
  : tab === 'CONFESSION' ? 'No confessions yet'
- : tab === 'NORMAL' ? 'No posts yet'
  : 'Nothing here yet'
  }
  description={
- tab === 'QUESTION' ? 'Be the first to ask something — pick "Question" in the composer above.'
- : tab === 'CONFESSION' ? 'Be the first to confess — pick "Confess" in the composer above. Totally anonymous.'
- : tab === 'NORMAL' ? 'Be the first to drop a post.'
+ tab === 'QUESTION' ? 'Ask the first question — anything you post while this tab is open becomes a question.'
+ : tab === 'CONFESSION' ? 'Drop the first confession — anything you post while this tab is open is anonymous.'
  : 'Be the first to drop a post. Start a conversation, share something, or just say hi.'
  }
  />
