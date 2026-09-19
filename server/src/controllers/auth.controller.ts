@@ -93,6 +93,15 @@ export class AuthController {
     }
   }
 
+  async deleteAccount(req: AuthRequest, res: Response) {
+    try {
+      await authService.deleteAccount(req.user!.id);
+      res.json({ message: 'Account permanently deleted' });
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
   async me(req: AuthRequest, res: Response) {
     try {
       const user = await authService.getMe(req.user!.id);

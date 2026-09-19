@@ -301,6 +301,98 @@ export class AuthService {
     invalidateUser(userId);
   }
 
+  /**
+   * PERMANENT account deletion (user-invoked "delete my account").
+   *
+   * What the user gets: every trace of their identity and content is gone —
+   * profile, photos, ID documents, posts, comments, messages, likes, saves,
+   * matches, notifications, reports they filed. They are logged out everywhere
+   * and can never log back in.
+   *
+   * What is kept: the user ROW itself (anonymized + locked) so foreign keys
+   * from moderation/safety rows never dangle — reports filed AGAINST them,
+   * ended match rows and conversation shells stay for safety review, with all
+   * PII scrubbed. Deleting the row itself would either 500 on FK constraints
+   * or cascade-wipe evidence peers and moderators rely on.
+   */
+  async deleteAccount(userId: string): Promise<void> {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!user) {
+      const e: any = new Error('Account not found'); e.status = 404; throw e;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Notifications: received ones die; authored ones lose their actor link.
+      await tx.notification.deleteMany({ where: { recipientId: userId } });
+      await tx.notification.updateMany({ where: { actorId: userId }, data: { actorId: null } });
+      // Reports filed BY the user die; reports they RESOLVED (as admin) keep
+      // the row but lose the resolver link.
+      await tx.report.deleteMany({ where: { reporterId: userId } });
+      await tx.report.updateMany({ where: { resolverId: userId }, data: { resolverId: null } });
+      // Blocks either direction die with the account.
+      await tx.block.deleteMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] } });
+      // Swipes either direction die.
+      await tx.matchLike.deleteMany({ where: { OR: [{ senderId: userId }, { receiverId: userId }] } });
+      // Matches end (rows preserved for safety, peer sees them gone).
+      await tx.match.updateMany({
+        where: { OR: [{ userA: userId }, { userB: userId }], status: 'ACTIVE' },
+        data: { status: 'ENDED', endedAt: new Date(), endedBy: userId },
+      });
+      // Authored messages die; memberships die; conversations left empty die.
+      await tx.message.deleteMany({ where: { senderId: userId } });
+      const memberships = await tx.conversationMember.findMany({ where: { userId }, select: { conversationId: true } });
+      await tx.conversationMember.deleteMany({ where: { userId } });
+      for (const m of memberships) {
+        const remaining = await tx.conversationMember.count({ where: { conversationId: m.conversationId } });
+        if (remaining === 0) {
+          await tx.conversation.delete({ where: { id: m.conversationId } }).catch(() => {});
+        }
+      }
+      // Authored comments die; authored posts die (their likes/saves/replies
+      // cascade from the post row).
+      await tx.comment.deleteMany({ where: { authorId: userId } });
+      await tx.post.deleteMany({ where: { authorId: userId } });
+      await tx.savedPost.deleteMany({ where: { userId } });
+      await tx.postLike.deleteMany({ where: { userId } });
+      // Photos: clear the avatar pointer first (no SetNull on that relation),
+      // then wipe the bytes.
+      await tx.user.update({ where: { id: userId }, data: { avatarPhotoId: null } });
+      await tx.userPhoto.deleteMany({ where: { userId } });
+      // ID documents die entirely.
+      await tx.idVerification.deleteMany({ where: { userId } });
+      await tx.userInterest.deleteMany({ where: { userId } });
+      await tx.matchPreference.deleteMany({ where: { userId } });
+      await tx.refreshToken.deleteMany({ where: { userId } });
+      // Finally: scrub every PII field and lock the shell row.
+      const tag = `del_${userId.slice(0, 8)}${Date.now().toString(36).slice(-5)}`;
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          email: `${tag}@deleted.local`,
+          username: tag,
+          displayName: 'Deleted User',
+          bio: null,
+          avatarUrl: null,
+          avatarColor: null,
+          dateOfBirth: null,
+          googleId: null,
+          passwordHash: `DELETED_${userId}`,
+          course: null,
+          year: null,
+          gender: 'UNKNOWN',
+          relationshipGoal: null,
+          isVerified: false,
+          verificationStatus: 'UNVERIFIED',
+          isActive: false,
+          role: 'user',
+          collegeId: null,
+        },
+      });
+    });
+
+    invalidateUser(userId);
+  }
+
   async getMe(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },

@@ -5,7 +5,7 @@ import { useAuthStore } from '@/store/auth.store';
 import toast from 'react-hot-toast';
 
 export default function SettingsPage() {
-  const { user, logout, updateProfile, changePassword, deactivateAccount } = useAuthStore();
+  const { user, logout, updateProfile, changePassword, deactivateAccount, deleteAccount } = useAuthStore();
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [bio, setBio] = useState(user?.bio || '');
@@ -14,6 +14,9 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [isChangingPw, setIsChangingPw] = useState(false);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleSave = async () => {
   setIsSaving(true);
@@ -61,6 +64,23 @@ export default function SettingsPage() {
   } catch {
   toast.error('Failed to deactivate account');
   setConfirmDeactivate(false);
+  }
+  };
+
+  const handleDelete = async () => {
+  if (deleteConfirm.trim().toUpperCase() !== 'DELETE') {
+  toast.error('Type DELETE to confirm');
+  return;
+  }
+  setIsDeleting(true);
+  try {
+  await deleteAccount();
+  toast.success('Account permanently deleted');
+  navigate('/login');
+  } catch (e: any) {
+  toast.error(e?.response?.data?.error || 'Failed to delete account');
+  } finally {
+  setIsDeleting(false);
   }
   };
 
@@ -157,6 +177,44 @@ export default function SettingsPage() {
   {confirmDeactivate && (
   <p className="text-sm mt-3 opacity-70">Deactivation locks you out immediately on all devices. Your posts stay for safety review.</p>
   )}
+  <div className="mt-4 pt-4 border-t-2 border-dashed border-nb-pink/40">
+  {!showDelete ? (
+  <button
+  onClick={() => setShowDelete(true)}
+  className="text-sm font-semibold text-nb-pink underline underline-offset-2"
+  >
+  Delete my account permanently…
+  </button>
+  ) : (
+  <div>
+  <p className="text-sm font-semibold mb-1">This permanently deletes your profile, photos, posts, messages, matches and likes. This cannot be undone.</p>
+  <p className="text-sm opacity-70 mb-3">Type <span className="font-bold">DELETE</span> to confirm:</p>
+  <div className="flex flex-wrap gap-2">
+  <input
+  type="text"
+  aria-label="Type DELETE to confirm account deletion"
+  placeholder="DELETE"
+  className="nb-input max-w-[180px]"
+  value={deleteConfirm}
+  onChange={(e) => setDeleteConfirm(e.target.value)}
+  />
+  <button
+  onClick={handleDelete}
+  disabled={isDeleting || deleteConfirm.trim().toUpperCase() !== 'DELETE'}
+  className="nb-btn-danger text-sm disabled:opacity-50"
+  >
+  {isDeleting ? 'Deleting…' : 'Delete forever'}
+  </button>
+  <button
+  onClick={() => { setShowDelete(false); setDeleteConfirm(''); }}
+  className="nb-btn-ghost text-sm"
+  >
+  Keep my account
+  </button>
+  </div>
+  </div>
+  )}
+  </div>
   </div>
 
   {/* Change Password */}

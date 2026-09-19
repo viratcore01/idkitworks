@@ -18,6 +18,7 @@ interface AuthState {
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   deactivateAccount: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   fetchMe: () => Promise<void>;
   updateProfile: (data: any) => Promise<void>;
   applyCollegeChange: (college: User['college']) => void;
@@ -85,6 +86,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   deactivateAccount: async () => {
     await api.delete('/auth/me');
+    disconnectSocket();
+    queryClient.clear();
+    localStorage.clear();
+    set({ user: null, isAuthenticated: false, isIncognito: false });
+  },
+
+  deleteAccount: async () => {
+    await api.delete('/auth/account');
     disconnectSocket();
     queryClient.clear();
     localStorage.clear();

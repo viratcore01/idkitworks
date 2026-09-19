@@ -132,7 +132,16 @@ export class MessageService {
         : null;
       return {
         id: conv.id,
-        otherUser: otherMember?.user,
+        // The partner deleted their account: keep the shell (history semantics
+        // match unmatch) but label it honestly instead of rendering a ghost.
+        otherUser: otherMember?.user || {
+          id: 'deleted',
+          username: 'deleted',
+          displayName: 'Deleted User',
+          avatarUrl: null,
+          avatarColor: null,
+          avatarPhotoId: null,
+        },
         lastMessage,
         updatedAt: raw?.createdAt || conv.createdAt,
       };
