@@ -10,19 +10,40 @@ import { COLLEGE_SEED, normalizeCollegeName } from '../config/college-directory'
  *   ID verification step is the real trust gate, not this list.
  */
 export class CollegeService {
-  /** Insert curated colleges that don't exist yet. Safe to run on every boot. */
+  /**
+   * Insert curated colleges that don't exist yet. Safe to run on every boot.
+   * FAST by design: one read for the whole directory, in-memory diff, batched
+   * writes — the old row-by-row version paid 400+ sequential round-trips on
+   * every cold boot and raced every request served in between.
+   */
   async seedDirectory(): Promise<{ added: number; total: number }> {
+    const existing = await prisma.college.findMany({ select: { name: true, shortName: true } });
+    const names = new Set(existing.map((c) => c.name));
+    const shorts = new Set(existing.map((c) => c.shortName).filter(Boolean) as string[]);
+    const norms = new Set(existing.map((c) => normalizeCollegeName(c.name)));
+    const missing = COLLEGE_SEED.filter(
+      (c) => !names.has(c.name) && !(c.shortName && shorts.has(c.shortName)) && !norms.has(normalizeCollegeName(c.name)),
+    );
     let added = 0;
-    for (const c of COLLEGE_SEED) {
-      const exists = await prisma.college.findFirst({
-        where: {
-          OR: [{ name: c.name }, { shortName: c.shortName || undefined }],
-        },
-        select: { id: true },
-      });
-      if (!exists) {
-        await prisma.college.create({ data: { name: c.name, shortName: c.shortName, city: c.city, state: c.state } });
-        added++;
+    for (let i = 0; i < missing.length; i += 50) {
+      const chunk = missing.slice(i, i + 50).map((c) => ({
+        name: c.name,
+        shortName: c.shortName,
+        city: c.city,
+        state: c.state,
+      }));
+      try {
+        const r = await prisma.college.createMany({ data: chunk });
+        added += r.count;
+      } catch {
+        // Chunk raced another instance (or a user row): insert one by one,
+        // skipping rows that lost the race.
+        for (const row of chunk) {
+          try {
+            await prisma.college.create({ data: row });
+            added++;
+          } catch { /* lost the race — the row exists, which is the goal */ }
+        }
       }
     }
     const total = await prisma.college.count();
@@ -55,23 +76,44 @@ export class CollegeService {
       take: 200, // fetch a pool, then rank in memory — small table, cheap
     });
 
-    const scored = rows
-      .map((c) => {
-        const sn = (c.shortName || '').toLowerCase();
-        const nm = c.name.toLowerCase();
-        let score = 4;
-        if (sn && sn === lower) score = 0;
-        else if (sn && sn.startsWith(lower)) score = 1;
-        else if (nm.startsWith(lower)) score = 2;
-        else if (nm.includes(lower)) score = 3;
-        else if (c.city?.toLowerCase().startsWith(lower)) score = 3.5;
-        return { c, score };
-      })
-      .sort((a, b) => a.score - b.score || a.c.name.localeCompare(b.c.name))
-      .slice(0, Math.min(Math.max(limit, 1), 25))
-      .map((x) => x.c);
+    const scored = rows.map((c) => {
+      const sn = (c.shortName || '').toLowerCase();
+      const nm = c.name.toLowerCase();
+      // Word-boundary matches outrank raw substrings: "christ" should find
+      // Christ University before Christian Medical College.
+      const wordHit = (s: string) => s.split(/[^a-z0-9]+/).some((w) => w.startsWith(lower));
+      let score = 4;
+      if (sn && sn === lower) score = 0;
+      else if (sn && sn.startsWith(lower)) score = 1;
+      else if (nm.startsWith(lower)) score = 2;
+      else if (wordHit(nm)) score = 2.5;
+      else if (nm.includes(lower)) score = 3;
+      else if (c.city?.toLowerCase().startsWith(lower)) score = 3.5;
+      return { c, score };
+    });
 
-    return this.dedupe(scored);
+    // Real-data-outranks-junk tiebreak: among equal text scores, campuses
+    // with actual students come first. A generic junk row ("IIT" with no
+    // city, zero users) can never outrank the real IITs people study in.
+    const counts = await prisma.user.groupBy({
+      by: ['collegeId'],
+      _count: { collegeId: true },
+      where: { collegeId: { in: scored.map((s) => s.c.id) } },
+    });
+    const usersOf = new Map(counts.map((g) => [g.collegeId, g._count.collegeId]));
+
+    return this.dedupe(
+      scored
+        .sort(
+          (a, b) =>
+            a.score - b.score ||
+            (usersOf.get(b.c.id) || 0) - (usersOf.get(a.c.id) || 0) ||
+            (a.c.city ? 0 : 1) - (b.c.city ? 0 : 1) ||
+            a.c.name.localeCompare(b.c.name),
+        )
+        .slice(0, Math.min(Math.max(limit, 1), 25))
+        .map((x) => x.c),
+    );
   }
 
   /** Find-or-create by name (used when a student's college isn't listed). */
@@ -82,21 +124,43 @@ export class CollegeService {
     }
     const norm = normalizeCollegeName(name);
     const existing = await prisma.college.findFirst({ where: { name } });
-    if (existing) return existing;
+    if (existing) return { college: existing, created: false };
 
     // Also block case/format duplicates
     const all = await prisma.college.findMany({ select: { id: true, name: true } });
     const dup = all.find((c) => normalizeCollegeName(c.name) === norm);
-    if (dup) return dup;
+    if (dup) {
+      const row = await prisma.college.findUnique({ where: { id: dup.id } });
+      return { college: row!, created: false };
+    }
 
-    return prisma.college.create({
+    // Guard against generic junk ("IIT", "College", "ABC") squatting the
+    // directory: a new name must either carry a city or be specific enough
+    // (4+ words or an existing-style long name). Curated seeds bypass this.
+    const words = name.split(/\s+/).filter(Boolean);
+    if (!input.city && words.length < 3 && name.length < 20) {
+      const e: any = new Error('Add your city with the college name (e.g. "IIT Delhi, New Delhi") so students find the right campus');
+      e.status = 400;
+      throw e;
+    }
+
+    const college = await prisma.college.create({
       data: {
         name,
         shortName: input.shortName?.trim().slice(0, 24) || undefined,
         city: input.city?.trim().slice(0, 60) || undefined,
         state: input.state?.trim().slice(0, 60) || undefined,
       },
+    }).catch((err: any) => {
+      // Simultaneous duplicate creates: the unique index wins, loser reads it.
+      if (err?.code !== 'P2002') throw err;
+      return null;
     });
+    if (!college) {
+      const row = await prisma.college.findFirst({ where: { name } });
+      return { college: row!, created: false };
+    }
+    return { college, created: true };
   }
 
   private dedupe(rows: { id: string; name: string; shortName: string | null; city: string | null; state: string | null }[]) {

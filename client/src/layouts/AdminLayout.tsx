@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   ShieldCheck, LayoutDashboard, IdCard, Flag, Users, Newspaper,
-  Activity, Megaphone, ArrowLeft, LogOut, Search, Command,
+  Activity, Megaphone, ArrowLeft, LogOut, Search, Command, Building2,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
@@ -14,6 +14,7 @@ const NAV = [
   { to: '/admin/reports', label: 'Reports', icon: <Flag size={17} /> },
   { to: '/admin/users', label: 'Users', icon: <Users size={17} /> },
   { to: '/admin/content', label: 'Content', icon: <Newspaper size={17} /> },
+  { to: '/admin/colleges', label: 'Colleges', icon: <Building2 size={17} /> },
   { to: '/admin/activity', label: 'Activity', icon: <Activity size={17} /> },
   { to: '/admin/announce', label: 'Announce', icon: <Megaphone size={17} /> },
 ];

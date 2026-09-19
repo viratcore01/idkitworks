@@ -33,8 +33,8 @@ export async function createCollege(req: AuthRequest, res: Response) {
     if (/[<>{}]|\$|script/i.test(String(name) + String(shortName || '') + String(city || '') + String(state || ''))) {
       return res.status(400).json({ error: 'College name contains invalid characters' });
     }
-    const college = await service.createIfMissing({ name, shortName, city, state });
-    res.status(201).json(college);
+    const { college, created } = await service.createIfMissing({ name, shortName, city, state });
+    res.status(created ? 201 : 200).json(created ? college : { ...college, deduped: true });
   } catch (error: any) {
     sendError(res, error, error.status || 400);
   }

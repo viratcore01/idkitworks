@@ -121,6 +121,29 @@ export const COLLEGE_SEED: CollegeSeed[] = [
   { name: 'University of Rajasthan', shortName: 'UNIRAJ', city: 'Jaipur', state: 'Rajasthan' },
   { name: 'Bhopal University', shortName: 'BU Bhopal', city: 'Bhopal', state: 'Madhya Pradesh' },
 
+  // ── India: famous constituent & autonomous colleges ──
+  // NOTE: plain ASCII apostrophes only — students type ' not ’, and the
+  // typeahead matches raw substrings.
+  { name: 'St. Stephen\'s College', shortName: 'St. Stephen\'s', city: 'New Delhi', state: 'Delhi' },
+  { name: 'Hindu College', shortName: 'Hindu', city: 'New Delhi', state: 'Delhi' },
+  { name: 'Miranda House', shortName: 'Miranda House', city: 'New Delhi', state: 'Delhi' },
+  { name: 'Hans Raj College', shortName: 'Hansraj', city: 'New Delhi', state: 'Delhi' },
+  { name: 'Kirori Mal College', shortName: 'KMC', city: 'New Delhi', state: 'Delhi' },
+  { name: 'Lady Shri Ram College', shortName: 'LSR', city: 'New Delhi', state: 'Delhi' },
+  { name: 'Ramjas College', shortName: 'Ramjas', city: 'New Delhi', state: 'Delhi' },
+  { name: 'Sri Venkateswara College', shortName: 'Venky', city: 'New Delhi', state: 'Delhi' },
+  { name: 'Jesus and Mary College', shortName: 'JMC', city: 'New Delhi', state: 'Delhi' },
+  { name: 'Gargi College', shortName: 'Gargi', city: 'New Delhi', state: 'Delhi' },
+  { name: 'Christ University', shortName: 'Christ', city: 'Bengaluru', state: 'Karnataka' },
+  { name: 'Mount Carmel College', shortName: 'MCC Bengaluru', city: 'Bengaluru', state: 'Karnataka' },
+  { name: 'St. Joseph\'s College Bengaluru', shortName: 'St. Joseph\'s', city: 'Bengaluru', state: 'Karnataka' },
+  { name: 'St. Xavier\'s College Kolkata', shortName: 'Xaviers Kolkata', city: 'Kolkata', state: 'West Bengal' },
+  { name: 'St. Xavier\'s College Mumbai', shortName: 'Xaviers Mumbai', city: 'Mumbai', state: 'Maharashtra' },
+  { name: 'H.R. College of Commerce and Economics', shortName: 'HR College', city: 'Mumbai', state: 'Maharashtra' },
+  { name: 'Fergusson College', shortName: 'Fergusson', city: 'Pune', state: 'Maharashtra' },
+  { name: 'Presidency University', shortName: 'Presidency', city: 'Kolkata', state: 'West Bengal' },
+  { name: 'Symbiosis International University', shortName: 'Symbiosis', city: 'Pune', state: 'Maharashtra' },
+
   // ── India: BITS, IISERs & research ──
   { name: 'Birla Institute of Technology and Science Pilani', shortName: 'BITS Pilani', city: 'Pilani', state: 'Rajasthan' },
   { name: 'Birla Institute of Technology and Science Goa', shortName: 'BITS Goa', city: 'Goa', state: 'Goa' },

@@ -164,6 +164,38 @@ export class AdminController {
     }
   }
 
+  /** Moderator console: college directory with live stats. */
+  async listColleges(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.listColleges(
+        req.user!.id, req.user!.role, String(req.query.q || ''),
+        req.query.limit ? parseInt(req.query.limit as string) : undefined,
+      ));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Supreme only: duplicate-campus detector. */
+  async duplicateColleges(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.duplicateColleges(req.user!.role));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Supreme only: fold one campus into another. */
+  async mergeColleges(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.mergeColleges(
+        req.user!.id, req.user!.role, String(req.body?.fromId || ''), String(req.body?.toId || ''),
+      ));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
   // Admin actions
   async deleteContent(req: AuthRequest, res: Response) {
     try {

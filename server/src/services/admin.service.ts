@@ -632,8 +632,7 @@ export class AdminService {
     return { banned: true };
   }
 
-  async unbanUser(viewerId: string, role: string, targetId: string) {
-    const isSuper = role === 'super_admin';
+  async unbanUser(viewerId: string, role: string, targetId: string) {    const isSuper = role === 'super_admin';
     if (!isSuper) {
       const [me, target] = await Promise.all([
         prisma.user.findUnique({ where: { id: viewerId }, select: { collegeId: true, moderatedCollegeId: true } }),
@@ -649,5 +648,113 @@ export class AdminService {
     const collegeId = (await prisma.user.findUnique({ where: { id: targetId }, select: { collegeId: true } }))?.collegeId;
     await this.log(viewerId, 'unban', 'USER', targetId, collegeId);
     return { unbanned: true };
+  }
+
+  /**
+   * College directory browser for moderators: search with live stats
+   * (students, pending IDs). Super-admins see everything; college admins
+   * see only their campus card.
+   */
+  async listColleges(viewerId: string, role: string, q = '', limit = 20) {
+    const { isSuper, collegeIds } = await this.scope(viewerId, role);
+    const take = Math.min(Math.max(limit || 20, 1), 50);
+    const query = q.trim().slice(0, 80);
+    const where: any = {};
+    if (!isSuper) {
+      if (!collegeIds.length) return { total: 0, colleges: [] };
+      where.id = collegeIds[0];
+    } else if (query) {
+      where.OR = [
+        { name: { contains: query, mode: 'insensitive' } },
+        { shortName: { contains: query, mode: 'insensitive' } },
+        { city: { contains: query, mode: 'insensitive' } },
+      ];
+    }
+    const colleges = await prisma.college.findMany({
+      where,
+      select: { id: true, name: true, shortName: true, city: true, state: true, createdAt: true },
+      orderBy: { name: 'asc' },
+      take: query || !isSuper ? take : 50,
+    });
+    const withStats = await Promise.all(
+      colleges.map(async (c) => {
+        const [users, pendingVerifications, banned] = await Promise.all([
+          prisma.user.count({ where: { collegeId: c.id } }),
+          prisma.idVerification.count({ where: { status: 'PENDING', user: { collegeId: c.id } } }),
+          prisma.user.count({ where: { collegeId: c.id, isActive: false } }),
+        ]);
+        return { ...c, users, pendingVerifications, banned };
+      }),
+    );
+    return { total: withStats.length, colleges: withStats };
+  }
+
+  /**
+   * Duplicate detector: groups campuses whose normalized names collide
+   * ("IIT" vs "IIT Delhi" don't collide; "iit delhi" vs "IIT Delhi" do).
+   * Super-admin only — merging reshapes the whole directory.
+   */
+  async duplicateColleges(role: string) {
+    if (role !== 'super_admin') {
+      const e: any = new Error('Not authorized'); e.status = 403; throw e;
+    }
+    const { normalizeCollegeName } = await import('../config/college-directory');
+    const all = await prisma.college.findMany({
+      select: { id: true, name: true, shortName: true, city: true },
+      orderBy: { name: 'asc' },
+    });
+    const counts = await prisma.user.groupBy({ by: ['collegeId'], _count: { collegeId: true } });
+    const usersOf = new Map(counts.map((g) => [g.collegeId, g._count.collegeId]));
+    const groups = new Map<string, typeof all>();
+    for (const c of all) {
+      const k = normalizeCollegeName(c.name);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push(c);
+    }
+    const dups = [];
+    for (const [, rows] of groups) {
+      if (rows.length < 2) continue;
+      dups.push({
+        key: normalizeCollegeName(rows[0].name),
+        colleges: rows.map((c) => ({ ...c, users: usersOf.get(c.id) || 0 })),
+      });
+    }
+    // Biggest mess first.
+    dups.sort((a, b) => b.colleges.length - a.colleges.length);
+    return { groups: dups.slice(0, 50), totalGroups: dups.length };
+  }
+
+  /**
+   * Merge one campus into another (super-admin only): every student,
+   * moderator assignment and audit row moves to the surviving campus, then
+   * the duplicate row is deleted. Matches/chats spanning the two campuses
+   * become legacy cross-college rows — already hidden by every filter.
+   */
+  async mergeColleges(viewerId: string, role: string, fromId: string, toId: string) {
+    if (role !== 'super_admin') {
+      const e: any = new Error('Not authorized'); e.status = 403; throw e;
+    }
+    if (!fromId || !toId || fromId === toId) {
+      const e: any = new Error('Pick two different colleges'); e.status = 400; throw e;
+    }
+    const [from, to] = await Promise.all([
+      prisma.college.findUnique({ where: { id: fromId }, select: { id: true, name: true } }),
+      prisma.college.findUnique({ where: { id: toId }, select: { id: true, name: true } }),
+    ]);
+    if (!from || !to) {
+      const e: any = new Error('College not found'); e.status = 404; throw e;
+    }
+    const moved = await prisma.$transaction(async (tx) => {
+      const users = await tx.user.updateMany({ where: { collegeId: fromId }, data: { collegeId: toId } });
+      const mods = await tx.user.updateMany({ where: { moderatedCollegeId: fromId }, data: { moderatedCollegeId: toId } });
+      await tx.moderationLog.updateMany({ where: { collegeId: fromId }, data: { collegeId: toId } });
+      await tx.college.delete({ where: { id: fromId } });
+      return { users: users.count, moderators: mods.count };
+    });
+    // Everyone who moved campus gets re-scoped on their next request.
+    const movedUsers = await prisma.user.findMany({ where: { collegeId: toId }, select: { id: true }, take: 5000 });
+    for (const u of movedUsers) invalidateUser(u.id);
+    await this.log(viewerId, 'college:merge', 'COLLEGE', fromId, toId, `${from.name} → ${to.name}`, moved);
+    return { merged: true, from: { id: fromId, name: from.name }, to: { id: toId, name: to.name }, ...moved };
   }
 }

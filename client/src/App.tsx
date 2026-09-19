@@ -16,6 +16,7 @@ import AdminIds from '@/pages/admin/AdminIds';
 import AdminReports from '@/pages/admin/AdminReports';
 import AdminUsers from '@/pages/admin/AdminUsers';
 import AdminContent from '@/pages/admin/AdminContent';
+import AdminColleges from '@/pages/admin/AdminColleges';
 import AdminActivity from '@/pages/admin/AdminActivity';
 import AdminAnnounce from '@/pages/admin/AdminAnnounce';
 import HomePage from '@/pages/HomePage';
@@ -149,6 +150,7 @@ export default function App() {
   <Route path="reports" element={<AdminReports />} />
   <Route path="users" element={<AdminUsers />} />
   <Route path="content" element={<AdminContent />} />
+  <Route path="colleges" element={<AdminColleges />} />
   <Route path="activity" element={<AdminActivity />} />
   <Route path="announce" element={<AdminAnnounce />} />
   {/* Legacy console entry: forwards into the new shell */}
