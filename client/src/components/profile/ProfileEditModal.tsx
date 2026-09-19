@@ -219,7 +219,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  { label: '1:1', value: 1 },
  { label: '4:5', value: 4 / 5 },
  ]}
- maxOutputPx={1400}
+  maxOutputPx={1080}
  onCancel={() => setEditing(null)}
  onDone={(f) => {
  const slot = editing.slot;

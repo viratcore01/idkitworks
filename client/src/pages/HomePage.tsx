@@ -22,23 +22,29 @@ export default function HomePage() {
  const loadMoreRef = useRef<HTMLDivElement>(null);
  const [tab, setTab] = useState<FeedTab>('all');
 
- const {
- data,
- fetchNextPage,
- hasNextPage,
- isFetchingNextPage,
- isLoading,
- isFetching,
- } = useInfiniteQuery({
- queryKey: ['feed', tab],
- queryFn: ({ pageParam }) =>
- api.get('/posts', { params: { cursor: pageParam, limit: 20, ...(tab !== 'all' && { type: tab }) } }).then((r) => r.data),
- getNextPageParam: (lastPage) => lastPage.nextCursor,
- initialPageParam: undefined as string | undefined,
- // PERF: switching tabs shows the cached list immediately and refetches in
- // the background, instead of blanking to a spinner every switch.
- placeholderData: (prev) => prev,
- });
+  const {
+  data,
+  fetchNextPage,
+  hasNextPage,
+  isFetchingNextPage,
+  isLoading,
+  isFetching,
+  dataUpdatedAt,
+  } = useInfiniteQuery({
+  queryKey: ['feed', tab],
+  queryFn: ({ pageParam }) =>
+  api.get('/posts', { params: { cursor: pageParam, limit: 20, ...(tab !== 'all' && { type: tab }) } }).then((r) => r.data),
+  getNextPageParam: (lastPage) => lastPage.nextCursor,
+  initialPageParam: undefined as string | undefined,
+  // PERF: switching tabs shows the cached list immediately and refetches in
+  // the background, instead of blanking to a spinner every switch.
+  placeholderData: (prev) => prev,
+  // LIVE FEED: newest posts surface at the top on their own — a 30s poll
+  // plus a refetch whenever the tab regains focus (returning from a post,
+  // unlocking the phone, switching back from chat). No manual reload needed.
+  refetchInterval: 30_000,
+  refetchOnWindowFocus: true,
+  });
 
  const posts = data?.pages.flatMap((p) => p.posts) || [];
 

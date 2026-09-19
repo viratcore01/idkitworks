@@ -23,13 +23,14 @@ const MIN_ZOOM = 1; // 1 = image just covers the crop frame
 /**
  * In-app image editor: rotate 90° steps, pinch/wheel/buttons zoom, drag to
  * pan, crop to a chosen aspect. Everything renders on a canvas; Apply exports
- * a downscaled JPEG so uploads are predictable regardless of the camera.
+ * a source-resolution JPEG (long side capped at maxOutputPx, default 1080 —
+ * the Instagram master standard: crisp on retina, light on bandwidth).
  *
  * Decoding tries createImageBitmap with EXIF orientation first, then an <img>
  * fallback. Files the browser cannot decode (e.g. desktop-picked HEIC) get a
  * clear "use JPG/PNG" message instead of a silent failure.
  */
-export default function ImageEditorModal({ file, title = 'Edit photo', aspects = [{ label: 'Free', value: null }], maxOutputPx = 1600, onCancel, onDone }: Props) {
+export default function ImageEditorModal({ file, title = 'Edit photo', aspects = [{ label: 'Free', value: null }], maxOutputPx = 1080, onCancel, onDone }: Props) {
  const canvasRef = useRef<HTMLCanvasElement>(null);
  const bitmapRef = useRef<ImageBitmap | HTMLImageElement | null>(null);
  const [ready, setReady] = useState(false);
@@ -200,20 +201,24 @@ export default function ImageEditorModal({ file, title = 'Edit photo', aspects =
  setOffset((o) => clampOffset(o.x, o.y, z));
  };
 
- // ── Export: redraw the exact viewport transform at full resolution ──
- const apply = async () => {
- const b = bitmapRef.current;
- if (!b || exporting) return;
- setExporting(true);
- try {
- const scale = coverScale * zoom;
- // Export at the image's true on-frame resolution, capped at maxOutputPx
- let outW = Math.min(maxOutputPx, Math.round(frame.w * scale));
- let outH = Math.round(outW * (frame.h / frame.w));
- if (outH > maxOutputPx) {
- outH = maxOutputPx;
- outW = Math.round(outH * (frame.w / frame.h));
- }
+  // ── Export: redraw the exact viewport transform at full resolution ──
+  const apply = async () => {
+  const b = bitmapRef.current;
+  if (!b || exporting) return;
+  setExporting(true);
+  try {
+  const scale = coverScale * zoom;
+  // INSTAGRAM RULE: export what the sensor saw, not the preview size. The
+  // frame shows a (frame/scale)-pixel window of the source, so the output's
+  // long side is that window capped at maxOutputPx — never the tiny
+  // (frame×scale) preview resolution, which exported postage stamps that
+  // browsers then upscaled into blur. Never upscale beyond the source crop.
+  let outW = Math.min(maxOutputPx, Math.max(1, Math.round(frame.w / scale)));
+  let outH = Math.round(outW * (frame.h / frame.w));
+  if (outH > maxOutputPx) {
+  outH = maxOutputPx;
+  outW = Math.round(outH * (frame.w / frame.h));
+  }
  const out = document.createElement('canvas');
  out.width = outW;
  out.height = outH;

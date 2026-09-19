@@ -94,8 +94,9 @@ export async function deletePhoto(req: AuthRequest, res: Response) {
  */
 export async function getPhoto(req: AuthRequest, res: Response) {
   try {
+    const photoId = req.params.photoId as string;
     const photo = await prisma.userPhoto.findUnique({
-      where: { id: req.params.photoId as string },
+      where: { id: photoId },
       include: { user: { select: { collegeId: true, isActive: true } } },
     });
     if (!photo || !photo.user.isActive) return res.status(404).json({ error: 'Photo not found' });
@@ -111,7 +112,11 @@ export async function getPhoto(req: AuthRequest, res: Response) {
     }
 
     res.setHeader('Content-Type', photo.mimeType);
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+    // Photo rows are immutable: replacing a picture deletes the row and mints
+    // a NEW id, so a URL is forever the same bytes. Cache it for a year —
+    // every avatar in every feed/chat/deck after the first view costs zero.
+    res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    res.setHeader('ETag', `"${photoId}"`);
     res.send(Buffer.from(photo.data));
   } catch (error: any) {
     sendError(res, error, 400);

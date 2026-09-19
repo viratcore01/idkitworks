@@ -1,33 +1,35 @@
-import { useEffect } from 'react';
+import { useEffect, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Zap } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import AuthLayout from '@/layouts/AuthLayout';
 import AppLayout from '@/layouts/AppLayout';
-import LandingPage from '@/pages/LandingPage';
-import LoginPage from '@/pages/LoginPage';
-import SignupPage from '@/pages/SignupPage';
-import ProfileSetupPage from '@/pages/ProfileSetupPage';
-import VerificationPage from '@/pages/VerificationPage';
-import AdminVerifyPage from '@/pages/AdminVerifyPage';
-import AdminLayout from '@/layouts/AdminLayout';
-import AdminOverview from '@/pages/admin/AdminOverview';
-import AdminIds from '@/pages/admin/AdminIds';
-import AdminReports from '@/pages/admin/AdminReports';
-import AdminUsers from '@/pages/admin/AdminUsers';
-import AdminContent from '@/pages/admin/AdminContent';
-import AdminColleges from '@/pages/admin/AdminColleges';
-import AdminActivity from '@/pages/admin/AdminActivity';
-import AdminAnnounce from '@/pages/admin/AdminAnnounce';
-import HomePage from '@/pages/HomePage';
-import MatchesPage from '@/pages/MatchesPage';
-import ProfilePage from '@/pages/ProfilePage';
-import ChatPage from '@/pages/ChatPage';
-import NotificationsPage from '@/pages/NotificationsPage';
-import PostDetailPage from '@/pages/PostDetailPage';
-import SettingsPage from '@/pages/SettingsPage';
-import SearchPage from '@/pages/SearchPage';
-import SavedPage from '@/pages/SavedPage';
+// PERF: every page is a separate chunk — first paint ships the shell only,
+// not Landing + admin + every screen at once (the old 500kB+ bundle).
+const LandingPage = lazy(() => import('@/pages/LandingPage'));
+const LoginPage = lazy(() => import('@/pages/LoginPage'));
+const SignupPage = lazy(() => import('@/pages/SignupPage'));
+const ProfileSetupPage = lazy(() => import('@/pages/ProfileSetupPage'));
+const VerificationPage = lazy(() => import('@/pages/VerificationPage'));
+const AdminVerifyPage = lazy(() => import('@/pages/AdminVerifyPage'));
+const AdminLayout = lazy(() => import('@/layouts/AdminLayout'));
+const AdminOverview = lazy(() => import('@/pages/admin/AdminOverview'));
+const AdminIds = lazy(() => import('@/pages/admin/AdminIds'));
+const AdminReports = lazy(() => import('@/pages/admin/AdminReports'));
+const AdminUsers = lazy(() => import('@/pages/admin/AdminUsers'));
+const AdminContent = lazy(() => import('@/pages/admin/AdminContent'));
+const AdminColleges = lazy(() => import('@/pages/admin/AdminColleges'));
+const AdminActivity = lazy(() => import('@/pages/admin/AdminActivity'));
+const AdminAnnounce = lazy(() => import('@/pages/admin/AdminAnnounce'));
+const HomePage = lazy(() => import('@/pages/HomePage'));
+const MatchesPage = lazy(() => import('@/pages/MatchesPage'));
+const ProfilePage = lazy(() => import('@/pages/ProfilePage'));
+const ChatPage = lazy(() => import('@/pages/ChatPage'));
+const NotificationsPage = lazy(() => import('@/pages/NotificationsPage'));
+const PostDetailPage = lazy(() => import('@/pages/PostDetailPage'));
+const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+const SearchPage = lazy(() => import('@/pages/SearchPage'));
+const SavedPage = lazy(() => import('@/pages/SavedPage'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
  const { isAuthenticated, isLoading } = useAuthStore();
@@ -101,8 +103,9 @@ export default function App() {
 
  if (isLoading) return <LoadingScreen />;
 
- return (
- <Routes>
+  return (
+  <Suspense fallback={<LoadingScreen />}>
+  <Routes>
  {/* Marketing landing page — public to everyone (auth CTAs open the live
  app's login in a NEW TAB, so no redirect gymnastics needed here) */}
  <Route path="/" element={<LandingPage />} />
@@ -166,7 +169,8 @@ export default function App() {
  <Route path="/confessions" element={<Navigate to="/matches" replace />} />
  <Route path="/messages" element={<Navigate to="/matches" replace />} />
 
- <Route path="*" element={<Navigate to="/home" />} />
- </Routes>
- );
+  <Route path="*" element={<Navigate to="/home" />} />
+  </Routes>
+  </Suspense>
+  );
 }
