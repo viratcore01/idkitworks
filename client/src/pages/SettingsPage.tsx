@@ -125,14 +125,20 @@ export default function SettingsPage() {
  </div>
  </div>
 
- {/* Account Info */}
- <div className="nb-card p-6 mb-4">
- <h2 className="font-display font-bold text-lg mb-4">Account</h2>
- <div className="space-y-2 text-sm font-body">
- <p><span className="font-semibold">Email:</span> {user?.email}</p>
- <p><span className="font-semibold">Username:</span> @{user?.username}</p>
- </div>
- </div>
+  {/* Account Info */}
+  <div className="nb-card p-6 mb-4">
+  <h2 className="font-display font-bold text-lg mb-4">Account</h2>
+  <div className="space-y-2 text-sm font-body">
+  <p><span className="font-semibold">Email:</span> {user?.email}</p>
+  <p><span className="font-semibold">Username:</span> @{user?.username}</p>
+  {user?.isFounder && (
+  <p><span className="font-semibold">Rank:</span> <span className="nb-badge bg-nb-violet text-white text-xs px-2 py-0.5">👑 Founder — supreme admin</span></p>
+  )}
+  {user?.role === 'admin' && (
+  <p><span className="font-semibold">Moderates:</span> {user?.moderatedCollegeId ? 'assigned campus (see console)' : (user?.college?.shortName || user?.college?.name || 'your campus')}</p>
+  )}
+  </div>
+  </div>
 
  {/* Student verification */}
  <div className="nb-card p-6 mb-4">
@@ -165,6 +171,7 @@ export default function SettingsPage() {
   <button onClick={handleLogout} className="nb-btn-danger text-sm inline-flex items-center gap-1.5">
   <LogOut size={14} strokeWidth={2.5} /> Logout
   </button>
+  {!user?.isFounder && (
   <button
   onClick={handleDeactivate}
   className="nb-btn-ghost text-sm inline-flex items-center gap-1.5"
@@ -173,10 +180,15 @@ export default function SettingsPage() {
   <UserX size={14} strokeWidth={2.5} />
   {confirmDeactivate ? 'Click again to confirm deactivation' : 'Deactivate account'}
   </button>
+  )}
   </div>
-  {confirmDeactivate && (
+  {user?.isFounder && (
+  <p className="text-sm mt-3 opacity-70">👑 The founder account cannot be deactivated or deleted — the network always has its creator.</p>
+  )}
+  {confirmDeactivate && !user?.isFounder && (
   <p className="text-sm mt-3 opacity-70">Deactivation locks you out immediately on all devices. Your posts stay for safety review.</p>
   )}
+  {!user?.isFounder && (
   <div className="mt-4 pt-4 border-t-2 border-dashed border-nb-pink/40">
   {!showDelete ? (
   <button
@@ -215,6 +227,7 @@ export default function SettingsPage() {
   </div>
   )}
   </div>
+  )}
   </div>
 
   {/* Change Password */}

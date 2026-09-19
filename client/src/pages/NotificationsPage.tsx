@@ -8,12 +8,13 @@ import EmptyState from '@/components/common/EmptyState';
 import { formatDistanceToNow } from '@/utils/date';
 
 const typeIcons: Record<string, React.ReactNode> = {
- LIKE: <Heart size={20} strokeWidth={2.5} className="text-nb-pink" />,
- COMMENT: <MessageCircle size={20} strokeWidth={2.5} className="text-nb-peri" />,
- COMMENT_REPLY: <Reply size={20} strokeWidth={2.5} className="text-nb-peri" />,
- MATCH: <PartyPopper size={20} strokeWidth={2.5} className="text-nb-pink" />,
- NEW_MESSAGE: <Mail size={20} strokeWidth={2.5} className="text-nb-peri" />,
- MENTION: <AtSign size={20} strokeWidth={2.5} className="text-nb-violet" />,
+  LIKE: <Heart size={20} strokeWidth={2.5} className="text-nb-pink" />,
+  COMMENT: <MessageCircle size={20} strokeWidth={2.5} className="text-nb-peri" />,
+  COMMENT_REPLY: <Reply size={20} strokeWidth={2.5} className="text-nb-peri" />,
+  MATCH: <PartyPopper size={20} strokeWidth={2.5} className="text-nb-pink" />,
+  NEW_MESSAGE: <Mail size={20} strokeWidth={2.5} className="text-nb-peri" />,
+  MENTION: <AtSign size={20} strokeWidth={2.5} className="text-nb-violet" />,
+  ANNOUNCEMENT: <Megaphone size={20} strokeWidth={2.5} className="text-nb-violet" />,
 };
 
 export default function NotificationsPage() {
@@ -78,10 +79,20 @@ export default function NotificationsPage() {
  {notif.actor && (
  <Avatar src={notif.actor.avatarUrl} photoId={notif.actor.avatarPhotoId} name={notif.actor.displayName} size="sm" />
  )}
- <div className="flex-1 min-w-0">
- <p className="font-body text-sm">
- {getNotificationText(notif.type, notif.actor?.displayName || 'Someone')}
- </p>
+  <div className="flex-1 min-w-0">
+  {notif.type === 'ANNOUNCEMENT' && notif.metadata ? (
+  <>
+  <p className="font-display font-bold text-sm flex items-center gap-1.5">
+  <Megaphone size={14} strokeWidth={2.5} /> {notif.metadata.title}
+  <span className="text-[10px] font-body font-semibold text-gray-400">· from {notif.actor?.displayName || 'your moderators'}</span>
+  </p>
+  <p className="font-body text-sm mt-0.5 whitespace-pre-wrap">{notif.metadata.body}</p>
+  </>
+  ) : (
+  <p className="font-body text-sm">
+  {getNotificationText(notif.type, notif.actor?.displayName || 'Someone')}
+  </p>
+  )}
  {notif.type === 'MATCH' && notif.metadata && (
  (notif.metadata.goals?.length || notif.metadata.interests?.length) ? (
  <div className="flex flex-wrap items-center gap-1 mt-1.5">

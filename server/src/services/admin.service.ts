@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma';
+import { publish } from '../config/bus';
 import { invalidateUser } from '../utils/user-cache';
 
 /**
@@ -23,9 +24,16 @@ export class AdminService {
       }
       return { isSuper, collegeIds: null as string[] | null }; // null = all colleges
     }
-    const me = await prisma.user.findUnique({ where: { id: viewerId }, select: { collegeId: true } });
-    if (!me?.collegeId) return { isSuper, collegeIds: [] as string[] };
-    return { isSuper, collegeIds: [me.collegeId] as string[] };
+    // College moderators rule exactly ONE campus: the one the founder assigned
+    // them (moderatedCollegeId), else the campus they study in. There is no
+    // third option — an unassigned, college-less admin sees nothing.
+    const me = await prisma.user.findUnique({
+      where: { id: viewerId },
+      select: { collegeId: true, moderatedCollegeId: true },
+    });
+    const scope = me?.moderatedCollegeId ?? me?.collegeId;
+    if (!scope) return { isSuper, collegeIds: [] as string[] };
+    return { isSuper, collegeIds: [scope] as string[] };
   }
 
   /**
@@ -102,7 +110,7 @@ export class AdminService {
 
   private async collegeCard(collegeId: string) {
     const dayAgo = new Date(Date.now() - 24 * 3600 * 1000);
-    const [users, banned, pendingVerifications, posts, posts24h, pendingReports, activeMatches] = await Promise.all([
+    const [users, banned, pendingVerifications, posts, posts24h, pendingReports, activeMatches, staff] = await Promise.all([
       prisma.user.count({ where: { collegeId } }),
       prisma.user.count({ where: { collegeId, isActive: false } }),
       prisma.idVerification.count({ where: { status: 'PENDING', user: { collegeId } } }),
@@ -110,8 +118,17 @@ export class AdminService {
       prisma.post.count({ where: { deletedAt: null, createdAt: { gte: dayAgo }, author: { collegeId } } }),
       prisma.report.count({ where: { status: 'PENDING', reporter: { collegeId } } }),
       prisma.match.count({ where: { status: 'ACTIVE', userAObj: { collegeId } as any } }),
+      // Who runs this campus: assigned moderators + resident admins.
+      prisma.user.findMany({
+        where: {
+          role: 'admin',
+          OR: [{ moderatedCollegeId: collegeId }, { moderatedCollegeId: null, collegeId }],
+        },
+        select: { id: true, username: true, displayName: true, moderatedCollegeId: true },
+        orderBy: { username: 'asc' },
+      }),
     ]);
-    return { users, banned, pendingVerifications, posts, posts24h, pendingReports, activeMatches };
+    return { users, banned, pendingVerifications, posts, posts24h, pendingReports, activeMatches, staff };
   }
 
   /**
@@ -147,6 +164,7 @@ export class AdminService {
         select: {
           id: true, username: true, displayName: true, email: true,
           collegeId: true, college: { select: { name: true, shortName: true } },
+          moderatedCollegeId: true, moderatedCollege: { select: { name: true, shortName: true } },
           role: true, verificationStatus: true, isVerified: true, isActive: true,
           createdAt: true,
           _count: { select: { posts: true, reports: true } },
@@ -160,10 +178,17 @@ export class AdminService {
   }
 
   /**
-   * Change a user's staff role. Super-admin only; cannot touch other
-   * super-admins and cannot demote yourself (no lockout-by-typo).
+   * Change a user's staff role + campus assignment. Super-admin only.
+   *
+   * SUPREME RULES (the founder can never be replaced or fenced):
+   * - the founder's row is untouchable here (no demote, no reassign)
+   * - super-admin rows are untouchable here (no parallel thrones via console)
+   * - yourself is untouchable here (no lockout-by-typo)
+   * - promoting to moderator REQUIRES a college: that campus — and only that
+   *   campus — becomes their entire moderation world
+   * - demoting clears the assignment
    */
-  async setRole(viewerId: string, role: string, targetId: string, newRole: string) {
+  async setRole(viewerId: string, role: string, targetId: string, newRole: string, collegeId?: string) {
     if (role !== 'super_admin') {
       const e: any = new Error('Not authorized'); e.status = 403; throw e;
     }
@@ -173,16 +198,42 @@ export class AdminService {
     if (targetId === viewerId) {
       const e: any = new Error('You cannot change your own role'); e.status = 400; throw e;
     }
-    const target = await prisma.user.findUnique({ where: { id: targetId }, select: { id: true, role: true } });
+    const target = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: { id: true, role: true, isFounder: true },
+    });
     if (!target) {
       const e: any = new Error('User not found'); e.status = 404; throw e;
+    }
+    if (target.isFounder) {
+      const e: any = new Error('The founder cannot be changed'); e.status = 403; throw e;
     }
     if (target.role === 'super_admin') {
       const e: any = new Error('Super-admin roles cannot be changed here'); e.status = 403; throw e;
     }
-    await prisma.user.update({ where: { id: targetId }, data: { role: newRole } });
+
+    let moderatedCollegeId: string | null = null;
+    if (newRole === 'admin') {
+      // Default assignment: the campus they study in. The founder may hand
+      // them a different campus explicitly instead.
+      const full = await prisma.user.findUnique({ where: { id: targetId }, select: { collegeId: true } });
+      moderatedCollegeId = collegeId || full?.collegeId || null;
+      if (!moderatedCollegeId) {
+        const e: any = new Error('Pick a college to moderate first'); e.status = 400; throw e;
+      }
+      const exists = await prisma.college.findUnique({ where: { id: moderatedCollegeId }, select: { id: true } });
+      if (!exists) {
+        const e: any = new Error('College not found'); e.status = 404; throw e;
+      }
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: targetId },
+      data: { role: newRole, moderatedCollegeId },
+    });
     invalidateUser(targetId); // live-role auth picks it up on the next request
-    return { id: targetId, role: newRole };
+    await this.log(viewerId, `role:${newRole}`, 'USER', targetId, updated.collegeId, undefined, { moderatedCollegeId });
+    return { id: targetId, role: newRole, moderatedCollegeId };
   }
 
   /**
@@ -258,8 +309,14 @@ export class AdminService {
       const e: any = new Error('Report not found'); e.status = 404; throw e;
     }
     if (!isSuper) {
-      const me = await prisma.user.findUnique({ where: { id: viewerId }, select: { collegeId: true } });
-      if (!me?.collegeId || report.reporter.collegeId !== me.collegeId) {
+      // The report belongs to its reporter's campus; the moderator's ASSIGNED
+      // campus must be that campus. Client-supplied college is never trusted.
+      const me = await prisma.user.findUnique({
+        where: { id: viewerId },
+        select: { collegeId: true, moderatedCollegeId: true },
+      });
+      const scope = me?.moderatedCollegeId ?? me?.collegeId;
+      if (!scope || report.reporter.collegeId !== scope) {
         const e: any = new Error('Not authorized'); e.status = 403; throw e;
       }
     }
@@ -311,6 +368,286 @@ export class AdminService {
     return prisma.report.update({
       where: { id: reportId },
       data: { status: 'RESOLVED', resolverId: viewerId, resolvedAt: new Date() },
+    }).then(async (closed) => {
+      await this.log(viewerId, `report:${act}`, 'REPORT', reportId, report.reporter.collegeId, undefined, { targetType: report.targetType });
+      return closed;
     });
+  }
+
+  /** Append-only audit entry. Logging must never break the action it records. */
+  async log(actorId: string, action: string, targetType?: string, targetId?: string, collegeId?: string | null, reason?: string, metadata?: any) {
+    try {
+      await prisma.moderationLog.create({
+        data: { actorId, action, targetType, targetId, collegeId: collegeId || null, reason, metadata },
+      });
+    } catch {
+      /* audit is best-effort — the moderation action already succeeded */
+    }
+  }
+
+  /** Activity feed: who did what, scoped to your moderation world. */
+  async activity(viewerId: string, role: string, query: { collegeId?: string; actorId?: string; page?: number; limit?: number }) {
+    const { isSuper, collegeIds } = await this.scope(viewerId, role, query.collegeId);
+    const take = Math.min(Math.max(query.limit || 25, 1), 100);
+    const page = Math.max(query.page || 0, 0);
+    const where: any = {};
+    if (!isSuper) {
+      if (!collegeIds.length) return { total: 0, page, hasMore: false, items: [] };
+      where.collegeId = collegeIds[0];
+    } else if (query.collegeId) {
+      where.collegeId = query.collegeId;
+    }
+    if (query.actorId) where.actorId = query.actorId;
+    const [total, items] = await Promise.all([
+      prisma.moderationLog.count({ where }),
+      prisma.moderationLog.findMany({
+        where,
+        include: {
+          actor: { select: { id: true, username: true, displayName: true } },
+          college: { select: { id: true, name: true, shortName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: page * take,
+        take,
+      }),
+    ]);
+    return { total, page, hasMore: (page + 1) * take < total, items };
+  }
+
+  /**
+   * Trend lines for the dashboard: per-day signups, posts, reports, matches.
+   * One raw query per series (date_trunc) — 4 queries no matter the range.
+   */
+  async trends(viewerId: string, role: string, days = 14, requestedCollegeId?: string) {
+    const { isSuper, collegeIds } = await this.scope(viewerId, role, requestedCollegeId);
+    const n = Math.min(Math.max(days || 14, 1), 31);
+    if (!isSuper && !collegeIds.length) return { days: n, series: [] };
+    const collegeId = !isSuper ? collegeIds[0] : requestedCollegeId || null;
+
+    const since = new Date(Date.now() - n * 24 * 3600 * 1000);
+    const [signups, posts, reports, matches] = await Promise.all([
+      prisma.$queryRaw<{ day: Date; count: bigint }[]>`
+        SELECT date_trunc('day', "created_at") AS day, COUNT(*)
+        FROM "users"
+        WHERE "created_at" >= ${since}
+        ${collegeId ? prisma.$queryRaw`AND "college_id" = ${collegeId}` : prisma.$queryRaw``}
+        GROUP BY 1 ORDER BY 1`.catch(() => []),
+      prisma.$queryRaw<{ day: Date; count: bigint }[]>`
+        SELECT date_trunc('day', p."created_at") AS day, COUNT(*)
+        FROM "posts" p JOIN "users" u ON u."id" = p."author_id"
+        WHERE p."created_at" >= ${since} AND p."deleted_at" IS NULL
+        ${collegeId ? prisma.$queryRaw`AND u."college_id" = ${collegeId}` : prisma.$queryRaw``}
+        GROUP BY 1 ORDER BY 1`.catch(() => []),
+      prisma.$queryRaw<{ day: Date; count: bigint }[]>`
+        SELECT date_trunc('day', r."created_at") AS day, COUNT(*)
+        FROM "reports" r JOIN "users" u ON u."id" = r."reporter_id"
+        WHERE r."created_at" >= ${since}
+        ${collegeId ? prisma.$queryRaw`AND u."college_id" = ${collegeId}` : prisma.$queryRaw``}
+        GROUP BY 1 ORDER BY 1`.catch(() => []),
+      prisma.$queryRaw<{ day: Date; count: bigint }[]>`
+        SELECT date_trunc('day', m."created_at") AS day, COUNT(*)
+        FROM "matches" m JOIN "users" u ON u."id" = m."user_a"
+        WHERE m."created_at" >= ${since}
+        ${collegeId ? prisma.$queryRaw`AND u."college_id" = ${collegeId}` : prisma.$queryRaw``}
+        GROUP BY 1 ORDER BY 1`.catch(() => []),
+    ]);
+
+    const key = (d: Date) => new Date(d).toISOString().slice(0, 10);
+    const map = new Map<string, { date: string; signups: number; posts: number; reports: number; matches: number }>();
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      map.set(d, { date: d, signups: 0, posts: 0, reports: 0, matches: 0 });
+    }
+    const fill = (rows: { day: Date; count: bigint }[], field: 'signups' | 'posts' | 'reports' | 'matches') => {
+      for (const r of rows) {
+        const k = key(r.day);
+        const row = map.get(k);
+        if (row) row[field] = Number(r.count);
+      }
+    };
+    fill(signups, 'signups'); fill(posts, 'posts'); fill(reports, 'reports'); fill(matches, 'matches');
+    return { days: n, series: Array.from(map.values()) };
+  }
+
+  /** Bulk resolve: same one-click actions, many reports. Returns per-item results. */
+  async bulkResolve(viewerId: string, role: string, ids: string[], action: string) {
+    const list = [...new Set((ids || []).filter(Boolean))].slice(0, 50);
+    if (!list.length) {
+      const e: any = new Error('No reports selected'); e.status = 400; throw e;
+    }
+    const ok: string[] = [];
+    const failed: { id: string; error: string }[] = [];
+    for (const id of list) {
+      try {
+        await this.resolveReport(viewerId, role, id, action);
+        ok.push(id);
+      } catch (e: any) {
+        failed.push({ id, error: e?.message || 'Failed' });
+      }
+    }
+    return { ok, failed };
+  }
+
+  /**
+   * Campus announcement: a notification broadcast to every active user in
+   * scope (maintenance windows, safety notices, event blasts). Cooldown of
+   * 5 minutes per scope prevents an accidental double-tap from spamming
+   * thousands of inboxes.
+   */
+  async announce(viewerId: string, role: string, input: { collegeId?: string; title: string; body: string }) {
+    const title = String(input.title || '').trim().slice(0, 120);
+    const body = String(input.body || '').trim().slice(0, 500);
+    if (!title || !body) {
+      const e: any = new Error('Title and body are required'); e.status = 400; throw e;
+    }
+    const { isSuper, collegeIds } = await this.scope(viewerId, role, input.collegeId);
+    const targetCollegeId = !isSuper ? collegeIds[0] : input.collegeId || null;
+    if (!isSuper && !targetCollegeId) {
+      const e: any = new Error('Not authorized'); e.status = 403; throw e;
+    }
+
+    const cooldown = await prisma.moderationLog.findFirst({
+      where: { action: 'announce', collegeId: targetCollegeId, createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) } },
+      select: { id: true },
+    });
+    if (cooldown) {
+      const e: any = new Error('An announcement just went out — wait 5 minutes'); e.status = 429; throw e;
+    }
+
+    const recipients = await prisma.user.findMany({
+      where: { isActive: true, ...(targetCollegeId ? { collegeId: targetCollegeId } : {}) },
+      select: { id: true },
+    });
+    const metadata = { title, body };
+    for (let i = 0; i < recipients.length; i += 500) {
+      const chunk = recipients.slice(i, i + 500);
+      await prisma.notification.createMany({
+        data: chunk.map((r) => ({ recipientId: r.id, actorId: viewerId, type: 'ANNOUNCEMENT', metadata } as any)),
+      });
+    }
+    publish('notification:new', { userIds: recipients.map((r) => r.id) });
+    await this.log(viewerId, 'announce', 'COLLEGE', targetCollegeId || 'ALL', targetCollegeId, title, { recipients: recipients.length });
+    return { recipients: recipients.length };
+  }
+
+  /**
+   * Full inspect view for one user: identity, standing, recent content,
+   * every report touching them, verification trail. Scoped like everything.
+   */
+  async userDetail(viewerId: string, role: string, targetId: string) {
+    const isSuper = role === 'super_admin';
+    const target = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: {
+        id: true, email: true, username: true, displayName: true, bio: true,
+        collegeId: true, college: { select: { id: true, name: true, shortName: true } },
+        course: true, year: true, gender: true, role: true,
+        verificationStatus: true, isVerified: true, isActive: true, createdAt: true,
+        _count: { select: { posts: true, comments: true } },
+      },
+    });
+    if (!target) {
+      const e: any = new Error('User not found'); e.status = 404; throw e;
+    }
+    if (!isSuper) {
+      // Moderators inspect only their ASSIGNED campus — someone else's
+      // college 404s exactly like a missing user (no existence oracle).
+      const me = await prisma.user.findUnique({
+        where: { id: viewerId },
+        select: { collegeId: true, moderatedCollegeId: true },
+      });
+      const scope = me?.moderatedCollegeId ?? me?.collegeId;
+      if (!scope || target.collegeId !== scope) {
+        const e: any = new Error('User not found'); e.status = 404; throw e;
+      }
+    }
+    const [posts, reportsAgainst, reportsFiled, verifications, activeMatches] = await Promise.all([
+      prisma.post.findMany({
+        where: { authorId: targetId, deletedAt: null },
+        select: { id: true, content: true, type: true, createdAt: true, _count: { select: { likes: true, comments: { where: { deletedAt: null } } } } },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+      prisma.report.findMany({
+        where: { targetId },
+        select: { id: true, targetType: true, reason: true, status: true, createdAt: true, reporter: { select: { username: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      prisma.report.findMany({
+        where: { reporterId: targetId },
+        select: { id: true, targetType: true, targetId: true, reason: true, status: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      }),
+      prisma.idVerification.findMany({
+        where: { userId: targetId },
+        select: { id: true, status: true, autoReason: true, decidedBy: true, createdAt: true, decidedAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
+      prisma.match.count({ where: { status: 'ACTIVE', OR: [{ userA: targetId }, { userB: targetId }] } }),
+    ]);
+    return { user: target, activeMatches, posts, reportsAgainst, reportsFiled, verifications };
+  }
+
+  /** Ban + audit entry (used by the console and one-click actions share it). */
+  async banUser(viewerId: string, role: string, targetId: string, reason?: string) {
+    const isSuper = role === 'super_admin';
+    const target = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: { role: true, collegeId: true, moderatedCollegeId: true, isFounder: true },
+    });
+    if (!target) {
+      const e: any = new Error('User not found'); e.status = 404; throw e;
+    }
+    // THE SUPREME RULE: the founder cannot be banned by anyone, ever.
+    // Moderators cannot ban staff either — peer discipline is supreme-only.
+    if (target.isFounder) {
+      const e: any = new Error('This account cannot be banned'); e.status = 403; throw e;
+    }
+    if (targetId === viewerId) {
+      const e: any = new Error('You cannot ban yourself'); e.status = 400; throw e;
+    }
+    if (!isSuper) {
+      if (target.role !== 'user') {
+        const e: any = new Error('Only the supreme admin can moderate staff'); e.status = 403; throw e;
+      }
+      const me = await prisma.user.findUnique({
+        where: { id: viewerId },
+        select: { collegeId: true, moderatedCollegeId: true },
+      });
+      const scope = me?.moderatedCollegeId ?? me?.collegeId;
+      if (!scope || target.collegeId !== scope) {
+        const e: any = new Error('Not authorized'); e.status = 403; throw e;
+      }
+    } else if (target.role === 'super_admin') {
+      const e: any = new Error('Not authorized'); e.status = 403; throw e;
+    }
+    await prisma.user.update({ where: { id: targetId }, data: { isActive: false } });
+    await prisma.refreshToken.deleteMany({ where: { userId: targetId } });
+    invalidateUser(targetId);
+    const collegeId = (await prisma.user.findUnique({ where: { id: targetId }, select: { collegeId: true } }))?.collegeId;
+    await this.log(viewerId, 'ban', 'USER', targetId, collegeId, reason);
+    return { banned: true };
+  }
+
+  async unbanUser(viewerId: string, role: string, targetId: string) {
+    const isSuper = role === 'super_admin';
+    if (!isSuper) {
+      const [me, target] = await Promise.all([
+        prisma.user.findUnique({ where: { id: viewerId }, select: { collegeId: true, moderatedCollegeId: true } }),
+        prisma.user.findUnique({ where: { id: targetId }, select: { collegeId: true } }),
+      ]);
+      const scope = me?.moderatedCollegeId ?? me?.collegeId;
+      if (!scope || !target || target.collegeId !== scope) {
+        const e: any = new Error('Not authorized'); e.status = 403; throw e;
+      }
+    }
+    await prisma.user.update({ where: { id: targetId }, data: { isActive: true } });
+    invalidateUser(targetId);
+    const collegeId = (await prisma.user.findUnique({ where: { id: targetId }, select: { collegeId: true } }))?.collegeId;
+    await this.log(viewerId, 'unban', 'USER', targetId, collegeId);
+    return { unbanned: true };
   }
 }

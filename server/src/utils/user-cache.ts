@@ -20,6 +20,8 @@ interface CachedUser {
   collegeId: string | null;
   verificationStatus: string;
   role: string;
+  moderatedCollegeId: string | null;
+  isFounder: boolean;
   at: number;
 }
 

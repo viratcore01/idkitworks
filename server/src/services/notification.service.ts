@@ -24,6 +24,12 @@ export class NotificationService {
     const blockFilter = excluded.length
       ? { OR: [{ actorId: null }, { actorId: { notIn: excluded } }] }
       : {};
+    // College filter keeps actor-less (anonymous) AND broadcast announcements
+    // visible: a super-admin's college usually differs from the reader's, and
+    // an announcement addressed to your campus must reach you regardless.
+    const collegeFilter = viewerCollegeId
+      ? [{ OR: [{ actor: { collegeId: viewerCollegeId } }, { actorId: null }, { type: 'ANNOUNCEMENT' }] }]
+      : [];
     const notifications = await prisma.notification.findMany({
       where: {
         recipientId: userId,
@@ -32,7 +38,7 @@ export class NotificationService {
           // PRODUCT RULE: college-only — never surface an actor from another college.
           // OR actorId:null keeps ANONYMOUS notifications visible: a relation
           // filter alone would silently hide every actor-less notification.
-          ...(viewerCollegeId ? [{ OR: [{ actor: { collegeId: viewerCollegeId } }, { actorId: null }] }] : []),
+          ...collegeFilter,
         ],
       } as any,
       take: take + 1,
@@ -71,8 +77,8 @@ export class NotificationService {
         isRead: false,
         AND: [
           blockFilter,
-          // Keep the badge consistent with the filtered list (includes anonymous)
-          ...(viewerCollegeId ? [{ OR: [{ actor: { collegeId: viewerCollegeId } }, { actorId: null }] }] : []),
+          // Keep the badge consistent with the filtered list (includes anonymous + announcements)
+          ...(viewerCollegeId ? [{ OR: [{ actor: { collegeId: viewerCollegeId } }, { actorId: null }, { type: 'ANNOUNCEMENT' }] }] : []),
         ],
       } as any,
     });

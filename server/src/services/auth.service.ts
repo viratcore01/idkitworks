@@ -296,6 +296,11 @@ export class AuthService {
    * all sessions die. Content is preserved for safety/moderation review.
    */
   async deactivate(userId: string): Promise<void> {
+    const me = await prisma.user.findUnique({ where: { id: userId }, select: { isFounder: true } });
+    if (me?.isFounder) {
+      // The supreme account cannot lock itself out — the network always has its creator.
+      const e: any = new Error('The founder account cannot be deactivated'); e.status = 403; throw e;
+    }
     await prisma.user.update({ where: { id: userId }, data: { isActive: false } });
     await prisma.refreshToken.deleteMany({ where: { userId } });
     invalidateUser(userId);
@@ -316,9 +321,13 @@ export class AuthService {
    * or cascade-wipe evidence peers and moderators rely on.
    */
   async deleteAccount(userId: string): Promise<void> {
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, isFounder: true } });
     if (!user) {
       const e: any = new Error('Account not found'); e.status = 404; throw e;
+    }
+    if (user.isFounder) {
+      // The creator cannot delete the supreme account — not even by hand.
+      const e: any = new Error('The founder account cannot be deleted'); e.status = 403; throw e;
     }
 
     await prisma.$transaction(async (tx) => {
@@ -363,7 +372,6 @@ export class AuthService {
       await tx.userInterest.deleteMany({ where: { userId } });
       await tx.matchPreference.deleteMany({ where: { userId } });
       await tx.refreshToken.deleteMany({ where: { userId } });
-      // Finally: scrub every PII field and lock the shell row.
       const tag = `del_${userId.slice(0, 8)}${Date.now().toString(36).slice(-5)}`;
       await tx.user.update({
         where: { id: userId },
@@ -386,6 +394,7 @@ export class AuthService {
           isActive: false,
           role: 'user',
           collegeId: null,
+          moderatedCollegeId: null,
         },
       });
     });
@@ -422,6 +431,8 @@ export class AuthService {
       isVerified: user.isVerified,
       verificationStatus: user.verificationStatus,
       role: user.role,
+      isFounder: (user as any).isFounder || false,
+      moderatedCollegeId: (user as any).moderatedCollegeId || null,
       interests: user.interests.map((ui) => ui.interest),
       postCount: user._count.posts,
       isProfileSetup: !!(user.collegeId && user.course),

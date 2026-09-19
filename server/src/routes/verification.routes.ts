@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { authMiddleware, adminMiddleware } from '../middleware/auth';
-import { submitId, status, queue, reviewImage, decide } from '../controllers/verification.controller';
+import { submitId, status, queue, reviewImage, decide, bulkDecide } from '../controllers/verification.controller';
 
 const router = Router();
 // ID photos live in memory only — deleted from DB as soon as a decision lands
@@ -13,6 +13,7 @@ router.get('/status', authMiddleware, (req, res) => status(req, res));
 
 // Admin review queue
 router.get('/queue', authMiddleware, adminMiddleware, (req, res) => queue(req, res));
+router.patch('/bulk', authMiddleware, adminMiddleware, (req, res) => bulkDecide(req, res));
 router.get('/:id/image', authMiddleware, adminMiddleware, (req, res) => reviewImage(req, res));
 router.patch('/:id/decide', authMiddleware, adminMiddleware, (req, res) => decide(req, res));
 

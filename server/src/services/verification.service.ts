@@ -186,6 +186,6 @@ export class VerificationService {
       `admin:${adminId}`,
       record.userId,
     );
-    return { decided: approve ? 'VERIFIED' : 'REJECTED' };
+    return { decided: approve ? 'VERIFIED' : 'REJECTED', userId: record.userId, collegeId: record.user.collegeId };
   }
 }

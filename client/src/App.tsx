@@ -10,7 +10,14 @@ import SignupPage from '@/pages/SignupPage';
 import ProfileSetupPage from '@/pages/ProfileSetupPage';
 import VerificationPage from '@/pages/VerificationPage';
 import AdminVerifyPage from '@/pages/AdminVerifyPage';
-import AdminConsole from '@/pages/AdminConsole';
+import AdminLayout from '@/layouts/AdminLayout';
+import AdminOverview from '@/pages/admin/AdminOverview';
+import AdminIds from '@/pages/admin/AdminIds';
+import AdminReports from '@/pages/admin/AdminReports';
+import AdminUsers from '@/pages/admin/AdminUsers';
+import AdminContent from '@/pages/admin/AdminContent';
+import AdminActivity from '@/pages/admin/AdminActivity';
+import AdminAnnounce from '@/pages/admin/AdminAnnounce';
 import HomePage from '@/pages/HomePage';
 import MatchesPage from '@/pages/MatchesPage';
 import ProfilePage from '@/pages/ProfilePage';
@@ -133,10 +140,20 @@ export default function App() {
  </ProtectedRoute>
  } />
 
-  {/* Moderator console: overview, IDs, reports, users, content */}
+  {/* Ops command center: its own dark shell, not the student app */}
   <Route path="/admin" element={
-  <StaffRoute><AdminConsole /></StaffRoute>
-  } />
+  <StaffRoute><AdminLayout /></StaffRoute>
+  }>
+  <Route index element={<AdminOverview />} />
+  <Route path="ids" element={<AdminIds />} />
+  <Route path="reports" element={<AdminReports />} />
+  <Route path="users" element={<AdminUsers />} />
+  <Route path="content" element={<AdminContent />} />
+  <Route path="activity" element={<AdminActivity />} />
+  <Route path="announce" element={<AdminAnnounce />} />
+  {/* Legacy console entry: forwards into the new shell */}
+  <Route path="console" element={<Navigate to="/admin" replace />} />
+  </Route>
 
   {/* Admin verification review queue (college-scoped) */}
  <Route path="/admin/verify" element={

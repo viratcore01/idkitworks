@@ -20,6 +20,8 @@ model College {
   createdAt DateTime @default(now()) @map("created_at")
 
   users User[]
+  moderators User[] @relation("CollegeModerators")
+  moderationLogs ModerationLog[]
 
   @@map("colleges")
 }
@@ -46,10 +48,19 @@ model User {
   verificationStatus String @default("UNVERIFIED") @map("verification_status") // UNVERIFIED | PENDING | VERIFIED | REJECTED
   isActive      Boolean  @default(true) @map("is_active")
   role          String   @default("user")
+  // SUPREME HIERARCHY:
+  // - isFounder: the creator. Immutable, untouchable — no endpoint can demote,
+  //   ban, or delete the founder, and no endpoint can create another founder.
+  // - moderatedCollegeId: the campus this moderator is ASSIGNED to. A college
+  //   admin's entire moderation scope is this college if set, else the college
+  //   they study in. Set only by the founder/super-admin from the console.
+  isFounder     Boolean  @default(false) @map("is_founder")
+  moderatedCollegeId String? @map("moderated_college_id")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   college          College?           @relation(fields: [collegeId], references: [id])
+  moderatedCollege College?           @relation("CollegeModerators", fields: [moderatedCollegeId], references: [id])
   interests        UserInterest[]
   posts            Post[]
   comments         Comment[]
@@ -68,6 +79,7 @@ model User {
   bannedReports    Report[]           @relation("ReportResolver")
   blockedUsers     Block[]            @relation("BlockBlocker")
   blockedBy        Block[]            @relation("BlockBlocked")
+  moderationActions ModerationLog[]   @relation("ModerationActor")
   refreshTokens    RefreshToken[]
   photos           UserPhoto[]
   avatarPhoto      UserPhoto?         @relation("UserAvatarPhoto", fields: [avatarPhotoId], references: [id])
@@ -382,4 +394,28 @@ model Report {
   @@index([blockerId])
   @@index([blockedId])
   @@map("blocks")
+}
+
+// ─── MODERATION AUDIT LOG ────────────────────────────────────
+// Append-only record of staff actions: bans, unbans, role changes, ID
+// decisions, content takedowns, report resolutions, announcements.
+// collegeId = the moderated scope (target's college) so college admins see
+// only their own campus in the Activity tab; super-admins see everything.
+model ModerationLog {
+  id         String   @id @default(uuid())
+  actorId    String   @map("actor_id")
+  action     String
+  targetType String?  @map("target_type")
+  targetId   String?  @map("target_id")
+  collegeId  String?  @map("college_id")
+  reason     String?
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor   User     @relation("ModerationActor", fields: [actorId], references: [id])
+  college College? @relation(fields: [collegeId], references: [id])
+
+  @@index([collegeId, createdAt])
+  @@index([actorId, createdAt])
+  @@map("moderation_logs")
 }

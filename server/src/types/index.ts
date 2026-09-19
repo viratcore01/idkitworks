@@ -7,6 +7,14 @@ export interface AuthUser {
   role: string;
   /** Resolved from the live DB on every request (NOT from the token) so college changes apply instantly. */
   collegeId: string | null;
+  /**
+   * The campus this staffer MODERATES: their assigned college if the founder
+   * appointed them elsewhere, else their own college. All moderation scoping
+   * keys off this — never off collegeId.
+   */
+  scopeCollegeId?: string | null;
+  /** The creator. Immutable and untouchable — enforced in every staff path. */
+  isFounder?: boolean;
   /** Live DB value — the verification wall is enforced against this, per request. */
   verificationStatus?: string;
 }

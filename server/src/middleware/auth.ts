@@ -39,9 +39,9 @@ export async function photoAuth(req: AuthRequest, res: Response, next: NextFunct
       prisma.user
         .findUnique({
           where: { id: payload.userId },
-          select: { isActive: true, collegeId: true, role: true },
+          select: { isActive: true, collegeId: true, role: true, moderatedCollegeId: true, isFounder: true },
         })
-        .then((u) => (u ? { isActive: u.isActive, collegeId: u.collegeId, role: u.role, verificationStatus: 'UNVERIFIED' } : null)),
+        .then((u) => (u ? { isActive: u.isActive, collegeId: u.collegeId, role: u.role, moderatedCollegeId: u.moderatedCollegeId, isFounder: u.isFounder, verificationStatus: 'UNVERIFIED' } : null)),
     );
     if (!dbUser || !dbUser.isActive) return res.status(401).json({ error: 'Account unavailable' });
     req.user = {
@@ -50,6 +50,8 @@ export async function photoAuth(req: AuthRequest, res: Response, next: NextFunct
       username: payload.username,
       role: (dbUser as any).role || payload.role,
       collegeId: dbUser.collegeId,
+      scopeCollegeId: (dbUser as any).moderatedCollegeId ?? dbUser.collegeId,
+      isFounder: !!(dbUser as any).isFounder,
     };
     next();
   } catch {
@@ -84,9 +86,9 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       prisma.user
         .findUnique({
           where: { id: payload.userId },
-          select: { isActive: true, collegeId: true, verificationStatus: true, role: true },
+          select: { isActive: true, collegeId: true, verificationStatus: true, role: true, moderatedCollegeId: true, isFounder: true },
         })
-        .then((u) => (u ? { isActive: u.isActive, collegeId: u.collegeId, verificationStatus: u.verificationStatus, role: u.role } : null)),
+        .then((u) => (u ? { isActive: u.isActive, collegeId: u.collegeId, verificationStatus: u.verificationStatus, role: u.role, moderatedCollegeId: u.moderatedCollegeId, isFounder: u.isFounder } : null)),
     );
 
     if (!dbUser || !dbUser.isActive) {
@@ -99,6 +101,8 @@ export async function authMiddleware(req: AuthRequest, res: Response, next: Next
       username: payload.username,
       role: (dbUser as any).role || payload.role,
       collegeId: dbUser.collegeId,
+      scopeCollegeId: (dbUser as any).moderatedCollegeId ?? dbUser.collegeId,
+      isFounder: !!(dbUser as any).isFounder,
       verificationStatus: dbUser.verificationStatus,
     };
     next();
@@ -132,6 +136,15 @@ export function adminMiddleware(req: AuthRequest, res: Response, next: NextFunct
 /** College admins see only their college; super-admins see everything. */
 export function isSuperAdmin(user?: AuthUser): boolean {
   return user?.role === 'super_admin';
+}
+
+/**
+ * The campus a staffer moderates: assigned college first, own college
+ * otherwise. Every moderation gate (queues, reports, bans, takedowns) keys
+ * off this — a moderator reassigned by the founder changes scope instantly.
+ */
+export function moderationScope(user?: AuthUser): string | null {
+  return user?.scopeCollegeId ?? user?.collegeId ?? null;
 }
 
 /**

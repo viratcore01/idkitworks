@@ -6,6 +6,7 @@ import { AuthRequest } from '../types';
 import { prisma } from '../config/prisma';
 import { sendError } from '../utils/http-error';
 import { invalidateUser } from '../utils/user-cache';
+import { moderationScope } from '../middleware/auth';
 
 const reportService = new ReportService();
 const postService = new PostService();
@@ -31,7 +32,7 @@ export class AdminController {
     try {
       const { status, collegeId, limit } = req.query;
       const reports = await reportService.getReports(status as string, {
-        collegeId: req.user!.collegeId,
+        collegeId: moderationScope(req.user),
         role: req.user!.role,
       }, collegeId as string, limit ? parseInt(limit as string) : undefined);
       res.json(reports);
@@ -79,7 +80,10 @@ export class AdminController {
   /** Super-admin only: promote/demote moderators. */
   async setRole(req: AuthRequest, res: Response) {
     try {
-      res.json(await adminService.setRole(req.user!.id, req.user!.role, req.params.id as string, String(req.body?.role || '')));
+      res.json(await adminService.setRole(
+        req.user!.id, req.user!.role, req.params.id as string,
+        String(req.body?.role || ''), req.body?.collegeId as string,
+      ));
     } catch (error: any) {
       sendError(res, error, error.status || 400);
     }
@@ -96,6 +100,65 @@ export class AdminController {
         page: page ? parseInt(page as string) : undefined,
         limit: limit ? parseInt(limit as string) : undefined,
       }));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Moderator console: audit trail of staff actions. */
+  async activity(req: AuthRequest, res: Response) {
+    try {
+      const { collegeId, actorId, page, limit } = req.query;
+      res.json(await adminService.activity(req.user!.id, req.user!.role, {
+        collegeId: collegeId as string,
+        actorId: actorId as string,
+        page: page ? parseInt(page as string) : undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+      }));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Moderator console: per-day trend lines (?days=14). */
+  async trends(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.trends(
+        req.user!.id, req.user!.role,
+        req.query.days ? parseInt(req.query.days as string) : undefined,
+        req.query.collegeId as string,
+      ));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Moderator console: bulk report resolution. */
+  async bulkResolve(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.bulkResolve(req.user!.id, req.user!.role, req.body?.ids, String(req.body?.action || 'dismiss')));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Moderator console: campus announcement broadcast. */
+  async announce(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.announce(req.user!.id, req.user!.role, {
+        collegeId: req.body?.collegeId,
+        title: req.body?.title,
+        body: req.body?.body,
+      }));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Moderator console: full inspect view for one user. */
+  async userDetail(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.userDetail(req.user!.id, req.user!.role, req.params.id as string));
     } catch (error: any) {
       sendError(res, error, error.status || 400);
     }
@@ -119,6 +182,7 @@ export class AdminController {
         }
         await postService.deleteComment(id, req.user!.id, true);
       }
+      await adminService.log(req.user!.id, 'takedown', type.toUpperCase(), id, req.user!.collegeId);
       res.json({ message: 'Content deleted' });
     } catch (error: any) {
       sendError(res, error, 400);
@@ -145,50 +209,20 @@ export class AdminController {
 
   async banUser(req: AuthRequest, res: Response) {
     try {
-      const isSuper = req.user!.role === 'super_admin';
-      if (!isSuper) {
-        if (!req.user!.collegeId) return res.status(403).json({ error: 'Not authorized' });
-        const target = await prisma.user.findUnique({
-          where: { id: req.params.id as string },
-          select: { collegeId: true },
-        });
-        if (!target || target.collegeId !== req.user!.collegeId) {
-          return res.status(403).json({ error: 'Not authorized' });
-        }
-      }
-      await prisma.user.update({
-        where: { id: req.params.id as string },
-        data: { isActive: false },
-      });
-      invalidateUser(req.params.id as string); // kick them out on their next request, not in 30s
-      res.json({ message: 'User banned' });
+      const result = await adminService.banUser(req.user!.id, req.user!.role, req.params.id as string, String(req.body?.reason || ''));
+      res.json({ message: 'User banned', ...result });
     } catch (error: any) {
-      sendError(res, error, 400);
+      sendError(res, error, error.status || 400);
     }
   }
 
   /** Reverse of ban — same college-scoping rules. Wrong bans must be reversible. */
   async unbanUser(req: AuthRequest, res: Response) {
     try {
-      const isSuper = req.user!.role === 'super_admin';
-      if (!isSuper) {
-        if (!req.user!.collegeId) return res.status(403).json({ error: 'Not authorized' });
-        const target = await prisma.user.findUnique({
-          where: { id: req.params.id as string },
-          select: { collegeId: true },
-        });
-        if (!target || target.collegeId !== req.user!.collegeId) {
-          return res.status(403).json({ error: 'Not authorized' });
-        }
-      }
-      await prisma.user.update({
-        where: { id: req.params.id as string },
-        data: { isActive: true },
-      });
-      invalidateUser(req.params.id as string);
-      res.json({ message: 'User unbanned' });
+      const result = await adminService.unbanUser(req.user!.id, req.user!.role, req.params.id as string);
+      res.json({ message: 'User unbanned', ...result });
     } catch (error: any) {
-      sendError(res, error, 400);
+      sendError(res, error, error.status || 400);
     }
   }
 

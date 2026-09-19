@@ -14,6 +14,8 @@ export interface User {
   isVerified: boolean;
   verificationStatus: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
   role?: string;
+  isFounder?: boolean;
+  moderatedCollegeId?: string | null;
   interests: Interest[];
   postCount?: number;
   createdAt?: string;
