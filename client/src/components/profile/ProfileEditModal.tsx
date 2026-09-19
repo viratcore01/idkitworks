@@ -279,7 +279,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  { value: '', label: 'Rather not say' },
  { value: 'DATING', label: 'Dating' },
  { value: 'RELATIONSHIP', label: 'Relationship' },
- { value: 'FRIENDS', label: 'Friends' },
+ { value: 'HOOKUP', label: 'Hookup' },
  { value: 'CASUAL', label: 'Casual' },
  { value: 'NOT_SURE', label: 'Not sure yet' },
  ].map((g) => (

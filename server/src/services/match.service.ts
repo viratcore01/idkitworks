@@ -142,10 +142,6 @@ export class MatchService {
     }
 
     // ── DEALBREAKERS (each opted-in by the viewer; off by default) ──
-    // Verified-only: just isVerified.
-    if (pref?.onlyVerified) {
-      where.isVerified = true;
-    }
     // Minimum year (seniors-only etc.). Users with no year set can't prove it — excluded.
     if (pref?.minYear != null) {
       where.year = { gte: pref.minYear };
@@ -331,18 +327,45 @@ export class MatchService {
 
       if (mutual?.action === 'LIKE') {
         const [userA, userB] = [senderId, receiverId].sort();
+
+        // Snapshot the STRICTLY-common criteria at match time: a criterion is
+        // included only if BOTH users have it identically (same goal, same
+        // interest). Anything not shared by both is excluded — the notification
+        // only ever says what genuinely brought these two together.
+        const [uMe, uThem] = await Promise.all([
+          tx.user.findUnique({
+            where: { id: senderId },
+            select: { relationshipGoal: true, interests: { select: { interestId: true, interest: { select: { id: true, name: true } } } } },
+          }),
+          tx.user.findUnique({
+            where: { id: receiverId },
+            select: { relationshipGoal: true, interests: { select: { interestId: true, interest: { select: { id: true, name: true } } } } },
+          }),
+        ]);
+        const commonGoals =
+          uMe?.relationshipGoal && uMe.relationshipGoal === uThem?.relationshipGoal
+            ? [uMe.relationshipGoal]
+            : [];
+        const myInterests = new Map((uMe?.interests ?? []).map((ui) => [ui.interestId, ui.interest]));
+        const commonInterests = (uThem?.interests ?? [])
+          .filter((ui) => myInterests.has(ui.interestId))
+          .map((ui) => ({ id: ui.interestId, name: ui.interest.name }));
+        const criteria = { goals: commonGoals, interests: commonInterests };
+
         const match = await tx.match.upsert({
           where: { userA_userB: { userA, userB } },
-          create: { userA, userB, type: 'DATING' },
-          update: { status: 'ACTIVE', endedAt: null, endedBy: null },
+          // Re-matching refreshes the snapshot — goals/interests may have changed
+          // since the previous match.
+          create: { userA, userB, type: 'DATING', criteria },
+          update: { status: 'ACTIVE', endedAt: null, endedBy: null, criteria },
         });
 
         // No skipDuplicates on SQLite — but the idempotency guard above means this
         // only ever runs once per mutual pair.
         await tx.notification.createMany({
           data: [
-            { recipientId: senderId, actorId: receiverId, type: 'MATCH', matchId: match.id },
-            { recipientId: receiverId, actorId: senderId, type: 'MATCH', matchId: match.id },
+            { recipientId: senderId, actorId: receiverId, type: 'MATCH', matchId: match.id, metadata: criteria },
+            { recipientId: receiverId, actorId: senderId, type: 'MATCH', matchId: match.id, metadata: criteria },
           ] as any,
         });
 
@@ -350,7 +373,7 @@ export class MatchService {
         publish('match:new', { matchId: match.id, userIds: [senderId, receiverId] });
         publish('notification:new', { userIds: [senderId, receiverId] });
 
-        return { matched: true, match };
+        return { matched: true, match, criteria };
       }
 
       // One-sided like → notify the receiver (Hinge-style: likes are free to
@@ -493,7 +516,6 @@ export class MatchService {
     ageRangeMax?: number;
     genderPreference?: string;
     openToGoals?: string[];
-    onlyVerified?: boolean;
     minYear?: number | null;
     sharedInterestMin?: number;
     collegePreference?: string;
@@ -501,18 +523,17 @@ export class MatchService {
     // Clamp inputs — server is the source of truth (floor 16 = app minimum age)
     const ageMin = data.ageRangeMin != null ? Math.min(Math.max(Math.round(data.ageRangeMin), 16), 99) : undefined;
     const ageMax = data.ageRangeMax != null ? Math.min(Math.max(Math.round(data.ageRangeMax), 16), 99) : undefined;
-    const lookingFor = ['DATING', 'FRIENDS', 'BOTH'].includes(data.lookingFor || '') ? data.lookingFor : undefined;
+    const lookingFor = ['DATING', 'HOOKUP', 'BOTH'].includes(data.lookingFor || '') ? data.lookingFor : undefined;
     const genderPref = ['EVERYONE', 'MALE', 'FEMALE', 'OTHER'].includes(data.genderPreference || '') ? data.genderPreference : undefined;
     // PRODUCT RULE: college isolation is not a preference — ignore any client value.
     const collegePref: string | undefined = undefined;
 
     // Intent matching: keep only known goals, dedupe, cap the list.
-    const VALID_GOALS = ['DATING', 'RELATIONSHIP', 'FRIENDS', 'CASUAL', 'NOT_SURE'];
+    const VALID_GOALS = ['DATING', 'RELATIONSHIP', 'HOOKUP', 'CASUAL', 'NOT_SURE'];
     const openToGoals = Array.isArray(data.openToGoals)
       ? [...new Set(data.openToGoals.filter((g) => VALID_GOALS.includes(g)))].slice(0, VALID_GOALS.length)
       : undefined;
     // Dealbreakers
-    const onlyVerified = typeof data.onlyVerified === 'boolean' ? data.onlyVerified : undefined;
     const minYear = data.minYear === null || data.minYear === undefined
       ? null
       : [1, 2, 3, 4, 5].includes(Number(data.minYear)) ? Number(data.minYear) : undefined;
@@ -532,7 +553,6 @@ export class MatchService {
         ageRangeMax: finalMax,
         genderPreference: (genderPref as any) || 'EVERYONE',
         openToGoals: openToGoals || [],
-        ...(onlyVerified !== undefined && { onlyVerified }),
         ...(minYear !== undefined && { minYear }),
         ...(sharedInterestMin !== undefined && { sharedInterestMin }),
         collegePreference: collegePref, // always null — college scope is not optional
@@ -543,7 +563,6 @@ export class MatchService {
         ...(finalMax !== undefined && { ageRangeMax: finalMax }),
         ...(genderPref && { genderPreference: genderPref as any }),
         ...(openToGoals !== undefined && { openToGoals }),
-        ...(onlyVerified !== undefined && { onlyVerified }),
         ...(minYear !== undefined && { minYear }),
         ...(sharedInterestMin !== undefined && { sharedInterestMin }),
         // Force any legacy cross-college preference back to null
@@ -554,6 +573,6 @@ export class MatchService {
 
   async getPreference(userId: string) {
     const pref = await prisma.matchPreference.findUnique({ where: { userId } });
-    return pref || { lookingFor: 'DATING', ageRangeMin: null, ageRangeMax: null, genderPreference: 'EVERYONE', openToGoals: [], onlyVerified: false, minYear: null, sharedInterestMin: 0, collegePreference: null, visibility: true };
+    return pref || { lookingFor: 'DATING', ageRangeMin: null, ageRangeMax: null, genderPreference: 'EVERYONE', openToGoals: [], minYear: null, sharedInterestMin: 0, collegePreference: null, visibility: true };
   }
 }

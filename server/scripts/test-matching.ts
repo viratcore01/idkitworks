@@ -49,6 +49,7 @@ async function main() {
         email: `${username}@test.zoclo`, username, displayName: username.toUpperCase(),
         passwordHash: PASSWORD_HASH,
         collegeId: college.id, gender, dateOfBirth: new Date('2004-01-15'),
+        year: 2,
         isVerified: true, verificationStatus: 'VERIFIED',
         relationshipGoal: 'DATING',
         photos: withPhoto ? { create: { data: Buffer.from('x'), mimeType: 'image/png', slot: 0 } } : undefined,
@@ -84,6 +85,38 @@ async function main() {
   check('like after match is a quiet no-op', r.status === 200 && r.data.matched === false);
   const notifs = await prisma.notification.count({ where: { type: 'MATCH', OR: [{ recipientId: A.id }, { recipientId: B.id }] } });
   check('both got MATCH notifications', notifs === 2);
+
+  // ── 2b. Match-criteria snapshot (strictly-common only) ──
+  console.log('━━ 2b. Match criteria ━━');
+  // A & B both have goal DATING and no interests → snapshot must be exactly that
+  const matchRow = await prisma.match.findFirst({ where: { OR: [{ userA: A.id, userB: B.id }, { userA: B.id, userB: A.id }] } });
+  const crit: any = matchRow?.criteria;
+  check('criteria stored: common goal DATING only', Array.isArray(crit?.goals) && crit.goals.length === 1 && crit.goals[0] === 'DATING', JSON.stringify(crit));
+  check('criteria stored: no fabricated shared interests', Array.isArray(crit?.interests) && crit.interests.length === 0);
+  r = await api(tokA, 'GET', '/notifications');
+  const mNotif = (r.data.notifications || []).find((n: any) => n.type === 'MATCH');
+  check('MATCH notification carries criteria metadata', !!mNotif && mNotif.metadata?.goals?.[0] === 'DATING' && Array.isArray(mNotif.metadata?.interests), JSON.stringify(mNotif?.metadata));
+
+  // ── 2c. Divergence: only the strictly-common survives ──
+  console.log('━━ 2c. Criteria divergence ━━');
+  const skate = await prisma.interest.upsert({ where: { name: 'skateboarding' }, update: {}, create: { name: 'skateboarding' } });
+  const chess = await prisma.interest.upsert({ where: { name: 'chess' }, update: {}, create: { name: 'chess' } });
+  const anime = await prisma.interest.upsert({ where: { name: 'anime' }, update: {}, create: { name: 'anime' } });
+  await prisma.userInterest.createMany({ data: [
+    { userId: A.id, interestId: skate.id }, { userId: A.id, interestId: chess.id },
+    { userId: B.id, interestId: skate.id }, { userId: B.id, interestId: anime.id },
+  ] });
+  await prisma.user.update({ where: { id: B.id }, data: { relationshipGoal: 'CASUAL' } });
+  // Unmatch → re-mutual → snapshot must refresh
+  const m0 = await prisma.match.findFirst({ where: { OR: [{ userA: A.id, userB: B.id }, { userA: B.id, userB: A.id }] } });
+  await api(tokA, 'DELETE', `/matches/${m0!.id}`);
+  const l1 = await api(tokA, 'POST', '/matches/like', { receiverId: B.id });
+  const l2 = l1.data.matched ? null : await api(tokB, 'POST', '/matches/like', { receiverId: A.id });
+  const rematch = l1.data.matched ? l1 : l2;
+  check('re-mutual → re-match', !!rematch && rematch.data.matched === true);
+  check('diverged goals excluded from criteria', rematch.data.criteria?.goals?.length === 0, JSON.stringify(rematch.data.criteria));
+  check('only the shared interest appears', rematch.data.criteria?.interests?.length === 1 && rematch.data.criteria.interests[0].name === 'skateboarding', JSON.stringify(rematch.data.criteria?.interests));
+  await prisma.user.update({ where: { id: B.id }, data: { relationshipGoal: 'DATING' } });
 
   // ── 3. Concurrent double-like race (two simultaneous B-likes from A) ──
   console.log('━━ 3. Race: simultaneous likes ━━');
@@ -165,14 +198,23 @@ async function main() {
   r = await api(tokC, 'PATCH', '/matches/preferences', { openToGoals: ['DATING', 'HACKED'], minYear: 9, sharedInterestMin: 99, ageRangeMin: 10 });
   const saved = r.data;
   check('invalid goal stripped, clamps applied', r.status === 200 && saved.openToGoals?.length === 1 && saved.openToGoals[0] === 'DATING' && saved.minYear === null && saved.sharedInterestMin === 10 && saved.ageRangeMin >= 16);
-  r = await api(tokC, 'PATCH', '/matches/preferences', { openToGoals: [], onlyVerified: false, minYear: null, sharedInterestMin: 0 });
+  r = await api(tokC, 'PATCH', '/matches/preferences', { openToGoals: [], minYear: null, sharedInterestMin: 0 });
   check('reset to defaults works', r.status === 200 && r.data.openToGoals.length === 0 && r.data.minYear === null);
 
-  // onlyVerified on A's deck: everyone in test pool is verified → non-empty
-  r = await api(tokA, 'PATCH', '/matches/preferences', { onlyVerified: true });
+  // Verified-only dealbreaker was removed by product decision — sending it must be ignored, not crash
+  r = await api(tokA, 'PATCH', '/matches/preferences', { onlyVerified: true } as any);
+  check('removed onlyVerified field is ignored gracefully', r.status === 200);
   r = await api(tokA, 'GET', '/matches/discover?page=0&limit=50');
-  check('onlyVerified filter returns only verified', (r.data.users || []).every((u: any) => u.isVerified === true));
-  await api(tokA, 'PATCH', '/matches/preferences', { onlyVerified: false });
+  check('deck works without verified-only filter', Array.isArray(r.data.users));
+
+  // Year dealbreaker — incl. the 1st-year option
+  r = await api(tokA, 'PATCH', '/matches/preferences', { minYear: 1 });
+  r = await api(tokA, 'GET', '/matches/discover?page=0&limit=50');
+  check('minYear 1 (1st year+) keeps year-set users', (r.data.users || []).some((u: any) => u.id === C.id), JSON.stringify((r.data.users || []).map((u: any) => u.username)));
+  r = await api(tokA, 'PATCH', '/matches/preferences', { minYear: 3 });
+  r = await api(tokA, 'GET', '/matches/discover?page=0&limit=50');
+  check('minYear 3 excludes 2nd-year users', !(r.data.users || []).some((u: any) => u.id === C.id));
+  await api(tokA, 'PATCH', '/matches/preferences', { minYear: null });
 
   // ── 9. Auth/abuse edges ──
   console.log('━━ 9. Auth & abuse ━━');
@@ -194,6 +236,8 @@ async function main() {
   if (failures.length) { console.log('FAILED:', failures.join(' | ')); }
 
   // ── Cleanup (children first — matches/likes/notifications FK the users) ──
+  await prisma.userInterest.deleteMany({ where: { userId: { in: [A.id, B.id, C.id] } } });
+  await prisma.interest.deleteMany({ where: { name: { in: ['skateboarding', 'chess', 'anime'] } } });
   await prisma.notification.deleteMany({ where: { OR: [{ recipientId: A.id }, { recipientId: B.id }, { recipientId: C.id }, { actorId: A.id }, { actorId: B.id }, { actorId: C.id }] } });
   await prisma.match.deleteMany({ where: { OR: [{ userA: A.id }, { userB: A.id }, { userA: B.id }, { userB: B.id }, { userA: C.id }, { userB: C.id }] } });
   await prisma.matchLike.deleteMany({ where: { OR: [{ senderId: A.id }, { receiverId: A.id }, { senderId: B.id }, { receiverId: B.id }, { senderId: C.id }, { receiverId: C.id }] } });

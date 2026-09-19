@@ -82,6 +82,26 @@ export default function NotificationsPage() {
  <p className="font-body text-sm">
  {getNotificationText(notif.type, notif.actor?.displayName || 'Someone')}
  </p>
+ {notif.type === 'MATCH' && notif.metadata && (
+ (notif.metadata.goals?.length || notif.metadata.interests?.length) ? (
+ <div className="flex flex-wrap items-center gap-1 mt-1.5">
+ <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Why you match:</span>
+ {notif.metadata.goals?.map((g: string) => (
+ <span key={g} className="nb-badge bg-nb-violet text-white text-[10px] px-1.5 py-0.5">
+ Looking for: {g === 'DATING' ? 'Dating' : g === 'RELATIONSHIP' ? 'Relationship' : g === 'HOOKUP' ? 'Hookup' : g === 'CASUAL' ? 'Casual' : 'Not sure'}
+ </span>
+ ))}
+ {notif.metadata.interests?.slice(0, 4).map((i: { id: string; name: string }) => (
+ <span key={i.id} className="nb-badge bg-nb-peri text-ink text-[10px] px-1.5 py-0.5">{i.name}</span>
+ ))}
+ {(notif.metadata.interests?.length ?? 0) > 4 && (
+ <span className="text-[10px] text-gray-400">+{notif.metadata.interests.length - 4} more</span>
+ )}
+ </div>
+ ) : (
+ <p className="text-[11px] text-gray-400 mt-0.5 italic">No listed criteria in common — matched on vibes.</p>
+ )
+ )}
  <p className="text-xs text-gray-400 mt-0.5">
  {formatDistanceToNow(notif.createdAt)}
  </p>

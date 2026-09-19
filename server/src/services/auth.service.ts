@@ -338,7 +338,7 @@ export class AuthService {
     if (data.relationshipGoal !== undefined) {
       if (data.relationshipGoal === null || data.relationshipGoal === '') {
         update.relationshipGoal = null;
-      } else if (['DATING', 'RELATIONSHIP', 'FRIENDS', 'CASUAL', 'NOT_SURE'].includes(data.relationshipGoal)) {
+      } else if (['DATING', 'RELATIONSHIP', 'HOOKUP', 'CASUAL', 'NOT_SURE'].includes(data.relationshipGoal)) {
         update.relationshipGoal = data.relationshipGoal;
       } else {
         throw new Error('Invalid relationship goal');

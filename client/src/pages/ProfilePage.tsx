@@ -134,13 +134,13 @@ export default function ProfilePage() {
  <span className={`nb-badge text-[10px] ${
  profile.relationshipGoal === 'RELATIONSHIP' ? 'bg-nb-violet text-white' :
  profile.relationshipGoal === 'DATING' ? 'bg-nb-pink text-white' :
- profile.relationshipGoal === 'FRIENDS' ? 'bg-nb-mint text-ink' :
+ profile.relationshipGoal === 'HOOKUP' ? 'bg-nb-mint text-ink' :
  profile.relationshipGoal === 'CASUAL' ? 'bg-nb-yellow text-ink' :
  'bg-nb-lilac text-ink'
  }`}>
  {profile.relationshipGoal === 'RELATIONSHIP' ? 'Relationship' :
  profile.relationshipGoal === 'DATING' ? 'Dating' :
- profile.relationshipGoal === 'FRIENDS' ? 'Friends' :
+ profile.relationshipGoal === 'HOOKUP' ? 'Hookup' :
  profile.relationshipGoal === 'CASUAL' ? 'Casual' : 'Not sure yet'}
  </span>
  )}

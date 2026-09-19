@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 const GOALS: Record<string, string> = {
   'priya@skola.app': 'RELATIONSHIP',
   'arnav@skola.app': 'DATING',
-  'ishita@skola.app': 'FRIENDS',
+  'ishita@skola.app': 'HOOKUP',
   'rohit@skola.app': 'CASUAL',
 };
 async function main() {

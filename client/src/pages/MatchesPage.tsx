@@ -24,7 +24,7 @@ const GENDERS = [
 const GOALS = [
  { value: 'DATING', label: 'Dating', hint: 'Casual going-out, see where it goes' },
  { value: 'RELATIONSHIP', label: 'Relationship', hint: 'Looking for something serious' },
- { value: 'FRIENDS', label: 'Friends', hint: 'Friendship only, nothing romantic' },
+ { value: 'HOOKUP', label: 'Hookup', hint: 'No strings, keep it casual' },
  { value: 'CASUAL', label: 'Casual', hint: 'Low-key, no pressure' },
  { value: 'NOT_SURE', label: 'Not sure yet', hint: 'Open to whatever happens' },
 ];
@@ -35,7 +35,7 @@ const GOAL_LABEL: Record<string, string> = Object.fromEntries(GOALS.map((g) => [
 const GOAL_CHIP: Record<string, string> = {
  DATING: 'bg-nb-pink text-white',
  RELATIONSHIP: 'bg-nb-violet text-white',
- FRIENDS: 'bg-nb-mint text-ink',
+ HOOKUP: 'bg-nb-mint text-ink',
  CASUAL: 'bg-nb-yellow text-ink',
  NOT_SURE: 'bg-nb-lilac text-ink',
 };
@@ -43,14 +43,13 @@ const GOAL_CHIP: Record<string, string> = {
 export default function MatchesPage() {
  const [view, setView] = useState<View>('discover');
  const [deckPage, setDeckPage] = useState(0);
- const [matchBanner, setMatchBanner] = useState<{ name: string; username: string } | null>(null);
+ const [matchBanner, setMatchBanner] = useState<{ name: string; username: string; criteria?: { goals: string[]; interests: { id: string; name: string }[] } } | null>(null);
  const [showPrefs, setShowPrefs] = useState(false);
  const [prefs, setPrefs] = useState({
  genderPreference: 'EVERYONE',
  ageRangeMin: 16,
  ageRangeMax: 60,
  openToGoals: [] as string[],
- onlyVerified: false,
  minYear: null as number | null,
  sharedInterestMin: 0,
  });
@@ -130,6 +129,7 @@ export default function MatchesPage() {
  setMatchBanner({
  name: currentUser?.displayName || 'Someone',
  username: currentUser?.username || '',
+ criteria: data.criteria,
  });
  }
  // Move past the actioned card; refetch the deck when the page runs dry
@@ -198,7 +198,6 @@ export default function MatchesPage() {
  ageRangeMin: savedPrefs.ageRangeMin || 16,
  ageRangeMax: savedPrefs.ageRangeMax || 60,
  openToGoals: savedPrefs.openToGoals || [],
- onlyVerified: !!savedPrefs.onlyVerified,
  minYear: savedPrefs.minYear ?? null,
  sharedInterestMin: savedPrefs.sharedInterestMin ?? 0,
  });
@@ -246,9 +245,28 @@ export default function MatchesPage() {
  <div className="nb-card bg-nb-yellow p-8 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
  <PartyPopper size={48} strokeWidth={2.5} className="mx-auto mb-3 text-ink" />
  <h2 className="font-display font-bold text-2xl mb-1">It's a Match!</h2>
- <p className="font-body text-sm mb-5">
+ <p className="font-body text-sm">
  You and {matchBanner.name} liked each other.
  </p>
+ {matchBanner.criteria && (matchBanner.criteria.goals?.length || matchBanner.criteria.interests?.length) ? (
+ <div className="flex flex-wrap justify-center gap-1.5 mt-3 mb-1">
+ {matchBanner.criteria.goals.map((g) => (
+ <span key={g} className="nb-badge bg-nb-violet text-white text-[11px] px-2 py-1">
+ Looking for: {g === 'DATING' ? 'Dating' : g === 'RELATIONSHIP' ? 'Relationship' : g === 'HOOKUP' ? 'Hookup' : g === 'CASUAL' ? 'Casual' : 'Not sure'}
+ </span>
+ ))}
+ {matchBanner.criteria.interests.slice(0, 4).map((i) => (
+ <span key={i.id} className="nb-badge bg-white text-ink text-[11px] px-2 py-1">{i.name}</span>
+ ))}
+ {matchBanner.criteria.interests.length > 4 && (
+ <span className="nb-badge bg-white text-ink text-[11px] px-2 py-1">+{matchBanner.criteria.interests.length - 4} more</span>
+ )}
+ </div>
+ ) : (
+ <p className="text-[11px] text-gray-500 mt-1 mb-1 italic">You two don't have any listed criteria in common — the rest is chemistry.</p>
+ )
+ }
+ <div className="h-3" />
  <div className="flex gap-2 justify-center">
  <Link
  to={`/profile/${matchBanner.username}`}
@@ -337,16 +355,9 @@ export default function MatchesPage() {
  {/* ── Dealbreakers ── */}
  <label className="block font-display font-semibold text-sm mb-2">Dealbreakers</label>
  <div className="space-y-2 mb-4">
- <button
- onClick={() => setPrefs((p) => ({ ...p, onlyVerified: !p.onlyVerified }))}
- className={`w-full text-left nb-btn text-xs px-3 py-2 flex items-center gap-2 ${prefs.onlyVerified ? 'bg-nb-yellow' : 'bg-white'}`}
- >
- <span className={`w-4 h-4 border-nb-2 border-ink inline-block ${prefs.onlyVerified ? 'bg-ink' : 'bg-white'}`} />
- Verified students only
- </button>
  <div className="flex items-center gap-2">
  <span className="font-body text-xs text-gray-600 shrink-0">Year</span>
- {[null, 2, 3, 4].map((y) => (
+ {[null, 1, 2, 3, 4].map((y) => (
  <button
  key={String(y)}
  onClick={() => setPrefs((p) => ({ ...p, minYear: y }))}

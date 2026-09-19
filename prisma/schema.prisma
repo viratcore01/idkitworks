@@ -41,8 +41,7 @@ model User {
   avatarColor   String?  @map("avatar_color")
   avatarPhotoId String?  @unique @map("avatar_photo_id")
   isVerified    Boolean  @default(false) @map("is_verified")
-  // What this person is on the app for — shown on cards/profiles, and the
-  // basis of intent matching: DATING | RELATIONSHIP | FRIENDS | CASUAL | NOT_SURE
+  // What this person is on the app for — shown on cards/profiles, and the   // basis of intent matching: DATING | RELATIONSHIP | HOOKUP | CASUAL | NOT_SURE
   relationshipGoal String? @map("relationship_goal")
   verificationStatus String @default("UNVERIFIED") @map("verification_status") // UNVERIFIED | PENDING | VERIFIED | REJECTED
   isActive      Boolean  @default(true) @map("is_active")
@@ -238,7 +237,6 @@ model MatchPreference {
   // unless the viewer opts in — intent is a preference, not a wall.
   openToGoals        String[] @default([]) @map("open_to_goals")
   // DEALBREAKERS — hard filters the viewer opts into:
-  onlyVerified       Boolean  @default(false) @map("only_verified")
   minYear            Int?     @map("min_year") // null = any year
   sharedInterestMin  Int      @default(0) @map("shared_interest_min") // 0 = off, 1+ = require N common interests
   locationPreference String?  @map("location_preference")
@@ -270,6 +268,11 @@ model Match {
   userA     String   @map("user_a")
   userB     String   @map("user_b")
   type      String
+  // Snapshot of STRICTLY-common criteria at match time — shown in the MATCH
+  // notification ("you both listed: Dating · 2 shared interests"). Only
+  // intersections are stored; anything not shared by BOTH is omitted.
+  // Shape: { goals: string[], interests: { id, name }[] }
+  criteria  Json?    @map("criteria")
   status    String   @default("ACTIVE") // ACTIVE | ENDED (unmatched)
   createdAt DateTime @default(now()) @map("created_at")
   endedAt   DateTime? @map("ended_at")
@@ -330,6 +333,9 @@ model Notification {
   recipientId String    @map("recipient_id")
   actorId     String?   @map("actor_id")
   type        String
+  // Type-specific payload (MATCH notifications carry the common-criteria snapshot:
+  // { goals: string[], interests: { id, name }[] }) — rendered as chips in the UI.
+  metadata    Json?     @map("metadata")
   postId      String?   @map("post_id")
   commentId   String?   @map("comment_id")
   matchId     String?   @map("match_id")
