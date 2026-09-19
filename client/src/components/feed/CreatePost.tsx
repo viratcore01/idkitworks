@@ -33,7 +33,11 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
   const meta = TYPE_META[type];
   const Icon = meta.icon;
 
-  const effectiveAnonymous = type === 'CONFESSION' ? true : isIncognito || isAnonymous;
+  // Anonymous BY DEFAULT on the Confessions tab, but the toggle is available —
+  // a confession can go out under your name if you choose. (Incognito mode
+  // forces it regardless.)
+  const [confessionAnon, setConfessionAnon] = useState(true);
+  const effectiveAnonymous = type === 'CONFESSION' ? confessionAnon || isIncognito : isIncognito || isAnonymous;
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -66,12 +70,6 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
         <div className="flex items-center gap-1.5 text-xs font-display font-bold text-gray-500">
           <Icon size={14} strokeWidth={2.5} className="text-ink" />
           Posting a {meta.label.toLowerCase()}
-          {type === 'CONFESSION' && (
-            <span className="nb-badge bg-nb-lilac text-ink text-[10px]">
-              <Ghost size={10} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />
-              anonymous
-            </span>
-          )}
           {type === 'QUESTION' && (
             <span className="nb-badge bg-nb-yellow text-ink text-[10px]">
               <HelpCircle size={10} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />
@@ -110,17 +108,20 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
 
             <div className="flex items-center justify-between mt-3">
               <div className="flex items-center gap-2">
-                {type !== 'CONFESSION' && (
-                  <button
-                    onClick={() => setIsAnonymous(!isAnonymous)}
-                    className={`nb-badge cursor-pointer transition-all ${
-                      effectiveAnonymous ? 'bg-nb-lilac text-ink' : 'bg-gray-100'
-                    }`}
-                  >
-                    <Ghost size={12} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />
-                    Anonymous
-                  </button>
-                )}
+                <button
+                  onClick={() => (type === 'CONFESSION' ? setConfessionAnon(!confessionAnon) : setIsAnonymous(!isAnonymous))}
+                  className={`nb-badge cursor-pointer transition-all ${
+                    effectiveAnonymous ? 'bg-nb-lilac text-ink' : 'bg-gray-100'
+                  }`}
+                  title={
+                    type === 'CONFESSION'
+                      ? 'Confessions are anonymous by default — click to post under your name'
+                      : undefined
+                  }
+                >
+                  <Ghost size={12} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />
+                  Anonymous
+                </button>
                 {effectiveAnonymous && (
                   <span className="text-xs font-body text-nb-violet font-semibold inline-flex items-center gap-1">
                     <Ghost size={12} strokeWidth={2.5} /> Posting as Anonymous Student
