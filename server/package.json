@@ -9,10 +9,13 @@
     "db:generate": "prisma generate --schema=../prisma/schema.prisma",
     "db:push": "prisma db push --schema=../prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema=../prisma/schema.prisma",
-    "db:seed": "ts-node ../prisma/seed.ts"
+    "db:seed": "ts-node ../prisma/seed.ts",
+    "photos:migrate": "tsx scripts/migrate-photos-to-storage.ts",
+    "photos:migrate:dry": "tsx scripts/migrate-photos-to-storage.ts --dry-run"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "@supabase/supabase-js": "^2.116.0",
     "@types/compression": "^1.8.1",
     "bcryptjs": "^2.4.3",
     "compression": "^1.8.2",

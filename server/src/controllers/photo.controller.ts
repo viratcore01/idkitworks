@@ -1,10 +1,19 @@
 import { Response } from 'express';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import { prisma } from '../config/prisma';
 import { env } from '../config/env';
 import { AuthRequest } from '../types';
 import { sendError } from '../utils/http-error';
 import { isPlausibleImage, imageDimensions, MIN_PHOTO_LONG_SIDE } from '../utils/image-validation';
+import {
+  isStorageConfigured,
+  photoStoragePath,
+  uploadPhotoToStorage,
+  getSignedPhotoUrl,
+  deletePhotoFromStorage,
+  PHOTO_URL_TTL_SEC,
+} from '../config/storage';
 
 /** Max 4 photos per user: slot 0 = profile pic, slots 1-3 = gallery. */
 const MAX_PHOTOS = 4;
@@ -14,6 +23,11 @@ const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 /**
  * POST /users/me/photos  (multipart: photo, slot)
  * Upserts the photo in the given slot. Slot 0 also becomes the profile picture.
+ *
+ * Storage-first: uploads bytes to Supabase Storage (private bucket) and stores
+ * only `storagePath` in Postgres. Falls back to legacy DB bytes when Storage
+ * env is missing or the upload fails — so deploys without the new env vars
+ * keep working and the migration can run at any time.
  */
 export async function uploadPhoto(req: AuthRequest, res: Response) {
   try {
@@ -37,17 +51,46 @@ export async function uploadPhoto(req: AuthRequest, res: Response) {
     const slot = Math.min(Math.max(parseInt(req.body?.slot, 10) || 0, 0), MAX_PHOTOS - 1);
     const userId = req.user!.id;
 
+    // Pre-generate the id so the storage path is deterministic: <userId>/<photoId>.
+    // Replacing a slot deletes the old row AND its storage object (see below).
+    const photoId = randomUUID();
+    const storagePath = photoStoragePath(userId, photoId);
+
+    // Remember the old slot's storage object so we can clean it AFTER the
+    // DB transaction commits (never delete before — a failed tx would orphan).
+    const oldSlotPhotos = await prisma.userPhoto.findMany({
+      where: { userId, slot },
+      select: { id: true, storagePath: true },
+    });
+
+    let useStorage = false;
+    if (isStorageConfigured()) {
+      try {
+        await uploadPhotoToStorage(storagePath, file.buffer, file.mimetype);
+        useStorage = true;
+      } catch (e: any) {
+        console.error('[photo] storage upload failed, falling back to DB bytes:', e?.message || e);
+      }
+    }
+
     const photo = await prisma.$transaction(async (tx) => {
       // One photo per slot — replacing removes the old one
       await tx.userPhoto.deleteMany({ where: { userId, slot } });
       const created = await tx.userPhoto.create({
-        data: { userId, slot, data: file.buffer, mimeType: file.mimetype },
+        data: useStorage
+          ? { id: photoId, userId, slot, data: null, storagePath, mimeType: file.mimetype }
+          : { id: photoId, userId, slot, data: file.buffer, storagePath: null, mimeType: file.mimetype },
       });
       if (slot === 0) {
         await tx.user.update({ where: { id: userId }, data: { avatarPhotoId: created.id } });
       }
       return created;
     });
+
+    // Best-effort cleanup of replaced storage objects (old row is already gone).
+    for (const old of oldSlotPhotos) {
+      if (old.storagePath) deletePhotoFromStorage(old.storagePath).catch(() => {});
+    }
 
     res.status(201).json({ id: photo.id, slot: photo.slot });
   } catch (error: any) {
@@ -88,6 +131,7 @@ export async function deletePhoto(req: AuthRequest, res: Response) {
         ? [prisma.user.updateMany({ where: { id: photo.userId, avatarPhotoId: photoId }, data: { avatarPhotoId: null } })]
         : []),
     ]);
+    if (photo.storagePath) deletePhotoFromStorage(photo.storagePath).catch(() => {});
     res.json({ deleted: true });
   } catch (error: any) {
     sendError(res, error, 400);
@@ -95,39 +139,76 @@ export async function deletePhoto(req: AuthRequest, res: Response) {
 }
 
 /**
- * GET /users/photos/:photoId — binary image. Authenticated + same-college only:
+ * GET /users/photos/:photoId — authenticated + same-college only:
  * a photo from another college's student is as invisible as their profile.
+ *
+ * Storage path (new): college check via a cheap metadata-only query (no bytes),
+ * then 302 redirect to a short-lived signed Storage URL. Bytes never touch Render.
+ * Legacy path (pre-migration rows): serves DB bytes with 1-year immutable caching.
+ * Client URLs are unchanged — <img> tags follow the redirect transparently.
  */
 export async function getPhoto(req: AuthRequest, res: Response) {
   try {
     const photoId = req.params.photoId as string;
-    const photo = await prisma.userPhoto.findUnique({
+
+    // 304 fast-path without any DB hit beyond metadata: photo rows are immutable
+    // (replace = new id), so If-None-Match on the id is safe for both paths.
+    const tag = `"${photoId}"`;
+    if (req.headers['if-none-match'] === tag) return res.status(304).end();
+
+    // Metadata-only query — NEVER select the legacy `data` bytes here.
+    // (The old code fetched megabytes on every avatar view just to check college.)
+    const meta = await prisma.userPhoto.findUnique({
       where: { id: photoId },
-      include: { user: { select: { collegeId: true, isActive: true } } },
+      select: {
+        id: true,
+        userId: true,
+        slot: true,
+        mimeType: true,
+        storagePath: true,
+        user: { select: { collegeId: true, isActive: true } },
+      },
     });
-    if (!photo || !photo.user.isActive) return res.status(404).json({ error: 'Photo not found' });
+    if (!meta || !meta.user.isActive) return res.status(404).json({ error: 'Photo not found' });
 
     // PRODUCT RULE: college-only visibility — also allow the owner themselves
     // (they may be mid-setup without a college yet). A viewer WITHOUT a
     // college sees nothing except their own photos.
-    const isOwner = photo.userId === req.user!.id;
+    const isOwner = meta.userId === req.user!.id;
     if (!isOwner) {
-      if (!req.user!.collegeId || !photo.user.collegeId || photo.user.collegeId !== req.user!.collegeId) {
+      if (!req.user!.collegeId || !meta.user.collegeId || meta.user.collegeId !== req.user!.collegeId) {
         return res.status(404).json({ error: 'Photo not found' });
       }
     }
 
-    res.setHeader('Content-Type', photo.mimeType);
+    // ── New path: redirect to a signed Storage URL ──
+    if (meta.storagePath && isStorageConfigured()) {
+      try {
+        const signedUrl = await getSignedPhotoUrl(meta.storagePath);
+        res.setHeader('ETag', tag);
+        // Cache the redirect just under the URL TTL — repeat views cost zero.
+        res.setHeader('Cache-Control', `private, max-age=${Math.max(PHOTO_URL_TTL_SEC - 60, 60)}`);
+        return res.redirect(302, signedUrl);
+      } catch (e: any) {
+        console.error('[photo] sign failed, falling back to legacy bytes:', e?.message || e);
+        // fall through to legacy bytes below (migration rows keep `data`)
+      }
+    }
+
+    // ── Legacy path: serve DB bytes (only for pre-migration rows) ──
+    const legacy = await prisma.userPhoto.findUnique({
+      where: { id: photoId },
+      select: { data: true, mimeType: true },
+    });
+    if (!legacy?.data) return res.status(404).json({ error: 'Photo not found' });
+
+    res.setHeader('Content-Type', legacy.mimeType);
     // Photo rows are immutable: replacing a picture deletes the row and mints
     // a NEW id, so a URL is forever the same bytes. Cache it for a year —
     // every avatar in every feed/chat/deck after the first view costs zero.
-    // (Explicit 304: res.send(Buffer) doesn't reliably honor freshness, so
-    // conditional requests are answered here instead of re-sending megabytes.)
-    const tag = `"${photoId}"`;
-    if (req.headers['if-none-match'] === tag) return res.status(304).end();
     res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
     res.setHeader('ETag', tag);
-    res.send(Buffer.from(photo.data));
+    res.send(Buffer.from(legacy.data));
   } catch (error: any) {
     sendError(res, error, 400);
   }
