@@ -241,7 +241,8 @@ Free-tier notes: Render sleeps after ~15 min idle (first request warms it, ~50 s
 | `/api/notifications` | list · unread count · mark-all-read |
 | `/api/search` | hyperlocal people + posts |
 | `/api/admin` | reports (list/resolve, college-scoped) · content takedown · ban · stats |
-| `/api/health` | uptime + DB check (for monitors/LBs) |
+| `/api/health` | lightweight uptime (no DB — for keep-alive/LBs) + auth methods |
+| `/api/health/db` | deep check with DB round-trip (for real monitoring/alerting) |
 
 All main-app routes sit behind `authMiddleware` (JWT + live user check) **and** `collegeRequired` (the isolation gate).
 

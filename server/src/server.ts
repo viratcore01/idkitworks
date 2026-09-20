@@ -96,19 +96,31 @@ const signupLimiter = rateLimit({
 });
 app.use('/api/auth/signup', signupLimiter);
 
-// Health check (unauthenticated, cheap, for uptime monitors + load balancers)
+// ── Health checks ──
+// GET /api/health: EXTREMELY lightweight, NO DB calls. Safe to ping every
+// few minutes from cron-job.org / UptimeRobot / GitHub Actions to keep the
+// Render free instance awake. Must stay <5ms and never touch Prisma.
 // Also advertises which auth methods are configured — the client reads this
 // to decide whether to render the Google button.
-app.get('/api/health', async (_req, res) => {
+const bootTime = Date.now();
+app.get('/api/health', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptimeSec: Math.floor((Date.now() - bootTime) / 1000),
+    auth: { google: !!env.GOOGLE_CLIENT_ID, googleClientId: env.GOOGLE_CLIENT_ID || undefined },
+  });
+});
+
+// GET /api/health/db: deep check WITH a DB round-trip. Use for real
+// monitoring/alerting only (not for keep-alive — it burns pool connections).
+app.get('/api/health/db', async (_req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      auth: { google: !!env.GOOGLE_CLIENT_ID, googleClientId: env.GOOGLE_CLIENT_ID || undefined },
-    });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ status: 'ok', database: 'reachable', timestamp: new Date().toISOString() });
   } catch {
-    // DB down: still 200 for the LB but flagged — or flip to 503 if you prefer fail-fast
     res.status(503).json({ status: 'degraded', database: 'unreachable' });
   }
 });

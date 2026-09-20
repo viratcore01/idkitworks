@@ -1,0 +1,32 @@
+name: keep-alive
+
+# Zero-cost external keep-alive for the Render free Web Service.
+# Pings the LIGHTWEIGHT /api/health endpoint (no DB calls) every 10 minutes
+# so the instance never idles out (~15 min sleep window).
+#
+# Setup (one time):
+#   1. GitHub repo → Settings → Secrets and variables → Actions → New secret
+#      Name:  RENDER_API_URL
+#      Value: https://<your-service>.onrender.com   (no trailing slash, no /api)
+#   2. Push this file to main. Done — no card, no signup beyond GitHub.
+#
+# Why 10 min: comfortably under Render's ~15 min idle cutoff, while using
+# ~144 cheap GETs/day. Uses the no-DB endpoint so it never burns Supabase
+# pool connections.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping Render health endpoint
+        run: |
+          URL="${{ secrets.RENDER_API_URL }}/api/health"
+          echo "Pinging $URL"
+          # -f fails on HTTP >=400, --retry covers a cold-start race
+          curl -fsS --max-time 60 --retry 2 --retry-delay 10 "$URL"
