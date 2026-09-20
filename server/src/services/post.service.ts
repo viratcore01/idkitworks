@@ -1,5 +1,14 @@
 import { prisma } from '../config/prisma';
 import { invalidateUnreadCount } from './notification.service';
+import {
+  get as cacheGet,
+  set as cacheSet,
+  FEED_TTL_SEC,
+  feedCollegeTag,
+  feedUserTag,
+  invalidateCollegeFeed,
+  invalidateUserFeed,
+} from '../config/cache';
 import { publish } from '../config/bus';
 import { Prisma } from '@prisma/client';
 
@@ -73,6 +82,7 @@ export class PostService {
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
       },
     });
+    invalidateCollegeFeed(author.collegeId);
     // LIVE FEED: push instead of poll — everyone in the college's feed page
     // refetches instantly. (Polling stays as the fallback.) The create
     // response is masked exactly like reads: the raw authorId of an anonymous
@@ -93,6 +103,15 @@ export class PostService {
   async getFeed(userId: string, query: FeedQuery) {
     const limit = Math.min(query.limit || 20, 50);
     const cursor = query.cursor;
+
+    // CACHE: page 1 only (cursor pages always hit the DB). On hit this is a
+    // ZERO round-trip response — the feed is the app's hottest endpoint and
+    // every miss used to cost 4-6 sequential Supabase round-trips.
+    const page1Key = cursor ? null : `feed:v1:${userId}:p1:${limit}${query.type ? `:${query.type}` : ''}`;
+    if (page1Key) {
+      const cached = cacheGet(page1Key);
+      if (cached) return cached;
+    }
 
     // PERF: viewer + blocks are independent — one parallel wave instead of
     // two sequential round-trips (feed is the app's hottest endpoint).
@@ -117,6 +136,10 @@ export class PostService {
       author: { collegeId: viewer.collegeId, isActive: true },
       ...(blockedIds.length && { authorId: { notIn: blockedIds } }),
       ...(query.type && { type: query.type as any }),
+      // CACHE MARKER (page 1 only): tags the result cached below; a harmless
+      // filter — every real post is newer than 1970. Cursor pages skip it and
+      // the cache, so deep links can never serve a stale marked entry.
+      ...(cursor ? {} : { createdAt: { gt: new Date(0) } }),
     };
 
     const posts = await prisma.post.findMany({
@@ -154,7 +177,7 @@ export class PostService {
     const hasMore = posts.length > limit;
     const data = hasMore ? posts.slice(0, limit) : posts;
 
-    return {
+    const result = {
       posts: data.map((post) => ({
         ...post,
         // Ownership is computed BEFORE anonymous masking — the real authorId
@@ -176,6 +199,12 @@ export class PostService {
       })),
       nextCursor: hasMore ? data[data.length - 1].id : null,
     };
+    // College tag: new/edited/deleted posts + comments bust EVERYONE's page 1.
+    // User tag: like/save (per-viewer flags) bust only this viewer's copy.
+    if (page1Key) {
+      cacheSet(page1Key, result, FEED_TTL_SEC, [feedCollegeTag(viewer.collegeId), feedUserTag(userId)]);
+    }
+    return result;
   }
 
   async getById(postId: string, userId: string) {
@@ -258,13 +287,20 @@ export class PostService {
     }
     if (!Object.keys(update).length) throw new Error('Nothing to update');
 
-    return prisma.post.update({ where: { id: postId }, data: update });
+    const updated = await prisma.post.update({ where: { id: postId }, data: update });
+    // Posts never move colleges: the author's college is the feed tag to bust.
+    const authorCollege = await prisma.user.findUnique({ where: { id: post.authorId }, select: { collegeId: true } });
+    if (authorCollege?.collegeId) invalidateCollegeFeed(authorCollege.collegeId);
+    return updated;
   }
   async delete(postId: string, userId: string, isAdmin = false) {
     const post = await prisma.post.findUnique({ where: { id: postId } });
     if (!post) throw new Error('Post not found');
     if (!isAdmin && post.authorId !== userId) throw new Error('Not authorized');
-    return prisma.post.update({ where: { id: postId }, data: { deletedAt: new Date() } });
+    const deleted = await prisma.post.update({ where: { id: postId }, data: { deletedAt: new Date() } });
+    const authorCollege = await prisma.user.findUnique({ where: { id: post.authorId }, select: { collegeId: true } });
+    if (authorCollege?.collegeId) invalidateCollegeFeed(authorCollege.collegeId);
+    return deleted;
   }
 
   async toggleLike(postId: string, userId: string, actorCollegeId?: string | null) {
@@ -279,6 +315,9 @@ export class PostService {
       // Unlike withdraws the like notification too (Instagram-style): a like
       // that was spam-toggled 50 times must not leave 50 unread badges.
       await prisma.notification.deleteMany({ where: { actorId: userId, postId, type: 'LIKE' } });
+      // Per-viewer flags (isLikedByMe) changed — bust this viewer's page-1 copy.
+      // Global like-counts may drift ≤ FEED_TTL_SEC by design (see cache.ts).
+      invalidateUserFeed(userId);
       return { liked: false };
     } else {
       try {
@@ -302,6 +341,7 @@ export class PostService {
         invalidateUnreadCount(post.authorId);
         publish('notification:new', { userIds: [post.authorId] });
       }
+      invalidateUserFeed(userId);
       return { liked: true };
     }
   }
@@ -346,7 +386,7 @@ export class PostService {
   }
 
   async createComment(postId: string, authorId: string, content: string, isAnonymous = false, parentCommentId?: string, actorCollegeId?: string | null) {
-    await this.assertLivePost(postId, actorCollegeId, authorId);
+    const livePost = await this.assertLivePost(postId, actorCollegeId, authorId);
 
     const trimmed = String(content || '').trim();
     if (!trimmed) throw new Error('Comment cannot be empty');
@@ -375,6 +415,8 @@ export class PostService {
       },
     });
 
+    // Comments change the page-1 topComments preview for the whole college.
+    if (livePost.author.collegeId) invalidateCollegeFeed(livePost.author.collegeId);
     // Notify post author (or the parent comment's author when replying —
     // exactly one notify target, and never yourself).
     const post = await prisma.post.findUnique({ where: { id: postId } });
@@ -427,6 +469,13 @@ export class PostService {
       },
     });
 
+    // Edited comment text shows in the college's page-1 previews.
+    const postCollege = await prisma.post.findUnique({
+      where: { id: updated.postId },
+      select: { author: { select: { collegeId: true } } },
+    });
+    if (postCollege?.author.collegeId) invalidateCollegeFeed(postCollege.author.collegeId);
+
     // You are the author, but keep the response shape identical to reads.
     return { ...anonymizeComment(updated), isMine: true };
   }
@@ -435,7 +484,13 @@ export class PostService {
     const comment = await prisma.comment.findUnique({ where: { id: commentId } });
     if (!comment) throw new Error('Comment not found');
     if (!isAdmin && comment.authorId !== userId) throw new Error('Not authorized');
-    return prisma.comment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
+    const deleted = await prisma.comment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
+    const postCollege = await prisma.post.findUnique({
+      where: { id: deleted.postId },
+      select: { author: { select: { collegeId: true } } },
+    });
+    if (postCollege?.author.collegeId) invalidateCollegeFeed(postCollege.author.collegeId);
+    return deleted;
   }
 
   /**
@@ -449,6 +504,7 @@ export class PostService {
     });
     if (existing) {
       await prisma.savedPost.delete({ where: { userId_postId: { userId, postId } } });
+      invalidateUserFeed(userId);
       return { saved: false };
     }
     try {
@@ -456,6 +512,7 @@ export class PostService {
     } catch (err: any) {
       if (err?.code !== 'P2002') throw err;
     }
+    invalidateUserFeed(userId);
     return { saved: true };
   }
 

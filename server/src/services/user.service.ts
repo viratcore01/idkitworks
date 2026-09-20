@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma';
+import { invalidateDeckForUser, invalidateUserFeed } from '../config/cache';
 
 /**
  * The masked persona for anonymous posts (same shape post.service uses).
@@ -281,17 +282,24 @@ export class UserService {
 
   async block(blockerId: string, blockedId: string) {
     if (blockerId === blockedId) throw new Error("Can't block yourself");
-    return prisma.block.upsert({
+    const block = await prisma.block.upsert({
       where: { blockerId_blockedId: { blockerId, blockedId } },
       create: { blockerId, blockedId },
       update: {},
     });
+    // The blocked person vanishes from the blocker's deck/feed cache immediately.
+    invalidateDeckForUser(blockerId);
+    invalidateUserFeed(blockerId);
+    return block;
   }
 
   async unblock(blockerId: string, blockedId: string) {
-    return prisma.block.delete({
+    const block = await prisma.block.delete({
       where: { blockerId_blockedId: { blockerId, blockedId } },
     });
+    invalidateDeckForUser(blockerId);
+    invalidateUserFeed(blockerId);
+    return block;
   }
 
   async getBlockedUsers(userId: string) {

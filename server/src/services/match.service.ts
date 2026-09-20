@@ -1,6 +1,14 @@
 import { prisma } from '../config/prisma';
 import { publish } from '../config/bus';
 import { invalidateUnreadCount } from './notification.service';
+import {
+  get as cacheGet,
+  set as cacheSet,
+  fingerprint,
+  deckTag,
+  invalidateDeckForUser,
+  DECK_TTL_SEC,
+} from '../config/cache';
 
 /**
  * Loop-chain deck: fresh profiles come first (newest first). Once they run
@@ -116,8 +124,30 @@ export class MatchService {
 
     // Viewer's own interests power the shared-interest dealbreaker.
     const viewerInterestIds = new Set(viewerInterestRows.map((ui) => ui.interestId));
-    // the deck permanently (pending the other person's answer); passes only
-    // shape ORDER (they re-enter at the back of the chain), never visibility.
+
+    // CACHE: the key fingerprints everything that changes this viewer's deck
+    // (college, prefs, goals, interests, photo count) — filter edits, goal
+    // edits and photo uploads change the KEY, so they need no invalidation.
+    // Like/pass/rewind/unmatch/block change exclusion sets WITHOUT changing
+    // the fingerprint, so those paths call invalidateDeckForUser() explicitly.
+    const myGoalsFp = [...(viewer.relationshipGoals?.length ? viewer.relationshipGoals : (pref?.openToGoals ?? []))].sort();
+    const fp = fingerprint([
+      viewer.collegeId,
+      pref?.ageRangeMin ?? 16,
+      pref?.ageRangeMax ?? 60,
+      pref?.genderPreference || 'EVERYONE',
+      pref?.minYear,
+      pref?.sharedInterestMin ?? 0,
+      myGoalsFp.join(','),
+      [...viewerInterestIds].sort().join(','),
+      viewerPhotoCount,
+    ]);
+    const deckKey = `deck:v1:${userId}:${fp}:${page}:${take}`;
+    const cached = cacheGet(deckKey);
+    if (cached) return cached;
+
+    // LIKEd ids leave the deck permanently (pending the other person's answer);
+    // passes only shape ORDER (they re-enter at the back), never visibility.
     const likedIds = actioned.filter((a) => a.action === 'LIKE').map((a) => a.receiverId);
     // oldest pass first — the back of the loop chain
     const passedIds = actioned
@@ -281,7 +311,7 @@ export class MatchService {
 
     const passedSet = new Set(passedIds);
 
-    return {
+    const result = {
       users: pageSlice.map((u: any) => ({
         id: u.id,
         username: u.username,
@@ -312,6 +342,8 @@ export class MatchService {
       totalRemaining: Math.max(chainLength - offset, 0),
       totalFresh: freshCount,
     };
+    cacheSet(deckKey, result, DECK_TTL_SEC, [deckTag(userId)]);
+    return result;
   }
 
   /**
@@ -477,6 +509,11 @@ export class MatchService {
       return { matched: false, duplicate: existing?.action === action };
     });
 
+    // CACHE: the exclusion set changed (new like/pass) without changing the
+    // fingerprint — bust the actor's deck. On LIKE also bust the receiver's:
+    // their deck gains a likes-you boost/badge for the sender.
+    invalidateDeckForUser(senderId);
+    if (action === 'LIKE') invalidateDeckForUser(receiverId);
     return result;
   }
 
@@ -551,6 +588,9 @@ export class MatchService {
         ],
       },
     });
+    // Both users can swipe each other again — bust both decks.
+    invalidateDeckForUser(match.userA);
+    invalidateDeckForUser(match.userB);
     return { unmatched: true };
   }
 
@@ -665,6 +705,8 @@ export class MatchService {
     await prisma.matchLike.delete({
       where: { senderId_receiverId: { senderId: userId, receiverId: last.receiverId } },
     });
+    // The rewound profile re-enters the chain — the cached deck no longer matches.
+    invalidateDeckForUser(userId);
     return { rewound: true, userId: last.receiverId };
   }
 
