@@ -248,6 +248,15 @@ All main-app routes sit behind `authMiddleware` (JWT + live user check) **and** 
 
 ---
 
+## 🔥 Keep-alive (free tier)
+
+The Render free instance sleeps after ~15 idle minutes (20–50 s wake-up).
+Two independent free pingers keep it warm — **cron-job.org (primary)** and the
+in-repo GitHub Actions workflow (backup). Setup, manual trigger and
+verification steps: **[KEEP-ALIVE.md](KEEP-ALIVE.md)**.
+
+---
+
 ## 📈 Scaling
 
 The codebase ships with **[SCALING.md](SCALING.md)** — an honest load playbook: what's already protected (pagination, indexes, caps, atomic matching), the exact failure order under heavy traffic, a capacity ladder from ~1 k to 1 M users, and the pre-launch checklist. Spoiler: the current free stack comfortably carries a real student community; the first lever when growth hits is Supabase compute, not a rewrite.
