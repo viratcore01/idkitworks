@@ -1,298 +1,265 @@
 <div align="center">
 
-# 🎓 SKOLA
+<img src="public/zoclo-logo.png" alt="Zoclo" width="140"/>
 
-**The hyperlocal social network for college students.**
+# Zoclo
 
-Feed · Dating · Chat — all inside your college, nothing outside it.
+**Your campus. Your people. One app.**
 
-[![Live](https://img.shields.io/badge/Live-Zoclo-violet?style=for-the-badge)](https://idkitworks-viratcore01s-projects.vercel.app)
-[![Stack](https://img.shields.io/badge/Stack-React_·_Express_·_Postgres-black?style=for-the-badge)](#-tech-stack)
-[![Cost](https://img.shields.io/badge/Hosting-%E2%82%B90%2Fmonth-success?style=for-the-badge)](#-deployment--free-tier)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](#-license)
+Community feed · Campus dating · Real-time chat — exclusively for verified students of the same college.
+
+[![Live](https://img.shields.io/badge/▶_Live-idkitworks.vercel.app-9AE600?style=for-the-badge&labelColor=111)](https://idkitworks.vercel.app)
+[![Stack](https://img.shields.io/badge/React_·_Node_·_Postgres-111?style=for-the-badge)](#tech-stack)
+[![Uptime](https://img.shields.io/badge/Warm_24%2F7-dual_pinger-FF6B35?style=for-the-badge&labelColor=111)](#performance-engineering)
+[![Hosting](https://img.shields.io/badge/Infra-%E2%82%B90%2Fmonth-success?style=for-the-badge&labelColor=111)](#deployment)
 
 </div>
 
 ---
 
-## ✨ What is Zoclo?
+## What is Zoclo?
 
-Zoclo is a **college-only social super-app**: a Reddit-style community feed, a Tinder-style dating deck, and real-time chat — fused into one neobrutalist experience.
+Zoclo is a **college-only social super-app**: a Reddit-style community feed, a Tinder-style dating deck, and real-time chat — fused into one fast, neobrutalist experience.
 
-**The core rule that shapes everything:** when a student signs up with their college, *everything* they see — feed, people, chats, notifications — belongs to that college. Cross-college content doesn't exist. It's not filtered in the UI; it's impossible at the database query level.
+Three products students already use, rebuilt for one hyperlocal context:
 
 | | |
 |:---:|:---:|
-| **Community** — a Reddit-style feed with posts, likes, threaded comments, anonymous confessions, and top-comment previews | **Dating** — a swipe deck scoped to your campus, with gender/age preferences, passes that resurface after 30 days, and atomic mutual matching |
-| **Chat** — real-time messaging with edit windows, delete-tombstones, and day separators | **Profiles** — relationship-aware profiles with completeness meter, interests, and privacy-first fields |
+| **Community** — a campus feed with posts, threaded comments, anonymous confessions and polls | **Dating** — a swipe deck of people on your campus, with preferences, mutual matching and a proper "it's a match" moment |
+| **Chat** — real-time messaging with edit windows, unsend and unread counts | **People** — searchable, verified, college-scoped profiles with relationship-aware actions |
 
-## 📸 Screenshots
+**Every account is verified.** Students sign up, pick their college, and upload their student ID — a campus moderator approves it before they can see a single post. No bots, no strangers, no one from outside your campus. Ever.
 
-> Drop PNGs with these names into a `screenshots/` folder in the repo root and they render automatically.
+## The one rule: college-only
 
-| Page | Screenshot |
-|---|---|
-| **Login** — neobrutalist auth with the two-tone SKOLA logo | `screenshots/login.png` |
-| **Home Feed** — college posts with top-comment previews, like/comment counts | `screenshots/feed.png` |
-| **Discover** — the swipe deck, scoped to your campus | `screenshots/discover.png` |
-| **Matches** — your matches list, jump straight into chat | `screenshots/matches-list.png` |
-| **Chat** — real-time thread with edit/delete tombstones | `screenshots/chat.png` |
-| **Profile** — stats, interests, profile strength, edit modal | `screenshots/profile.png` |
-| **Notifications** | `screenshots/notifications.png` |
-| **Search** | `screenshots/search.png` |
+Everything a student sees — feed, people, chats, notifications — belongs to their college. This isn't a UI filter; it's enforced **at the database query level**, on every request:
 
-```md
-![Login](screenshots/login.png)
-![Feed](screenshots/feed.png)
-![Discover](screenshots/discover.png)
-![Chat](screenshots/chat.png)
-![Profile](screenshots/profile.png)
-```
+- A post from another college **404s** — its existence isn't even confirmable
+- Cross-college likes, comments, swipes and DMs are rejected server-side
+- Moderators are scoped to their campus; the founder sees all
+- College is resolved from the **live database on every request**, never from the JWT — scope changes apply instantly and can't be spoofed
 
-*(Images are expected in `/screenshots` — see the table above for filenames.)*
+> The result: Zoclo feels like *your* campus, not another global feed. That's the product.
 
 ---
 
-## 🧭 The One Rule: College-Only
+## Screenshots
 
-Everything in Zoclo is enforced **server-side**, not hidden in the UI:
+Drop PNGs with these names into a `screenshots/` folder and they render here.
 
-| Surface | Enforcement |
+| Page | File |
 |---|---|
-| Community feed | Query filters `author.collegeId = viewer.collegeId` at the database |
-| Posts by direct URL | A post from another college **404s** — its existence isn't even confirmable |
-| Likes / comments | Rejected with 404 if the post is outside your college |
-| Dating deck | `collegeId = viewer.collegeId` — preferences can never widen the pool |
-| Like / pass actions | Cross-college swipe → 404, even with a guessed user ID |
-| Conversations | Creation itself refuses cross-college targets |
-| Notifications | Actors from other colleges are filtered out |
-| Search | Only your college's people and posts exist |
-| Moderation | College admins see only their college; `super_admin` sees all |
-| No college assigned? | **403 on every main-app route** + frontend gate to profile setup |
-
-`collegeId` is resolved from the **live database on every request** (never from the JWT), so scope changes apply instantly and can't be spoofed. Once assigned, a user's college is **locked** — no carrying content between colleges.
+| Login — neobrutalist two-tone auth | `screenshots/login.png` |
+| Feed — college posts with comment previews | `screenshots/feed.png` |
+| Discover — the campus swipe deck | `screenshots/discover.png` |
+| Chat — real-time threads | `screenshots/chat.png` |
+| Profile — stats, interests, strength meter | `screenshots/profile.png` |
 
 ---
 
-## 🔧 Tech Stack
+## Feature highlights
+
+### 📝 Community feed
+- Post types: normal, confessions (fully anonymous — the real author never crosses the wire), polls, questions
+- Reddit-style threaded comments, tombstone deletes, edit-anytime with an "Edited" tag
+- Top-3 comment previews on every card, cursor pagination, optimistic likes
+- Anonymous posts stay on your profile behind an owner-only archive — even you see them masked
+
+### ❤️ Campus dating
+- Swipe deck scoped to your college — preferences can never widen the pool
+- Gender + age-range filters, "looking for" intent matching, shared-interest dealbreakers
+- **Atomic mutual matching** in a single transaction — races and double-swipes can't create duplicates
+- Like cap (100/12h), 10-minute rewind on passes, unmatch with preserved history for safety reports
+- Age computed server-side; exact birthdates never leave the API
+
+### 💬 Real-time chat
+- Matches only — no messaging strangers
+- Socket.IO push with REST fallback, 15-minute edit window (WhatsApp-style), unsend for everyone
+- Day separators, unread counts, block-aware at every step
+
+### 🛡️ Safety & moderation
+- Student-ID verification gate before full access
+- Report posts, comments, users and messages
+- College-scoped moderation console: verification queue, reports, bans, takedowns, campus-wide announcements
+- Bidirectional blocking — blocks are a hard wall across feed, decks, search and chat
+
+---
+
+## Performance engineering
+
+Zoclo is tuned against **measured production numbers**, not vibes:
+
+| Optimization | Effect |
+|---|---|
+| **In-process TTL caches** (feed page 1, swipe deck, unread counts) | Hot reads serve with **zero** DB round-trips; tag-based invalidation keeps data fresh on every write |
+| **Single-query aggregation** — block lists folded into counts, parallel query waves | Multi-query hot paths cut to one round-trip |
+| **Region placement** — API in Singapore, measured against alternatives | DB round-trip **~0.45s vs 1.5–2.9s** before (≈3×); full rationale in [SINGAPORE-MIGRATION.md](SINGAPORE-MIGRATION.md) |
+| **Supabase Storage for photos** — signed URLs, metadata-only checks, immutable caching | Bytes never touch the API; repeat views cost nothing |
+| **DB-level pagination** — keyset cursors, bounded id-lists, skip/take everywhere | The full table is never loaded into memory |
+| **Dual keep-alive pingers** (cron-job.org + GitHub Actions, [runbook](KEEP-ALIVE.md)) | The free-tier instance **never sleeps** — no 20–50s cold starts |
+| **Hardened connection pool** — pgbouncer-safe params, single source of truth | No duplicate pool settings, no Supavisor prepared-statement crashes |
+
+**Auth is cached, not trusted:** a 30s per-user auth cache eliminates a round-trip from *every* request, while bans, verification and college changes invalidate it instantly.
+
+## Security
+
+- JWT access tokens (15 min) + **rotating refresh tokens** stored server-side — logout and compromise invalidate instantly, and simultaneous tabs can't invalidate each other
+- **helmet** headers, CORS locked to the client origin, 100 kb body cap
+- Layered rate limits: 600 req/min global · failed-login brake · signup brake · per-user like/message caps
+- Prisma-parameterized queries + payload type-guards — injection dies at the door
+- One error choke point scrubs Prisma internals, file paths and stack traces; 5xx never leaks details
+- Sockets are never anonymous: JWT verified at handshake, room joins verified against DB membership
+- Photo serving is college-scoped with short-lived signed URLs — tokens can't act as API credentials
+
+## Tech stack
 
 | Layer | Tech |
 |---|---|
-| **Frontend** | React 18, Vite, TypeScript, Tailwind CSS, React Router 6 |
-| **State** | Zustand (auth/session) + TanStack Query (server state) |
-| **Backend** | Node.js, Express 4, TypeScript |
-| **Database** | PostgreSQL (Supabase) + Prisma ORM |
-| **Realtime** | Socket.IO (JWT-authenticated handshakes, room membership checks) |
-| **Auth** | JWT access tokens (15 min) + rotating refresh tokens (7 d, stored server-side) |
-| **Security** | helmet, express-rate-limit, 100 kb body cap, centralized error sanitizer |
-| **Hosting** | Vercel (SPA) + Render (API) + Supabase (Postgres) — **₹0/month** |
+| Frontend | React 18 · Vite · TypeScript · Tailwind CSS · React Router 6 |
+| State | Zustand (session) · TanStack Query (server state) |
+| Backend | Node.js · Express · TypeScript · Socket.IO |
+| Data | PostgreSQL (Supabase) · Prisma ORM |
+| Media | Supabase Storage (private bucket, signed URLs) |
+| Hosting | Vercel (SPA) · Render (API, Singapore) · Supabase (Mumbai) — **₹0/month** |
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 Browser (React SPA — Vercel)
-   │  axios (auto token refresh, request queue)
-   │  Socket.IO client
+   │  axios (auto token refresh, rotation-race safe)
+   │  Socket.IO client (JWT handshake)
    ▼
-Express API (Render)  ──  helmet · CORS · rate limits · body cap
-   │   routes/ → controllers/ → services/   (all business logic)
-   │                            │
-   │                     Prisma ORM
-   ▼                          ▼
-Socket.IO (same process)   PostgreSQL (Supabase) — 17 tables
-   rooms: user:<id>,
-   conversation:<id>
+Express API (Render · Singapore)
+   │  helmet · CORS · rate limits · compression
+   │  routes → controllers → services   (all business logic)
+   │                        │
+   │              TTL caches (feed · deck · unread · auth)
+   │                        │
+   │                  Prisma ORM
+   ▼                        ▼
+Socket.IO (same process)   PostgreSQL (Supabase · Mumbai)
 ```
 
-**Strict 4-layer backend** — controllers never touch Prisma; services never touch `req`/`res`. Every error response flows through one sanitizer: Prisma internals, file paths, and stack traces can never reach a client.
+**Strict 4-layer backend:** controllers never touch Prisma; services never touch `req`/`res`. Every write path that affects a cache calls its invalidation hook. Realtime events fan out through a typed event bus — REST and sockets stay consistent.
 
-**Database model (17 tables):** `colleges`, `users`, `refresh_tokens`, `interests`, `user_interests`, `posts`, `comments` (self-referential reply trees), `post_likes`, `match_preferences`, `match_likes` (LIKE/PASS memory), `matches` (`@@unique([userA, userB])` — duplicate matches are impossible at the DB level), `conversations`, `conversation_members`, `messages`, `notifications`, `reports`, `blocks`.
-
-Soft deletes everywhere user content lives (`deletedAt`), tombstone reads for deleted messages/comments, composite primary keys on join tables, and indexes on every hot read path.
+**17 tables** covering colleges, users, posts (self-referential comment trees), matches (DB-level duplicate immunity), conversations, notifications, reports and blocks — soft deletes on all user content, composite keys on join tables, indexes on every hot read path.
 
 ---
 
-## 🎯 Features
+## Run it locally
 
-### 📝 Community Feed
-- Text posts (NORMAL / CONFESSION / POLL / QUESTION) with anonymous posting
-- Owner-only anonymous archive: your anonymous posts appear on YOUR profile behind a "Only you can see these" badge — enforced server-side (anyone else's request returns an empty list), and even the author sees them under the masked "Anonymous Student" persona, so the real author never leaves the server
-- Reddit-style threaded comments; deleted-with-replies become tombstones, childless deletes vanish
-- Top-3 newest comments previewed on every feed card
-- Cursor pagination (infinite scroll), optimistic likes, live counts
-- Edit your comments anytime ("Edited" tag), delete with Reddit semantics
-
-### ❤️ Dating / Matching
-- Swipe deck (like / pass) — same-college only, enforced at query level
-- Gender + age-range preferences (server-validated and clamped)
-- Pass memory: passed profiles resurface after 30 days
-- **Atomic mutual matching** inside a transaction — double-swipes and races can never create duplicate matches
-- Like cap (100 / 12 h) — bot and scraper brake
-- "It's a match!" celebration modal; unmatch (soft — history preserved for safety reports) with clean re-match later
-- Age computed from DOB; exact birthdates never leave the server
-
-### 💬 Chat
-- Conversations gated on matches — no messaging strangers
-- Real-time send/delivery via Socket.IO with a 5 s REST-poll fallback
-- Edit window (15 min, WhatsApp-style), delete → "Message deleted" tombstone for everyone
-- Day separators, unread counts, block-aware at every step
-
-### 👤 Profiles
-- Relationship-aware: the profile knows if you're matched / they liked you / blocked — and renders the right actions
-- Profile-strength meter (weighted completeness checks + next-step hint)
-- Edit modal with server-mirrored validation (name, bio, DOB 16+, gender, course/year, interests, avatar color)
-- Privacy: exact DOB, email, and match count are never exposed to other users
-- Block/unblock — bidirectional wall across feed, search, decks, and chat
-
-### 🔔 Notifications & Search
-- Likes, comments, replies, matches, messages — filtered to same-college actors
-- Unread badge consistent with the filtered list
-- Hyperlocal search: people + posts from your college only; anonymous authors masked
-
-### 🛡️ Moderation & Safety
-- Report system (posts / comments / users / messages)
-- College-scoped admin: reports, bans, content takedowns respect college walls; `super_admin` overrides
-- Blocked users can't DM, appear in decks, or surface in search
-
----
-
-## 🔐 Security
-
-- **helmet** security headers; CORS locked to the client origin
-- **Rate limits:** 300 req/min global · 10 login attempts / 15 min (production) · 100 likes / 12 h per user
-- **Payload cap:** 100 kb JSON — junk floods die at the door
-- **Injection-proof:** Prisma parameterizes everything; signup/login type-guards reject object/array payloads before the DB
-- **Zero info leaks:** one error choke point scrubs Prisma engine text and paths; 5xx always returns a generic message
-- **Sessions:** refresh tokens rotate on every use and live server-side — logout and compromise invalidate instantly
-- **Sockets:** no anonymous connections — JWT verified at handshake, room joins verified against membership
-
----
-
-## 🚀 Run It Locally
-
-**Prerequisites:** Node 18+, a Postgres database (local or Supabase free tier)
+**Prerequisites:** Node 18+, a PostgreSQL database (local or Supabase free tier)
 
 ```bash
-# 1. Clone
 git clone https://github.com/viratcore01/idkitworks.git
 cd idkitworks
 
-# 2. Install (root + workspaces)
-npm install
-cd server && npm install && cd ../client && npm install && cd ..
-
-# 3. Server environment — server/.env
+# install all three packages
+npm install && (cd server && npm install) && (cd client && npm install)
 ```
 
-`server/.env`:
+**`server/.env`** (see `.env.example`):
+
 ```env
 DATABASE_URL="postgresql://user:pass@host:5432/db"
-DIRECT_URL="postgresql://user:pass@host:5432/db"
 JWT_SECRET="a-long-random-string"
 JWT_REFRESH_SECRET="another-long-random-string"
 JWT_EXPIRES_IN="15m"
 JWT_REFRESH_EXPIRES_IN="7d"
 PORT=5000
 CLIENT_URL="http://localhost:5173"
+# optional — enables Google Sign-In
+GOOGLE_CLIENT_ID=""
 ```
 
 ```bash
-# 4. Database: generate client, push schema, seed
+# database: generate client, push schema, seed
 cd server
 npx prisma generate --schema=../prisma/schema.prisma
 npx prisma db push --schema=../prisma/schema.prisma
-npx tsx ../prisma/seed.ts        # colleges + interests
-npx tsx ../prisma/seed-posts.ts  # demo users + posts
+npx tsx ../prisma/seed.ts          # colleges + interests
+npx tsx ../prisma/seed-posts.ts    # demo users + posts
 cd ..
 
-# 5. Run (client :5173 + API :5000, proxied)
+# run both (client :5173, API :5000, proxied)
 npm run dev
 ```
 
-Open **http://localhost:5173** — sign up, pick your college, and go.
+Open **http://localhost:5173**, sign up, pick a college, get verified (or use a seeded moderator account), and go.
 
-**Demo accounts** (after seeding): `virat@skola.app` · `priya@skola.app` · … — password `password123`.
+**Demo accounts** after seeding: `virat@skola.app` · `priya@skola.app` — password `password123`.
 
----
-
-## 🌍 Deployment (₹0/month)
+## Deployment
 
 | Piece | Host | Notes |
 |---|---|---|
-| **Frontend** | Vercel (Hobby) | Root repo deploy; `VITE_API_URL` env var → API URL; `vercel.json` handles SPA rewrites |
-| **API** | Render (Free) | Root Directory `server`; build `npm install && npm run build`; start `npm start`; all secrets in env |
-| **Database** | Supabase (Free) | Session-pooler connection string; Data API off, RLS on |
+| Frontend | Vercel | Root deploy · `VITE_API_URL` → API host · `vercel.json` SPA rewrites |
+| API | Render Free | Root dir `server` · build `npm install --include=dev && npm run build` · start `npm start` · health check `/api/health` · **region: Singapore** |
+| Database | Supabase Free | Session pooler · Data API off · RLS on |
+| Keep-alive | cron-job.org + GitHub Actions | Every 10 min → `/api/health` ([setup](KEEP-ALIVE.md)) |
 
-Production guard: the API **refuses to boot** if `NODE_ENV=production` without strong JWT secrets and a `DATABASE_URL` — no silent misconfigurations.
+The API **refuses to boot** in production without strong JWT secrets and a database URL — misconfiguration fails loudly, never silently. `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_PHOTOS_BUCKET` enable Storage-backed photos; without them the API falls back to legacy Postgres bytes.
 
-Free-tier notes: Render sleeps after ~15 min idle (first request warms it, ~50 s) and Supabase pauses after 7 idle days (one-click restore, data intact).
+## API map
 
----
-
-## 📡 API Map (48 endpoints)
-
-| Route group | What it covers |
+| Route group | Covers |
 |---|---|
-| `/api/auth` | signup · login · refresh (rotating) · logout · me (GET/PATCH) · completeness |
-| `/api/users` | profile (+relationship context) · user posts · block/unblock · colleges · interests |
-| `/api/posts` | feed · CRUD · like toggle · comments (create/edit/delete/nest) |
-| `/api/matches` | discover (paginated deck) · like · pass · matches · unmatch · stats · preferences |
-| `/api/messages` | conversations · thread read · send · edit (15-min window) · delete (tombstone) |
+| `/api/auth` | signup · login · Google · refresh (rotating) · logout · me · completeness |
+| `/api/users` | profiles · user posts · block/unblock · photos (upload/delete/serve) · photo tokens |
+| `/api/posts` | feed · CRUD · likes · threaded comments |
+| `/api/matches` | discover (paginated deck) · like/pass · matches · unmatch · stats · preferences · rewind |
+| `/api/messages` | conversations · threads · send · edit (15-min window) · delete |
 | `/api/notifications` | list · unread count · mark-all-read |
 | `/api/search` | hyperlocal people + posts |
-| `/api/admin` | reports (list/resolve, college-scoped) · content takedown · ban · stats |
-| `/api/health` | lightweight uptime (no DB — for keep-alive/LBs) + auth methods |
-| `/api/health/db` | deep check with DB round-trip (for real monitoring/alerting) |
+| `/api/admin` | verification queue · reports · bans · takedowns · announcements · stats |
+| `/api/colleges` | directory search + curation |
+| `/api/health` | no-DB liveness (keep-alive target) · `/api/health/db` deep check |
 
-All main-app routes sit behind `authMiddleware` (JWT + live user check) **and** `collegeRequired` (the isolation gate).
+Every main-app route sits behind JWT auth **and** the college gate.
 
----
+## Ops runbooks
 
-## 🔥 Keep-alive (free tier)
+| Doc | What it covers |
+|---|---|
+| [KEEP-ALIVE.md](KEEP-ALIVE.md) | The dual-pinger setup, manual triggers, how to verify the instance never sleeps |
+| [SINGAPORE-MIGRATION.md](SINGAPORE-MIGRATION.md) | Zero-downtime region migration runbook (completed — kept as reference) |
+| [SCALING.md](SCALING.md) | Honest load playbook: failure order under traffic, capacity ladder 1k → 1M users |
 
-The Render free instance sleeps after ~15 idle minutes (20–50 s wake-up).
-Two independent free pingers keep it warm — **cron-job.org (primary)** and the
-in-repo GitHub Actions workflow (backup). Setup, manual trigger and
-verification steps: **[KEEP-ALIVE.md](KEEP-ALIVE.md)**.
-
-Moving the API closer to the Mumbai Supabase region (≈2× faster DB round-trips)?
-Follow the zero-downtime runbook: **[SINGAPORE-MIGRATION.md](SINGAPORE-MIGRATION.md)**.
-
----
-
-## 📈 Scaling
-
-The codebase ships with **[SCALING.md](SCALING.md)** — an honest load playbook: what's already protected (pagination, indexes, caps, atomic matching), the exact failure order under heavy traffic, a capacity ladder from ~1 k to 1 M users, and the pre-launch checklist. Spoiler: the current free stack comfortably carries a real student community; the first lever when growth hits is Supabase compute, not a rewrite.
-
-## 📁 Project Structure
+## Project structure
 
 ```
-skola/
-├── client/               # React + Vite SPA
+├── client/                 # React + Vite SPA
 │   └── src/
-│       ├── components/   # feed, layout, profile, common UI
-│       ├── pages/        # 11 route pages
-│       ├── layouts/      # AppLayout (sidebar+nav), AuthLayout
-│       ├── store/        # Zustand auth store
-│       ├── services/     # axios client (token refresh queue)
-│       └── types/        # shared TS types
-├── server/               # Express + TypeScript API
+│       ├── components/     # feed, layout, profile, common UI
+│       ├── pages/          # 11 route pages
+│       ├── layouts/        # AppLayout (sidebar+nav) · AuthLayout
+│       ├── store/          # Zustand auth store
+│       ├── services/       # axios client (refresh queue) · realtime
+│       └── utils/          # photo tokens, helpers
+├── server/                 # Express + TypeScript API
 │   └── src/
-│       ├── routes/       # 8 routers, 48 endpoints
-│       ├── controllers/  # HTTP layer only
-│       ├── services/     # ALL business logic + Prisma
-│       ├── middleware/   # auth, college gate, admin
-│       ├── config/       # env (validated), prisma singleton
-│       └── utils/        # jwt, password, http-error sanitizer
-├── prisma/               # schema.prisma (17 models) + seeds
-├── screenshots/          # product screenshots (README)
-├── vercel.json           # SPA rewrites for the frontend host
-└── SCALING.md            # load playbook
+│       ├── routes/         # 10 routers
+│       ├── controllers/    # HTTP layer only
+│       ├── services/       # ALL business logic + Prisma
+│       ├── middleware/     # auth · college gate · verification · admin
+│       ├── config/         # env (validated) · prisma · cache · storage · bus
+│       ├── scripts/        # photo migration tooling
+│       └── utils/          # jwt · password · user-cache · error sanitizer
+├── prisma/                 # schema.prisma (17 models) · seeds
+├── .github/workflows/      # keep-alive backup pinger
+└── vercel.json             # SPA rewrites
 ```
 
-## 🎨 Design
+## Design
 
-**Neobrutalism** — thick 3 px borders, hard offset shadows, lime/orange accents on cream, Space Grotesk + DM Sans. Fully responsive: desktop sidebar → mobile bottom nav, `dvh` viewport math, iPhone safe-area handling, and a dev-only layout auditor (`__layoutAudit()` in the console) that scans every page for overflow/overlap.
+**Neobrutalism** — thick 3px borders, hard offset shadows, lime/orange on cream, Space Grotesk + DM Sans. Fully responsive: desktop sidebar → mobile bottom nav, `dvh` viewport math, iPhone safe-area handling, and a dev-only layout auditor (`__layoutAudit()` in the console) that scans every page for overflow and overlap.
+
+## Roadmap
+
+- [ ] **Version nudge** — stale tabs get a graceful "new version available" refresh prompt
+- [ ] **Supabase → Singapore** — API/DB co-location for ~5ms round-trips
+- [ ] **Push notifications** — web push for matches and messages
+- [ ] **Campus events** — the feed's next hyperlocal chapter
 
 ---
 
@@ -300,8 +267,8 @@ skola/
 
 **Built for students, by students.** ⚡
 
-[Live Site](https://idkitworks-viratcore01s-projects.vercel.app) · [Report an issue](https://github.com/viratcore01/idkitworks/issues)
+[Live site](https://idkitworks.vercel.app) · [Report an issue](https://github.com/viratcore01/idkitworks/issues) · [idkitworks01@gmail.com](mailto:idkitworks01@gmail.com)
 
-Contact — **[idkitworks01@gmail.com](mailto:idkitworks01@gmail.com)** · one inbox for everything (questions, college onboarding, safety, press)
+Questions · college onboarding · safety · press — one inbox for everything.
 
 </div>
