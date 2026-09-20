@@ -1,5 +1,10 @@
 # Render → Singapore Migration Runbook (zero data loss, near-zero downtime)
 
+> **✅ COMPLETED 2026-09-20.** Production now runs at
+> `https://idkitworks-1.onrender.com` (Singapore); the old Oregon service was
+> retired after a verified cutover. Measured result: 1 DB round-trip went from
+> ~1.5–2.9s to ~0.45–0.55s. Kept for reference / future region moves.
+
 **Why:** every DB round-trip currently costs ~1.2–1.5s because the API sits in
 Oregon and Supabase is in Mumbai. Singapore cuts that roughly in half (~0.6–0.8s)
 on every cache miss, cold feed load, photo metadata check and login.
