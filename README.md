@@ -255,6 +255,9 @@ Two independent free pingers keep it warm — **cron-job.org (primary)** and the
 in-repo GitHub Actions workflow (backup). Setup, manual trigger and
 verification steps: **[KEEP-ALIVE.md](KEEP-ALIVE.md)**.
 
+Moving the API closer to the Mumbai Supabase region (≈2× faster DB round-trips)?
+Follow the zero-downtime runbook: **[SINGAPORE-MIGRATION.md](SINGAPORE-MIGRATION.md)**.
+
 ---
 
 ## 📈 Scaling
