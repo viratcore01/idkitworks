@@ -196,7 +196,7 @@ export const COLLEGE_SEED: CollegeSeed[] = [
   { name: 'Thadomal Shahani Engineering College', shortName: 'TSEC', city: 'Mumbai', state: 'Maharashtra' },
   { name: 'Sardar Patel Institute of Technology', shortName: 'SPIT', city: 'Mumbai', state: 'Maharashtra' },
   { name: 'Vidyalankar Institute of Technology', shortName: 'VIT Mumbai', city: 'Mumbai', state: 'Maharashtra' },
-  { name: 'Institute of Professional Education and Communication', shortName: 'IPEC', city: 'Ghaziabad', state: 'Uttar Pradesh' },
+  { name: 'Inderprastha Engineering College', shortName: 'IPEC', city: 'Ghaziabad', state: 'Uttar Pradesh' },
   { name: 'JSS Academy of Technical Education Noida', shortName: 'JSS Noida', city: 'Noida', state: 'Uttar Pradesh' },
   { name: 'Galgotias College of Engineering and Technology', shortName: 'GCET', city: 'Greater Noida', state: 'Uttar Pradesh' },
   { name: 'Jaypee Institute of Information Technology', shortName: 'JIIT', city: 'Noida', state: 'Uttar Pradesh' },
