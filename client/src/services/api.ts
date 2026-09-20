@@ -65,7 +65,10 @@ api.interceptors.response.use(
         localStorage.clear();
         // Never bounce people off the auth pages themselves — signup makes
         // pre-auth calls (interests/colleges) and must stay usable.
-        if (!onAuthPage) window.location.href = '/login';
+        // NOTE: client-side navigation only (see 'auth:expired' in App).
+        // A window.location.href reload here re-downloads the whole bundle
+        // and flashes the wrong screens for seconds — the #1 login UX bug.
+        if (!onAuthPage) window.dispatchEvent(new CustomEvent('auth:expired'));
         return Promise.reject(error);
       }
 
@@ -96,7 +99,7 @@ api.interceptors.response.use(
         }
         processQueue(refreshError, null);
         localStorage.clear();
-        if (!onAuthPage) window.location.href = '/login';
+        if (!onAuthPage) window.dispatchEvent(new CustomEvent('auth:expired'));
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

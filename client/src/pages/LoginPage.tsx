@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Zap, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
@@ -9,10 +9,19 @@ import toast from 'react-hot-toast';
 export default function LoginPage() {
  const [email, setEmail] = useState('');
  const [password, setPassword] = useState('');
- const [isLoading, setIsLoading] = useState(false);
- const submittingRef = useRef(false); // ref guard: double-taps beat React re-render
- const login = useAuthStore((s) => s.login);
- const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const submittingRef = useRef(false); // ref guard: double-taps beat React re-render
+  const login = useAuthStore((s) => s.login);
+  const navigate = useNavigate();
+
+  // Cold-server honesty on the button itself: after 8s of signing in, say
+  // the server may be waking up instead of looking frozen.
+  useEffect(() => {
+  if (!isLoading) { setSlow(false); return; }
+  const t = setTimeout(() => setSlow(true), 8000);
+  return () => clearTimeout(t);
+  }, [isLoading]);
 
  const handleSubmit = async (e: React.FormEvent) => {
  e.preventDefault();
@@ -63,13 +72,18 @@ export default function LoginPage() {
  disabled={isLoading}
  className="nb-btn-orange w-full text-center disabled:opacity-50"
  >
- {isLoading ? (
- <><Hourglass size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Signing in...</>
- ) : (
- <><Zap size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Sign In</>
- )}
- </button>
- </form>
+  {isLoading ? (
+  <><Hourglass size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Signing in...</>
+  ) : (
+  <><Zap size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Sign In</>
+  )}
+  </button>
+  {isLoading && slow && (
+  <p className="font-body text-xs text-gray-500 text-center">
+  Still working — the server sleeps when idle and takes ~30s to wake the first time today.
+  </p>
+  )}
+  </form>
 
  <div className="mt-5">
  <GoogleButton mode="login" />

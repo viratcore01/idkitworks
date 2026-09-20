@@ -1,5 +1,5 @@
-import { useEffect, Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, Suspense, lazy, useState } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Zap } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import AuthLayout from '@/layouts/AuthLayout';
@@ -84,24 +84,74 @@ function StaffRoute({ children }: { children: React.ReactNode }) {
 }
 
 function LoadingScreen() {
- return (
- <div className="min-h-screen nb-canvas-surface flex items-center justify-center">
- <div className="text-center">
- <Zap size={56} strokeWidth={2.5} className="text-ink animate-bounce" fill="currentColor" />
- <p className="mt-4 font-display font-semibold text-lg">Loading...</p>
- </div>
- </div>
- );
+  // Cold-start honesty: the free-tier server sleeps when idle and the wake
+  // takes ~30s. After 4s of spinner, say so — a silent spinner feels broken.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+  const t = setTimeout(() => setSlow(true), 4000);
+  return () => clearTimeout(t);
+  }, []);
+  return (
+  <div className="min-h-screen nb-canvas-surface flex items-center justify-center p-6">
+  <div className="text-center max-w-xs">
+  <Zap size={56} strokeWidth={2.5} className="text-ink animate-bounce mx-auto" fill="currentColor" />
+  <p className="mt-4 font-display font-semibold text-lg">Loading...</p>
+  {slow && (
+  <p className="mt-2 font-body text-sm text-gray-500">
+  Waking up the server — it sleeps when idle, first visit takes ~30 seconds.
+  </p>
+  )}
+  </div>
+  </div>
+  );
+}
+
+/** Boot reached a dead end: stored session, but the server never answered
+ * even after retries. Tokens are KEPT — Retry usually succeeds instantly
+ * against the now-warm server. Never flash the login form here. */
+function BootStuckScreen() {
+  const retryBoot = useAuthStore((s) => s.retryBoot);
+  const [retrying, setRetrying] = useState(false);
+  return (
+  <div className="min-h-screen nb-canvas-surface flex items-center justify-center p-6">
+  <div className="text-center max-w-xs">
+  <Zap size={56} strokeWidth={2.5} className="text-ink mx-auto" fill="currentColor" />
+  <p className="mt-4 font-display font-bold text-lg">Couldn't reach Zoclo</p>
+  <p className="mt-2 font-body text-sm text-gray-500">
+  The server didn't answer. Your login is safe — just try again.
+  </p>
+  <button
+  onClick={async () => { setRetrying(true); try { await retryBoot(); } finally { setRetrying(false); } }}
+  disabled={retrying}
+  className="nb-btn-orange mt-5 disabled:opacity-50"
+  >
+  {retrying ? 'Retrying...' : 'Try again'}
+  </button>
+  </div>
+  </div>
+  );
 }
 
 export default function App() {
- const { user, fetchMe, isLoading } = useAuthStore();
+  const { user, fetchMe, isLoading, bootStuck } = useAuthStore();
 
- useEffect(() => {
- fetchMe();
- }, []);
+  useEffect(() => {
+  fetchMe();
+  }, []);
 
- if (isLoading) return <LoadingScreen />;
+  // Genuine session expiry navigates client-side (no bundle reload, no
+  // wrong-screen flash). The api layer fires this instead of location.href.
+  const navigate = useNavigate();
+  useEffect(() => {
+  const onExpired = () => {
+  if (!/^\/(login|signup)$/.test(window.location.pathname)) navigate('/login');
+  };
+  window.addEventListener('auth:expired', onExpired);
+  return () => window.removeEventListener('auth:expired', onExpired);
+  }, [navigate]);
+
+  if (isLoading) return <LoadingScreen />;
+  if (bootStuck) return <BootStuckScreen />;
 
   return (
   <Suspense fallback={<LoadingScreen />}>

@@ -8,6 +8,10 @@ import { User } from '@/types';
 interface AuthState {
   user: User | null;
   isLoading: boolean;
+  /** True when boot had stored tokens but the server never answered (cold
+   * start timeout / offline) after retries. Tokens are KEPT — this is not a
+   * logout, and the UI offers Retry instead of flashing the login page. */
+  bootStuck: boolean;
   isAuthenticated: boolean;
   isIncognito: boolean;
   setUser: (user: User | null) => void;
@@ -19,6 +23,7 @@ interface AuthState {
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   deleteAccount: () => Promise<void>;
   fetchMe: () => Promise<void>;
+  retryBoot: () => Promise<void>;
   updateProfile: (data: any) => Promise<void>;
   applyCollegeChange: (college: User['college']) => void;
 }
@@ -26,6 +31,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
+  bootStuck: false,
   isAuthenticated: false,
   isIncognito: false,
 
@@ -95,17 +101,41 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const token = localStorage.getItem('accessToken');
     if (!token) {
       // No backdoor: unauthenticated visitors go to login like a real app.
-      set({ isLoading: false });
+      set({ isLoading: false, bootStuck: false });
       return;
     }
-    try {
-      const { data } = await api.get('/auth/me');
-      set({ user: data, isAuthenticated: true, isLoading: false });
-      ensurePhotoToken().catch(() => {}); // photo <img> URLs need it
-    } catch {
-      localStorage.clear();
-      set({ user: null, isAuthenticated: false, isLoading: false });
+    set({ isLoading: true, bootStuck: false });
+    // Transient failures (cold-start timeouts, dropped connections) must NEVER
+    // wipe a valid session — that was the "flashes login, then works" bug:
+    // boot timed out at 45s, storage got cleared, user re-logged in manually
+    // against a now-warm server. Retry first; only a definitive server
+    // rejection (401/403/404 after refresh already failed) logs out.
+    let lastError: any = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const { data } = await api.get('/auth/me');
+        set({ user: data, isAuthenticated: true, isLoading: false, bootStuck: false });
+        ensurePhotoToken().catch(() => {}); // photo <img> URLs need it
+        return;
+      } catch (e: any) {
+        lastError = e;
+        if (e?.response) break; // server answered: rejection is definitive
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 2000)); // else: retry
+      }
     }
+    if (lastError?.response) {
+      localStorage.clear();
+      set({ user: null, isAuthenticated: false, isLoading: false, bootStuck: false });
+    } else {
+      // Server never answered. Keep the tokens — the session is probably
+      // fine — and let the UI offer Retry instead of a wrong login screen.
+      set({ user: null, isAuthenticated: false, isLoading: false, bootStuck: true });
+    }
+  },
+
+  retryBoot: async () => {
+    set({ bootStuck: false });
+    await get().fetchMe();
   },
 
   updateProfile: async (profileData) => {
