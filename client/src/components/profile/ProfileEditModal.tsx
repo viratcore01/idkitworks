@@ -30,36 +30,6 @@ const GOALS = [
 
 const MAX_PHOTOS = 4;
 const MAX_MB = 5;
-/** Below this natural width a stored photo cannot look sharp on deck cards —
- * owners see a retake nudge instead of silently blurry dating photos. */
-const SHARP_MIN_PX = 500;
-
-/**
- * Owner's photo tile. Measures the real file resolution on load: legacy
- * postage-stamp uploads (from before the editor exported source pixels)
- * get flagged so the owner retakes them — the bytes can't be repaired.
- */
-function PhotoTile({ src, highlight }: { src: string; highlight: boolean }) {
-  const [soft, setSoft] = useState(false);
-  return (
-    <span className="block relative">
-      <img
-        src={src}
-        alt=""
-        onLoad={(e) => {
-          const w = (e.currentTarget as HTMLImageElement).naturalWidth || 0;
-          if (w > 0 && w < SHARP_MIN_PX) setSoft(true);
-        }}
-        className={`w-full aspect-square object-cover nb-avatar ! ${highlight ? 'ring-2 ring-nb-violet ring-offset-2' : ''}`}
-      />
-      {soft && (
-        <span className="absolute bottom-1 left-1 right-1 text-center text-[9px] font-bold bg-nb-yellow text-ink border border-ink px-1 py-0.5 leading-tight">
-          Low quality — tap to retake
-        </span>
-      )}
-    </span>
-  );
-}
 
 export default function ProfileEditModal({ profile, onClose, onSaved }: {
  profile: any;
@@ -208,7 +178,11 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  }}
  />
   {src ? (
-  <PhotoTile src={src} highlight={slot === 0} />
+  <img
+  src={src}
+  alt=""
+  className={`w-full aspect-square object-cover nb-avatar ! ${slot === 0 ? 'ring-2 ring-nb-violet ring-offset-2' : ''}`}
+  />
   ) : (
  <div className={`w-full aspect-square border-nb-2 border-dashed border-gray-400 bg-nb-cream flex flex-col items-center justify-center text-gray-500 hover:border-nb-violet hover:text-nb-violet transition-colors ${slot === 0 ? 'ring-2 ring-nb-violet ring-offset-2' : ''}`}>
  {slot === 0 ? <Camera size={18} strokeWidth={2.5} /> : <Plus size={16} strokeWidth={2.5} />}
@@ -223,7 +197,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  })}
  </div>
   <p className="text-[11px] text-gray-500 font-body mb-4">
-  People in Match see all your photos. JPG / PNG / WebP · max {MAX_MB} MB · at least 400px on the long side for sharp results.
+  People in Match see all your photos. JPG / PNG / WebP · max {MAX_MB} MB.
   </p>
 
  <div className="flex items-center gap-4 mb-5">
