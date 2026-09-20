@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import {
  MessageSquare, Ban, FileText, BadgeCheck, CircleHelp, ShieldAlert,
- Heart, UserMinus, MoreVertical, Flag, Pencil, Calendar, GraduationCap, Sparkles, Ghost, EyeOff, Lock,
+ Heart, UserMinus, MoreVertical, Flag, Pencil, Calendar, GraduationCap, Sparkles, Ghost, EyeOff, Lock, Settings,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
@@ -160,14 +160,22 @@ export default function ProfilePage() {
  {profile.bio && (
  <p className="mt-2 text-sm font-body text-gray-600">"{profile.bio}"</p>
  )}
- </div>
-
- {/* Own profile: edit button. Others: 3-dot menu (block/report/unmatch) */}
- {isOwnProfile ? (
- <button onClick={() => setShowEdit(true)} className="nb-btn bg-white text-sm shrink-0 inline-flex items-center gap-1.5">
- <Pencil size={14} strokeWidth={2.5} /> Edit
- </button>
- ) : (
+ </div>        {/* Own profile: edit + settings. Others: 3-dot menu (block/report/unmatch) */}
+        {isOwnProfile ? (
+          <div className="shrink-0 flex gap-2">
+            <button
+              onClick={() => navigate('/settings')}
+              className="nb-btn bg-white text-sm p-2"
+              title="Settings"
+              aria-label="Settings"
+            >
+              <Settings size={16} strokeWidth={2.5} />
+            </button>
+            <button onClick={() => setShowEdit(true)} className="nb-btn bg-white text-sm shrink-0 inline-flex items-center gap-1.5">
+              <Pencil size={14} strokeWidth={2.5} /> Edit
+            </button>
+          </div>
+        ) : (
  <div className="relative shrink-0">
  <button
  onClick={() => setMenuOpen((o) => !o)}
