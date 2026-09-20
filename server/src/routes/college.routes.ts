@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { CollegeService } from '../services/college.service';
 import { createCollege } from '../controllers/college.controller';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, adminMiddleware } from '../middleware/auth';
 
 const router = Router();
 const service = new CollegeService();
@@ -30,9 +30,9 @@ router.get('/', async (req: Request, res: Response) => {
   }
 });
 
-// Students may add a missing college. Public on purpose: it's needed during
-// signup, before an account exists. Rows are inert (no user data), heavily
-// validated, deduped, and the student-ID verification is the real trust gate.
-router.post('/', createLimiter, (req, res) => createCollege(req as any, res));
+// Directory curation is STAFF-ONLY (super-admin): students pick from the
+// provided list, they can never mint new organizations. Typing only filters.
+// (The ID check used to be the trust gate; now the directory itself is gated.)
+router.post('/', createLimiter, authMiddleware, adminMiddleware, (req, res) => createCollege(req as any, res));
 
 export default router;

@@ -23,6 +23,11 @@ export async function searchColleges(req: AuthRequest, res: Response) {
  */
 export async function createCollege(req: AuthRequest, res: Response) {
   try {
+    // Supreme-only: the directory is curated. College moderators rule their
+    // campus, but minting new organizations is a network-level act.
+    if (req.user!.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only the supreme admin can add colleges' });
+    }
     const { name, shortName, city, state } = req.body || {};
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'College name is required' });

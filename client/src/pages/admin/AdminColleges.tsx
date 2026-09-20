@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, GitMerge, AlertTriangle } from 'lucide-react';
+import { Search, GitMerge, AlertTriangle, Plus } from 'lucide-react';
 import api from '@/services/api';
 import { ScopeSelect, useOpsScope } from './_shared';
 import { useAuthStore } from '@/store/auth.store';
@@ -72,6 +72,8 @@ export default function AdminColleges() {
           aria-label="Search colleges"
         />
       </div>
+
+      {isSuper && <AddCollegeForm />}
 
       {error && <p className="bg-[#151D31] border border-[#F43F5E] text-[#F43F5E] p-3 mb-4 text-sm">{error}</p>}
 
@@ -177,6 +179,59 @@ function DuplicateMergeRow({ group, mergeFrom, setMergeFrom, onMerge, busy }: {
   );
 }
 
+/** Supreme-only directory curation: students can no longer mint colleges,
+ * so missing campuses get added here — with city and short name included. */
+function AddCollegeForm() {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [shortName, setShortName] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [msg, setMsg] = useState('');
+
+  const add = useMutation({
+    mutationFn: () => api.post('/colleges', {
+      name: name.trim(),
+      ...(shortName.trim() && { shortName: shortName.trim() }),
+      ...(city.trim() && { city: city.trim() }),
+      ...(state.trim() && { state: state.trim() }),
+    }),
+    onSuccess: (r: any) => {
+      queryClient.invalidateQueries({ queryKey: ['ops-colleges-list'] });
+      queryClient.invalidateQueries({ queryKey: ['ops-college-dups'] });
+      setMsg(r.data?.deduped ? 'Already in the directory — no duplicate created.' : 'College added to the directory.');
+      setName(''); setShortName(''); setCity(''); setState('');
+    },
+    onError: (e: any) => setMsg(e?.response?.data?.error || 'Could not add college'),
+  });
+
+  if (!open) {
+    return (
+      <button onClick={() => { setOpen(true); setMsg(''); }} className="mb-4 text-xs px-3 py-2 bg-[#FBBF24] text-[#0F172A] font-bold">
+        <Plus size={13} className="inline mr-1" /> Add a campus
+      </button>
+    );
+  }
+  return (
+    <div className="bg-[#151D31] border border-[#FBBF24] p-4 mb-4 max-w-xl">
+      <p className="text-xs text-slate-400 mb-3">New campuses go live for every signup the moment you add them. Duplicates are blocked automatically.</p>
+      <div className="grid sm:grid-cols-2 gap-2">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name *" className="bg-[#0B1120] border border-white/20 px-3 py-2 text-sm outline-none focus:border-[#FBBF24] placeholder:text-slate-600 sm:col-span-2" aria-label="College full name" />
+        <input value={shortName} onChange={(e) => setShortName(e.target.value)} placeholder="Short name (e.g. IIT Delhi)" className="bg-[#0B1120] border border-white/20 px-3 py-2 text-sm outline-none focus:border-[#FBBF24] placeholder:text-slate-600" aria-label="Short name" />
+        <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className="bg-[#0B1120] border border-white/20 px-3 py-2 text-sm outline-none focus:border-[#FBBF24] placeholder:text-slate-600" aria-label="City" />
+        <input value={state} onChange={(e) => setState(e.target.value)} placeholder="State" className="bg-[#0B1120] border border-white/20 px-3 py-2 text-sm outline-none focus:border-[#FBBF24] placeholder:text-slate-600 sm:col-span-2" aria-label="State" />
+      </div>
+      <div className="flex gap-2 mt-3">
+        <button onClick={() => add.mutate()} disabled={add.isPending || name.trim().length < 4} className="text-xs px-4 py-2 bg-[#FBBF24] text-[#0F172A] font-bold disabled:opacity-50">
+          {add.isPending ? 'Adding…' : 'Add campus'}
+        </button>
+        <button onClick={() => { setOpen(false); setMsg(''); }} className="text-xs px-3 py-2 border border-white/25 text-slate-300">Cancel</button>
+      </div>
+      {msg && <p className="text-xs mt-2 text-slate-300">{msg}</p>}
+    </div>
+  );
+}
 /** Sticky bar when a merge source is marked from the directory list. */
 function MergeTargetBar({ mergeFrom, onPick, onCancel, busy }: {
   mergeFrom: any; onPick: (toId: string) => void; onCancel: () => void; busy: boolean;

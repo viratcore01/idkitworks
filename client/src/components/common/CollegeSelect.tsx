@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Search, MapPin, Plus, Building2, Loader2 } from 'lucide-react';
+import { Search, MapPin, Building2, Loader2 } from 'lucide-react';
 import api from '@/services/api';
 
 export interface CollegeOption {
@@ -11,27 +11,23 @@ export interface CollegeOption {
 }
 
 interface Props {
- value: CollegeOption | null;
- onChange: (c: CollegeOption | null) => void;
- /** Called after a new college is created server-side */
- onCreated?: (c: CollegeOption) => void;
- placeholder?: string;
+  value: CollegeOption | null;
+  onChange: (c: CollegeOption | null) => void;
+  placeholder?: string;
 }
 
 /**
- * Searchable college picker: type to search a global directory
- * (name / short name / city), pick from results, or add a missing college.
+ * Directory-only college picker: typing FILTERS the curated directory so you
+ * find your campus fast — it can never create a new one. If your college is
+ * genuinely missing, contact support and a moderator will add it.
  */
-export default function CollegeSelect({ value, onChange, onCreated, placeholder = 'Search your college…' }: Props) {
+export default function CollegeSelect({ value, onChange, placeholder = 'Search your college…' }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CollegeOption[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [highlight, setHighlight] = useState(0);
-  const [showAdd, setShowAdd] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const [addError, setAddError] = useState('');
   const [retryNonce, setRetryNonce] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
   const listId = useRef(`college-list-${Math.random().toString(36).slice(2)}`).current;
@@ -71,30 +67,13 @@ export default function CollegeSelect({ value, onChange, onCreated, placeholder 
  return () => document.removeEventListener('mousedown', close);
  }, []);
 
- const pick = (c: CollegeOption) => {
- onChange(c);
- setQuery('');
- setOpen(false);
- setShowAdd(false);
- };
-
-  const addMissing = async () => {
-  const name = query.trim();
-  if (name.length < 4) return;
-  setAdding(true);
-  setAddError('');
-  try {
-  const { data } = await api.post('/colleges', { name }, { timeout: 45000 });
-  onCreated?.(data);
-  pick(data);
-  } catch (e: any) {
-  // Surfaces server validation (too generic? duplicate?) right where typed.
-  setAddError(e?.response?.data?.error || 'Could not add this college — try again.');
-  }
-  setAdding(false);
+  const pick = (c: CollegeOption) => {
+  onChange(c);
+  setQuery('');
+  setOpen(false);
   };
 
- const label = (c: CollegeOption) => c.shortName || c.name;
+  const label = (c: CollegeOption) => c.shortName || c.name;
 
  return (
  <div ref={boxRef} className="relative">
@@ -130,7 +109,7 @@ export default function CollegeSelect({ value, onChange, onCreated, placeholder 
   placeholder={placeholder}
   value={query}
   onFocus={() => setOpen(true)}
-  onChange={(e) => { setQuery(e.target.value); setOpen(true); setShowAdd(false); setAddError(''); }}
+  onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
   onKeyDown={(e) => {
   if (e.key === 'ArrowDown') { e.preventDefault(); setHighlight((h) => Math.min(h + 1, results.length - 1)); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); setHighlight((h) => Math.max(h - 1, 0)); }
@@ -157,23 +136,14 @@ export default function CollegeSelect({ value, onChange, onCreated, placeholder 
   {results.length} match{results.length === 1 ? '' : 'es'}{query.trim() ? '' : ' · popular'}
   </p>
   )}
- {results.length === 0 && !loading && query.trim().length >= 4 && (
- <button
- type="button"
- onClick={addMissing}
- disabled={adding}
- className="w-full text-left px-4 py-3 hover:bg-nb-violet/10 flex items-start gap-2.5"
- >
- <Plus size={16} className="text-nb-violet mt-0.5 shrink-0" />
- <span className="text-sm">
- <span className="font-semibold">Add “{query.trim()}”</span>
- <span className="block text-xs opacity-60 mt-0.5">Not in our directory yet — you can add it. You'll verify it with your student ID next.</span>
- </span>
- </button>
- )}
- {results.length === 0 && !loading && query.trim().length > 0 && query.trim().length < 4 && (
- <p className="px-4 py-3 text-sm opacity-60">Keep typing…</p>
- )}
+  {results.length === 0 && !loading && !failed && query.trim().length >= 2 && (
+  <p className="px-4 py-3 text-sm opacity-70">
+  No match for “{query.trim()}”. Try the city or short name — or pick from the popular list.
+  </p>
+  )}
+  {results.length === 0 && !loading && !failed && query.trim().length > 0 && query.trim().length < 2 && (
+  <p className="px-4 py-3 text-sm opacity-60">Keep typing…</p>
+  )}
   {results.map((c, i) => (
   <button
   key={c.id}
@@ -191,30 +161,10 @@ export default function CollegeSelect({ value, onChange, onCreated, placeholder 
  <span className="text-xs opacity-60 block truncate">{c.shortName && c.name !== c.shortName ? c.name : ''}{c.city ? `${c.shortName && c.name !== c.shortName ? ' · ' : ''}${c.city}${c.state ? ', ' + c.state : ''}` : ''}</span>
  </span>
  <MapPin size={12} className="ml-auto opacity-30 shrink-0" />
- </button>
- ))}
- {results.length > 0 && (
- <button
- type="button"
- onClick={() => setShowAdd((s) => !s)}
- className="w-full text-left px-4 py-2 text-xs text-nb-violet hover:bg-nb-violet/10 border-t border-dashed"
- >
- <Plus size={12} className="inline mr-1" /> College missing? Add “{query.trim() || 'it'}”
- </button>
- )}
-  {showAdd && query.trim().length >= 4 && (
-  <button
-  type="button"
-  onClick={addMissing}
-  disabled={adding}
-  className="w-full text-left px-4 py-2.5 text-sm hover:bg-nb-violet/10 flex items-center gap-2"
-  >
-  <Plus size={14} className="text-nb-violet" /> Create “{query.trim()}”
   </button>
+  ))}
+  </div>
   )}
-  {addError && <p className="px-4 py-2 text-xs text-nb-pink" role="alert">{addError}</p>}
- </div>
- )}
- </div>
- );
+  </div>
+  );
 }
