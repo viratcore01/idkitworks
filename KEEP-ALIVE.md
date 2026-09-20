@@ -9,8 +9,8 @@ Both ping **`/api/health`** — the endpoint that is deliberately **database-fre
 (no Prisma, no pool connections, <5 ms of work). Never point a pinger at
 `/api/health/db`; it burns a Supabase pool connection on every hit.
 
-- API base: `https://idkitworks.onrender.com`
-- Ping target: `https://idkitworks.onrender.com/api/health`
+- API base: `https://idkitworks-1.onrender.com`
+- Ping target: `https://idkitworks-1.onrender.com/api/health`
 - Interval: every **10 minutes** (comfortably under the ~15 min idle cutoff)
 
 ---
@@ -22,7 +22,7 @@ GitHub's scheduler can lag or silently skip runs; an external cron cannot.
 1. Sign up free at **https://cron-job.org** (no card).
 2. Dashboard → **Cronjobs → Create cronjob**:
    - **Title:** `skola-render-keep-alive`
-   - **URL:** `https://idkitworks.onrender.com/api/health`
+   - **URL:** `https://idkitworks-1.onrender.com/api/health`
    - **Method:** GET
    - **Schedule:** Every 10 minutes
      (Exact steps: *Schedule* tab → select **"Every 10 minutes"** under the
@@ -66,7 +66,7 @@ Two pingers = ~288 tiny requests/day, zero DB load.
 
 ```bash
 curl -o /dev/null -s -w "status=%{http_code} ttfb=%{time_starttransfer}s\n" \
-  https://idkitworks.onrender.com/api/health
+  https://idkitworks-1.onrender.com/api/health
 ```
 
 - Awake + warm: **ttfb under ~1.5 s** (typical 0.3–0.9 s from India).
@@ -75,8 +75,8 @@ curl -o /dev/null -s -w "status=%{http_code} ttfb=%{time_starttransfer}s\n" \
 **B. `uptimeSec` check (tells you WHEN it last restarted):**
 
 ```bash
-curl -s https://idkitworks.onrender.com/health | head -c 300   # if proxied
-curl -s https://idkitworks.onrender.com/api/health | head -c 300
+curl -s https://idkitworks-1.onrender.com/health | head -c 300   # if proxied
+curl -s https://idkitworks-1.onrender.com/api/health | head -c 300
 ```
 
 `uptimeSec` counts seconds since boot. **After the pingers run for an hour,

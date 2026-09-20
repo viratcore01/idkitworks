@@ -19,7 +19,7 @@ on:
   workflow_dispatch: {}
 
 env:
-  DEFAULT_API_URL: https://idkitworks.onrender.com
+  DEFAULT_API_URL: https://idkitworks-1.onrender.com
 
 jobs:
   ping:
