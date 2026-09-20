@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Zap, MoreVertical, Pencil, Trash2, X, Check } from 'lucide-react';
+import { Zap, MoreVertical, Pencil, Trash2, X, Check, ChevronLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { getSocket, joinConversation } from '@/services/realtime';
@@ -30,6 +30,7 @@ const EDIT_WINDOW_MS = 15 * 60 * 1000;
 export default function ChatPage() {
  const { conversationId } = useParams<{ conversationId: string }>();
  const { user } = useAuthStore();
+ const navigate = useNavigate();
  const [message, setMessage] = useState('');
  const [menuFor, setMenuFor] = useState<string | null>(null);
  const [editingId, setEditingId] = useState<string | null>(null);
@@ -42,6 +43,15 @@ export default function ChatPage() {
  queryKey: ['messages', conversationId],
  queryFn: () => api.get(`/messages/${conversationId}`).then((r) => r.data),
  refetchInterval: 5000,
+ });
+
+ // Partner identity for the chat header (mobile has no sidebar): reuse the
+ // cached conversations list; empty cache = neutral header, deep links still
+ // get a name from the first inbound message's sender.
+ const { data: conversationsData } = useQuery({
+ queryKey: ['conversations'],
+ queryFn: () => api.get('/messages/conversations').then((r) => r.data),
+ staleTime: 30_000,
  });
 
  const invalidate = useCallback(() => {
@@ -122,6 +132,10 @@ export default function ChatPage() {
 
  const messages: any[] = data?.messages || [];
 
+ const cachedConv = (conversationsData || []).find((c: any) => c.id === conversationId);
+ const firstOtherSender = messages.find((m: any) => m.senderId !== user?.id)?.sender;
+ const partner = cachedConv?.otherUser || firstOtherSender || null;
+
  const startEdit = (msg: any) => {
  setEditingId(msg.id);
  setEditText(msg.content);
@@ -138,6 +152,29 @@ export default function ChatPage() {
 
  return (
  <div className="flex flex-col h-[calc(100dvh-12rem)] min-h-[420px]">
+ {/* Chat header — mobile has no sidebar, so back + identity live here */}
+ <div className="flex items-center gap-2.5 pb-3 mb-2 border-b-2 border-gray-300">
+ <button
+ onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/matches'))}
+ className="w-9 h-9 shrink-0 bg-white border-nb-2 border-ink flex items-center justify-center hover:bg-nb-cream transition-colors"
+ title="Back"
+ aria-label="Back"
+ >
+ <ChevronLeft size={18} strokeWidth={2.5} />
+ </button>
+ {partner && (
+ <Link
+ to={partner.username ? `/profile/${partner.username}` : '#'}
+ className={`flex items-center gap-2.5 min-w-0 flex-1 ${partner.username ? '' : 'pointer-events-none'}`}
+ >
+ <Avatar src={partner.avatarUrl} photoId={partner.avatarPhotoId} color={partner.avatarColor} name={partner.displayName} size="sm" className="shrink-0" />
+ <div className="min-w-0">
+ <p className="font-display font-semibold text-sm truncate">{partner.displayName}</p>
+ {partner.username && <p className="text-[11px] text-gray-500 truncate">@{partner.username}</p>}
+ </div>
+ </Link>
+ )}
+ </div>
  {/* Messages */}
  <div className="flex-1 overflow-y-auto space-y-1 pb-4 min-h-0">
  {isLoading ? (
@@ -205,10 +242,10 @@ export default function ChatPage() {
  }`}
  >
  {isEditing ? (
- <div className="flex items-center gap-2 min-w-[220px]">
+ <div className="flex items-center gap-2 w-full">
  <input
  ref={editInputRef}
- className="nb-input text-sm py-1 flex-1 !bg-white !text-ink"
+ className="nb-input text-base py-1 flex-1 min-w-0 !bg-white !text-ink"
  value={editText}
  onChange={(e) => setEditText(e.target.value)}
  onKeyDown={(e) => {

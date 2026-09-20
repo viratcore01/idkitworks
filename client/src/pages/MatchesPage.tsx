@@ -215,10 +215,12 @@ export default function MatchesPage() {
  <h1 className="font-display font-bold text-2xl text-ink flex items-center gap-2">
  <Heart size={22} strokeWidth={2.5} className="text-nb-pink fill-current" /> Find Match
  </h1>
- <div className="flex gap-2 flex-wrap">
+ {/* Segmented switcher: single scrollable row — flex-wrap made ragged
+ 2–3 row stacks on 360px screens */}
+ <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
  <button
  onClick={() => setView('discover')}
- className={`nb-btn text-sm ${view === 'discover' ? 'bg-nb-violet text-white' : ''}`}
+ className={`nb-btn text-sm shrink-0 ${view === 'discover' ? 'bg-nb-violet text-white' : ''}`}
  >
  <Search size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Discover
  </button>
@@ -226,16 +228,16 @@ export default function MatchesPage() {
  onClick={() => setView('matches')}
  className={`nb-btn text-sm ${view === 'matches' ? 'bg-nb-pink text-white' : ''}`}
  >
- <Heart size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Matches ({matches.length})
+ <Heart size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Matches{matches.length > 0 && (<span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-display border-nb-2 border-ink bg-nb-yellow text-ink">{matches.length}</span>)}
  </button>
  <button
  onClick={() => setView('chat')}
  className={`nb-btn text-sm ${view === 'chat' ? 'bg-nb-peri text-ink' : ''}`}
  >
- <MessageSquare size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Chat ({conversations?.length || 0})
+ <MessageSquare size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Chat{conversations && conversations.length > 0 && (<span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-display border-nb-2 border-ink bg-nb-yellow text-ink">{conversations.length}</span>)}
  </button>
  {view === 'discover' && (
- <button onClick={openPrefs} className="nb-btn bg-white text-sm" title="Discovery preferences">
+ <button onClick={openPrefs} className="nb-btn bg-white text-sm shrink-0" title="Discovery preferences">
  <SlidersHorizontal size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Filters
  </button>
  )}
@@ -440,7 +442,7 @@ export default function MatchesPage() {
  }
  />
  ) : (
- <div className="nb-card p-6 max-w-md mx-auto relative">
+ <div className="nb-card p-4 sm:p-6 max-w-md mx-auto relative">
  {/* Pass — top corner, like every real swipe app */}
  <button
  onClick={() => actionMutation.mutate({ receiverId: currentUser.id, action: 'pass' })}

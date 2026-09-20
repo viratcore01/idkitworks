@@ -52,7 +52,7 @@ export default function NotificationsPage() {
  </h1>
  <button
  onClick={() => markReadMutation.mutate()}
- className="nb-badge bg-nb-peri text-ink cursor-pointer"
+ className="nb-btn bg-nb-peri text-ink text-xs px-3 py-1.5 shrink-0"
  >
  Mark all read
  </button>

@@ -221,7 +221,8 @@ export default function ProfilePage() {
  )}
 
  {/* Stats row — real apps show Posts/Likes (+ Matches for yourself) */}
- <div className="mt-4 flex gap-6 text-center">
+ {/* flex-wrap: 5 stats overflow a 360px row without it */}
+ <div className="mt-4 flex flex-wrap gap-x-5 gap-y-3 sm:gap-6 text-center">
  <div>
  <p className="font-display font-bold text-lg">{profile.stats?.posts ?? 0}</p>
  <p className="text-xs text-gray-500 font-body">Posts</p>
