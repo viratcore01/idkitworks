@@ -1,5 +1,6 @@
 import { prisma } from '../config/prisma';
 import { publish } from '../config/bus';
+import { invalidateUnreadCount } from './notification.service';
 
 /**
  * Loop-chain deck: fresh profiles come first (newest first). Once they run
@@ -392,6 +393,7 @@ export class MatchService {
         });
 
         // Realtime: let both users know instantly (badges, match modals)
+        invalidateUnreadCount(senderId, receiverId);
         publish('match:new', { matchId: match.id, userIds: [senderId, receiverId] });
         publish('notification:new', { userIds: [senderId, receiverId] });
 
@@ -409,7 +411,12 @@ export class MatchService {
       if (!mutual) {
         prisma.notification.create({
           data: { recipientId: receiverId, actorId: senderId, type: 'LIKE' } as any,
-        }).then(() => publish('notification:new', { userIds: [receiverId] })).catch(() => {});
+        })
+          .then(() => {
+            invalidateUnreadCount(receiverId);
+            publish('notification:new', { userIds: [receiverId] });
+          })
+          .catch(() => {});
       }
 
       // Same-action re-swipe that didn't (re)match: report it as a duplicate

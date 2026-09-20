@@ -1,5 +1,21 @@
 import { prisma } from '../config/prisma';
 
+// ── Unread-count fast path ──
+// 60s TTL cache keyed by userId. The bell badge polls every minute, so a hit
+// costs ZERO round-trips to Mumbai (each one used to add ~1-2s on Render free
+// + Supabase). Freshness is preserved: EVERY code path that creates or clears
+// notifications calls invalidateUnreadCount() (see below).
+const UNREAD_TTL_MS = 60_000;
+const unreadCache = new Map<string, { count: number; at: number }>();
+
+export function invalidateUnreadCount(...userIds: string[]): void {
+  for (const id of userIds) unreadCache.delete(id);
+}
+
+export function invalidateAllUnreadCounts(): void {
+  unreadCache.clear();
+}
+
 export class NotificationService {
   /** Blocked actors never surface — either direction is a hard wall. */
   private async blockedActorIds(userId: string): Promise<string[]> {
@@ -63,25 +79,40 @@ export class NotificationService {
       where: { recipientId: userId, isRead: false },
       data: { isRead: true },
     });
+    invalidateUnreadCount(userId);
     return { message: 'All notifications marked as read' };
   }
 
   async getUnreadCount(userId: string, viewerCollegeId?: string | null) {
-    const excluded = await this.blockedActorIds(userId);
-    const blockFilter = excluded.length
-      ? { OR: [{ actorId: null }, { actorId: { notIn: excluded } }] }
-      : {};
-    const count = await prisma.notification.count({
-      where: {
-        recipientId: userId,
-        isRead: false,
-        AND: [
-          blockFilter,
-          // Keep the badge consistent with the filtered list (includes anonymous + announcements)
-          ...(viewerCollegeId ? [{ OR: [{ actor: { collegeId: viewerCollegeId } }, { actorId: null }, { type: 'ANNOUNCEMENT' }] }] : []),
-        ],
-      } as any,
-    });
+    // 60s TTL cache keyed by userId. The bell badge polls every minute, so a hit
+    // costs ZERO round-trips to Mumbai (each one used to add ~1-2s on Render free
+    // + Supabase). Freshness is preserved: EVERY code path that creates or clears
+    // notifications calls invalidateUnreadCount() (see below).
+    const hit = unreadCache.get(userId);
+    if (hit && Date.now() - hit.at <= UNREAD_TTL_MS) return { count: hit.count };
+
+    // ONE round-trip total: the blocked-actor filter is folded into the COUNT
+    // as NOT EXISTS clauses instead of a separate block.findMany() first.
+    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*)::bigint AS count
+      FROM "notifications" n
+      WHERE n."recipient_id" = ${userId}
+        AND n."is_read" = false
+        AND (n."actor_id" IS NULL
+             OR NOT EXISTS (
+               SELECT 1 FROM "blocks" b
+               WHERE (b."blocker_id" = ${userId} AND b."blocked_id" = n."actor_id")
+                  OR (b."blocked_id" = ${userId} AND b."blocker_id" = n."actor_id")
+             ))
+        AND (${viewerCollegeId ?? null}::text IS NULL
+             OR n."type" = 'ANNOUNCEMENT'
+             OR n."actor_id" IS NULL
+             OR EXISTS (
+               SELECT 1 FROM "users" u WHERE u."id" = n."actor_id" AND u."college_id" = ${viewerCollegeId ?? null}::text
+             ))
+    `;
+    const count = Number(rows[0]?.count ?? 0);
+    unreadCache.set(userId, { count, at: Date.now() });
     return { count };
   }
 }

@@ -1,6 +1,7 @@
 import { prisma } from '../config/prisma';
 import { publish } from '../config/bus';
 import { invalidateUser } from '../utils/user-cache';
+import { invalidateUnreadCount } from './notification.service';
 
 /**
  * Moderator console backend — one staffer, every college they may touch.
@@ -525,6 +526,7 @@ export class AdminService {
         data: chunk.map((r) => ({ recipientId: r.id, actorId: viewerId, type: 'ANNOUNCEMENT', metadata } as any)),
       });
     }
+    invalidateUnreadCount(...recipients.map((r) => r.id));
     publish('notification:new', { userIds: recipients.map((r) => r.id) });
     await this.log(viewerId, 'announce', 'COLLEGE', targetCollegeId || 'ALL', targetCollegeId, title, { recipients: recipients.length });
     return { recipients: recipients.length };

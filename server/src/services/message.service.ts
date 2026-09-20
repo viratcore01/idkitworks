@@ -1,5 +1,6 @@
 import { prisma } from '../config/prisma';
 import { publish } from '../config/bus';
+import { invalidateUnreadCount } from './notification.service';
 
 export class MessageService {
   async getOrCreateConversation(userId: string, otherUserId: string) {
@@ -277,6 +278,7 @@ export class MessageService {
         type: 'NEW_MESSAGE' as const,
       })),
     });
+    invalidateUnreadCount(...otherMembers.map((m) => m.userId));
 
     // Realtime push: both the conversation room and the recipients' personal
     // rooms (covers unread badges / lists even when the thread isn't open).

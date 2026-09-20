@@ -1,4 +1,5 @@
 import { prisma } from '../config/prisma';
+import { invalidateUnreadCount } from './notification.service';
 import { publish } from '../config/bus';
 import { Prisma } from '@prisma/client';
 
@@ -298,6 +299,7 @@ export class PostService {
             postId,
           },
         });
+        invalidateUnreadCount(post.authorId);
         publish('notification:new', { userIds: [post.authorId] });
       }
       return { liked: true };
@@ -398,6 +400,7 @@ export class PostService {
           commentId: comment.id,
         },
       });
+      invalidateUnreadCount(notifyUserId);
       publish('notification:new', { userIds: [notifyUserId] });
     }
 
