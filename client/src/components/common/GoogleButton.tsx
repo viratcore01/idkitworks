@@ -68,9 +68,9 @@ export default function GoogleButton({ mode }: { mode: 'login' | 'signup' }) {
  callback: async (response: { credential?: string }) => {
  if (!response?.credential || busy) return;
  setBusy(true);
- try {
- const created = await loginWithGoogle(response.credential);
- toast.success(created ? 'Account created — welcome to Zoclo!' : 'Welcome back!');
+  try {
+  const created = await loginWithGoogle(response.credential);
+  toast.success(created ? 'Account created — welcome to Zoclo!' : 'Welcome back!');
  // The App gate routes correctly from here: no college → setup,
  // unverified → /verify, everyone else → the feed.
  navigate('/home');

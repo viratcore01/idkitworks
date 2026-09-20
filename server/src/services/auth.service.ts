@@ -194,6 +194,8 @@ export class AuthService {
       // Distinct, honest message for suspended accounts — but only AFTER the
       // password proves ownership (a wrong password still says "invalid",
       // so the error never becomes an account-existence oracle).
+      // NOTE: there is no self-serve return from here. Deactivation was
+      // removed: logout and delete-forever are the only account exits.
       const e: any = new Error('Your account has been suspended. Contact support if you think this is a mistake.');
       e.status = 403;
       throw e;
@@ -291,28 +293,13 @@ export class AuthService {
   }
 
   /**
-   * Self-serve deactivation: the account is locked out everywhere immediately
-   * (isActive=false is checked in auth, login, refresh and socket layers) and
-   * all sessions die. Content is preserved for safety/moderation review.
-   */
-  async deactivate(userId: string): Promise<void> {
-    const me = await prisma.user.findUnique({ where: { id: userId }, select: { isFounder: true } });
-    if (me?.isFounder) {
-      // The supreme account cannot lock itself out — the network always has its creator.
-      const e: any = new Error('The founder account cannot be deactivated'); e.status = 403; throw e;
-    }
-    await prisma.user.update({ where: { id: userId }, data: { isActive: false } });
-    await prisma.refreshToken.deleteMany({ where: { userId } });
-    invalidateUser(userId);
-  }
-
-  /**
    * PERMANENT account deletion (user-invoked "delete my account").
    *
-   * What the user gets: every trace of their identity and content is gone —
-   * profile, photos, ID documents, posts, comments, messages, likes, saves,
-   * matches, notifications, reports they filed. They are logged out everywhere
-   * and can never log back in.
+   * This is the ONLY account exit besides logout. Everything the user owned
+   * is wiped — profile, photos, ID documents, posts, comments, messages,
+   * likes, saves, swipes, matches, notifications, reports they filed,
+   * sessions — and the email/username are freed, so signing up again with
+   * the same email starts completely fresh (new id, empty everything).
    *
    * What is kept: the user ROW itself (anonymized + locked) so foreign keys
    * from moderation/safety rows never dangle — reports filed AGAINST them,

@@ -84,15 +84,6 @@ export class AuthController {
     }
   }
 
-  async deactivate(req: AuthRequest, res: Response) {
-    try {
-      await authService.deactivate(req.user!.id);
-      res.json({ message: 'Account deactivated' });
-    } catch (error: any) {
-      sendError(res, error, error.status || 400);
-    }
-  }
-
   async deleteAccount(req: AuthRequest, res: Response) {
     try {
       await authService.deleteAccount(req.user!.id);

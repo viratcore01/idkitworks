@@ -17,7 +17,6 @@ interface AuthState {
   signup: (data: any) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  deactivateAccount: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   fetchMe: () => Promise<void>;
   updateProfile: (data: any) => Promise<void>;
@@ -78,14 +77,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   changePassword: async (currentPassword: string, newPassword: string) => {
     await api.patch('/auth/password', { currentPassword, newPassword });
     // Server kills ALL sessions — behave like a logout everywhere.
-    disconnectSocket();
-    queryClient.clear();
-    localStorage.clear();
-    set({ user: null, isAuthenticated: false, isIncognito: false });
-  },
-
-  deactivateAccount: async () => {
-    await api.delete('/auth/me');
     disconnectSocket();
     queryClient.clear();
     localStorage.clear();

@@ -13,7 +13,6 @@ router.post('/refresh', (req, res) => controller.refresh(req, res));
 router.post('/logout', (req, res) => controller.logout(req, res));
 router.get('/me', authMiddleware, (req, res) => controller.me(req, res));
 router.patch('/me', authMiddleware, (req, res) => controller.updateProfile(req, res));
-router.delete('/me', authMiddleware, (req, res) => controller.deactivate(req, res));
 router.delete('/account', authMiddleware, (req, res) => controller.deleteAccount(req, res));
 router.patch('/password', authMiddleware, (req, res) => controller.changePassword(req, res));
 router.get('/me/completeness', authMiddleware, (req, res) => controller.completeness(req, res));

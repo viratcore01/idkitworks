@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, Save, Hourglass, LogOut, BadgeCheck, ShieldCheck, KeyRound, UserX } from 'lucide-react';
+import { Settings, Save, Hourglass, LogOut, BadgeCheck, ShieldCheck, KeyRound } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import toast from 'react-hot-toast';
 
 export default function SettingsPage() {
-  const { user, logout, updateProfile, changePassword, deactivateAccount, deleteAccount } = useAuthStore();
+  const { user, logout, updateProfile, changePassword, deleteAccount } = useAuthStore();
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [bio, setBio] = useState(user?.bio || '');
@@ -13,7 +13,6 @@ export default function SettingsPage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isChangingPw, setIsChangingPw] = useState(false);
-  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
@@ -49,21 +48,6 @@ export default function SettingsPage() {
   toast.error(e?.response?.data?.error || 'Failed to change password');
   } finally {
   setIsChangingPw(false);
-  }
-  };
-
-  const handleDeactivate = async () => {
-  if (!confirmDeactivate) {
-  setConfirmDeactivate(true);
-  return;
-  }
-  try {
-  await deactivateAccount();
-  toast.success('Account deactivated');
-  navigate('/login');
-  } catch {
-  toast.error('Failed to deactivate account');
-  setConfirmDeactivate(false);
   }
   };
 
@@ -171,22 +155,9 @@ export default function SettingsPage() {
   <button onClick={handleLogout} className="nb-btn-danger text-sm inline-flex items-center gap-1.5">
   <LogOut size={14} strokeWidth={2.5} /> Logout
   </button>
-  {!user?.isFounder && (
-  <button
-  onClick={handleDeactivate}
-  className="nb-btn-ghost text-sm inline-flex items-center gap-1.5"
-  aria-label={confirmDeactivate ? 'Confirm account deactivation' : 'Deactivate account'}
-  >
-  <UserX size={14} strokeWidth={2.5} />
-  {confirmDeactivate ? 'Click again to confirm deactivation' : 'Deactivate account'}
-  </button>
-  )}
   </div>
   {user?.isFounder && (
-  <p className="text-sm mt-3 opacity-70">👑 The founder account cannot be deactivated or deleted — the network always has its creator.</p>
-  )}
-  {confirmDeactivate && !user?.isFounder && (
-  <p className="text-sm mt-3 opacity-70">Deactivation locks you out immediately on all devices. Your posts stay for safety review.</p>
+  <p className="text-sm mt-3 opacity-70">👑 The founder account cannot be deleted — the network always has its creator.</p>
   )}
   {!user?.isFounder && (
   <div className="mt-4 pt-4 border-t-2 border-dashed border-nb-pink/40">

@@ -19,11 +19,11 @@ export default function LoginPage() {
  if (submittingRef.current) return;
  submittingRef.current = true;
  setIsLoading(true);
- try {
- await login(email, password);
- toast.success('Welcome back!');
- navigate('/home');
- } catch (err: any) {
+  try {
+  await login(email, password);
+  toast.success('Welcome back!');
+  navigate('/home');
+  } catch (err: any) {
  toast.error(err.response?.data?.error || 'Login failed');
  } finally {
  setIsLoading(false);
