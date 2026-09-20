@@ -64,8 +64,11 @@ function ageFrom(dob: Date | null): number | null {
  */
 export class MatchService {
   /**
-   * The swipe deck: one page at a time (keyset pagination via offset is fine here —
-   * the pool is already small after exclusions, and each page is a single indexed query).
+   * The swipe deck: DB-paginated, one page at a time.
+   * Chain order = fresh profiles first (newest first), then passed profiles
+   * stitched after them (oldest pass first), with people who liked the viewer
+   * boosted to the front of page 0. Every window is fetched with skip/take (or
+   * a bounded id-list) — the full pool is NEVER loaded into memory.
    * Real-world pattern (Tinder/Bumble): exclude self, already-actioned, blocked, inactive;
    * apply the viewer's preferences; order by newest first; return a page + hasMore.
    */
@@ -183,49 +186,99 @@ export class MatchService {
       };
     }
 
-    // ── The loop chain ──
-    // Page space = fresh profiles first (orderBy createdAt desc), then the
-    // passed profiles stitched after them, oldest pass first. A pagination
-    // page may therefore mix fresh + recycled; the client only ever shows
-    // the top card, which is exactly the queue front.
-    // PERF: fresh + recycled run in parallel (independent result sets).
+    // ── The loop chain, DB-paginated ──
+    // Chain positions [0, freshCount) are fresh profiles (createdAt desc);
+    // positions [freshCount, freshCount + recycledCount) are passed profiles
+    // (oldest pass first). The requested window [offset, offset + take) is
+    // fetched with skip/take and bounded id-lists — never the whole pool.
+    // A page may mix fresh + recycled; the client only ever shows the top
+    // card, which is exactly the queue front.
+    const offset = page * take;
     const recycledExclude = new Set<string>([userId, ...likedIds]);
     for (const b of blocks) {
       recycledExclude.add(b.blockerId);
       recycledExclude.add(b.blockedId);
     }
-    const recycledWhere = { ...where, id: { notIn: Array.from(recycledExclude) } };
-    const [fresh, recycledAll] = await Promise.all([
-      prisma.user.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        select: DECK_SELECT,
-      }),
+    const recycledBaseWhere = { ...where, id: { notIn: Array.from(recycledExclude) } };
+
+    // Counts are cheap indexed queries powering hasMore/totalRemaining.
+    const [freshCount, recycledCount] = await Promise.all([
+      prisma.user.count({ where }),
       passedIds.length
+        ? prisma.user.count({ where: { ...recycledBaseWhere, id: { in: passedIds } } })
+        : Promise.resolve(0),
+    ]);
+    const chainLength = freshCount + recycledCount;
+
+    // Fresh window: overlaps [offset, offset + take) with [0, freshCount).
+    const freshSkip = Math.min(offset, freshCount);
+    const freshTake = Math.max(Math.min(offset + take, freshCount) - freshSkip, 0);
+    // Recycled window: overlaps [offset, offset + take) with [freshCount, chainLength).
+    const recStart = Math.max(offset - freshCount, 0);
+    const recEnd = Math.max(Math.min(offset + take - freshCount, recycledCount), 0);
+    const recSliceIds = recEnd > recStart ? passedIds.slice(recStart, recEnd) : [];
+
+    const [freshPage, recycledRows] = await Promise.all([
+      freshTake > 0
         ? prisma.user.findMany({
-            where: recycledWhere,
+            where,
             orderBy: { createdAt: 'desc' },
+            skip: freshSkip,
+            take: freshTake,
+            select: DECK_SELECT,
+          })
+        : Promise.resolve([] as never[]),
+      recSliceIds.length
+        ? prisma.user.findMany({
+            where: { ...recycledBaseWhere, id: { in: recSliceIds } },
             select: DECK_SELECT,
           })
         : Promise.resolve([] as never[]),
     ]);
-    const recycled = passedIds
-      .map((pid) => (recycledAll as any[]).find((u) => u.id === pid))
+    // Restore oldest-pass-first order and drop ids filtered out since passing
+    // (deactivated, blocked, photo removed, prefs changed).
+    const recycledById = new Map((recycledRows as any[]).map((u) => [u.id, u]));
+    const recycledPage = recSliceIds
+      .map((pid) => recycledById.get(pid))
       .filter(Boolean as any);
 
-    const chain = [...fresh, ...recycled];
+    let pageSlice: any[] = [...(freshPage as any[]), ...recycledPage];
 
     // "LIKES YOU" priority (Hinge/Tinder Gold pattern, free for everyone):
-    // people who already liked you surface at the FRONT of the chain, newest
+    // people who already liked you surface at the FRONT of page 0, newest
     // like first — like back = instant match. They keep their fresh/recycled
     // badge state; the client adds a 'likes you' badge from the flag.
-    // (likedMeRows was fetched in the first parallel wave.)
+    // (likedMeRows was fetched in the first parallel wave; this boost query
+    // is bounded to `take` ids so it stays O(page), not O(pool).)
     const likedMeSet = new Set(likedMeRows.map((r) => r.senderId));
-    const likedMeFront = chain.filter((u: any) => likedMeSet.has(u.id));
-    const rest = chain.filter((u: any) => !likedMeSet.has(u.id));
-    const ordered = [...likedMeFront, ...rest];
+    if (page === 0 && likedMeSet.size > 0 && chainLength > 0) {
+      const boostIds = likedMeRows.map((r) => r.senderId).slice(0, take);
+      const boosted = await prisma.user.findMany({
+        where: {
+          ...recycledBaseWhere,
+          id: { in: boostIds },
+        },
+        select: DECK_SELECT,
+      });
+      if (boosted.length) {
+        const boostedById = new Map((boosted as any[]).map((u) => [u.id, u]));
+        // Newest like first (likedMeRows arrived ordered by createdAt desc).
+        const orderedBoost = boostIds
+          .map((id) => boostedById.get(id))
+          .filter(Boolean as any);
+        const boostedIds = new Set(orderedBoost.map((u: any) => u.id));
+        pageSlice = [...orderedBoost, ...pageSlice.filter((u: any) => !boostedIds.has(u.id))].slice(
+          0,
+          take,
+        );
+      }
+    } else {
+      // Deeper pages keep chain order; the badge still flags who liked you.
+      const likedFront = pageSlice.filter((u: any) => likedMeSet.has(u.id));
+      const rest = pageSlice.filter((u: any) => !likedMeSet.has(u.id));
+      pageSlice = [...likedFront, ...rest];
+    }
 
-    const pageSlice = ordered.slice(page * take, page * take + take);
     const passedSet = new Set(passedIds);
 
     return {
@@ -255,9 +308,9 @@ export class MatchService {
       })),
       page,
       // the chain is closed: "hasMore" wraps via the client resetting to page 0
-      hasMore: (page + 1) * take < chain.length,
-      totalRemaining: Math.max(chain.length - page * take, 0),
-      totalFresh: fresh.length,
+      hasMore: offset + take < chainLength,
+      totalRemaining: Math.max(chainLength - offset, 0),
+      totalFresh: freshCount,
     };
   }
 

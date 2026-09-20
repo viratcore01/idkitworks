@@ -87,6 +87,9 @@ model User {
   avatarPhoto      UserPhoto?         @relation("UserAvatarPhoto", fields: [avatarPhotoId], references: [id])
   idVerifications  IdVerification[]
 
+  // PERF: the swipe-deck query filters (collegeId, isActive) and orders by
+  // createdAt desc — without this it degrades to a scan + sort as the pool grows.
+  @@index([collegeId, isActive, createdAt])
   @@map("users")
 }
 
