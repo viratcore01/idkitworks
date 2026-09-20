@@ -4,7 +4,7 @@ import { prisma } from '../config/prisma';
 import { env } from '../config/env';
 import { AuthRequest } from '../types';
 import { sendError } from '../utils/http-error';
-import { isPlausibleImage } from '../utils/image-validation';
+import { isPlausibleImage, imageDimensions, MIN_PHOTO_LONG_SIDE } from '../utils/image-validation';
 
 /** Max 4 photos per user: slot 0 = profile pic, slots 1-3 = gallery. */
 const MAX_PHOTOS = 4;
@@ -26,6 +26,12 @@ export async function uploadPhoto(req: AuthRequest, res: Response) {
     // Magic-byte check: a renamed executable with mimetype image/png dies here.
     if (!isPlausibleImage(file.buffer, file.mimetype)) {
       return res.status(400).json({ error: 'File is not a valid image' });
+    }
+    // Resolution floor: deck cards render ~400px wide, so anything smaller
+    // upscales into blur. Retake with a larger photo instead of shipping mush.
+    const dims = imageDimensions(file.buffer, file.mimetype);
+    if (dims && Math.max(dims.w, dims.h) < MIN_PHOTO_LONG_SIDE) {
+      return res.status(400).json({ error: `Photo is too small (${dims.w}×${dims.h}) — use one at least ${MIN_PHOTO_LONG_SIDE}px on its long side` });
     }
 
     const slot = Math.min(Math.max(parseInt(req.body?.slot, 10) || 0, 0), MAX_PHOTOS - 1);
@@ -115,8 +121,12 @@ export async function getPhoto(req: AuthRequest, res: Response) {
     // Photo rows are immutable: replacing a picture deletes the row and mints
     // a NEW id, so a URL is forever the same bytes. Cache it for a year —
     // every avatar in every feed/chat/deck after the first view costs zero.
+    // (Explicit 304: res.send(Buffer) doesn't reliably honor freshness, so
+    // conditional requests are answered here instead of re-sending megabytes.)
+    const tag = `"${photoId}"`;
+    if (req.headers['if-none-match'] === tag) return res.status(304).end();
     res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
-    res.setHeader('ETag', `"${photoId}"`);
+    res.setHeader('ETag', tag);
     res.send(Buffer.from(photo.data));
   } catch (error: any) {
     sendError(res, error, 400);

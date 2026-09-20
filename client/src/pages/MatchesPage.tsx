@@ -456,11 +456,13 @@ export default function MatchesPage() {
  {cardPhotos.length > 0 ? (
  <div className="relative mb-4">
  <div className="nb-card overflow-hidden !p-0">
- <img
- src={cardPhotos[photoIdx]}
- alt={currentUser.displayName}
- className="w-full aspect-[4/5] object-cover"
- />
+  <img
+  src={cardPhotos[photoIdx]}
+  alt={currentUser.displayName}
+  decoding="async"
+  draggable={false}
+  className="w-full aspect-[4/5] object-cover bg-nb-cream"
+  />
  </div>
  {cardPhotos.length > 1 && (
  <>

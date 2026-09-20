@@ -1,7 +1,7 @@
 import { prisma } from '../config/prisma';
 import { publish } from '../config/bus';
 import { invalidateUser } from '../utils/user-cache';
-import { isPlausibleImage } from '../utils/image-validation';
+import { isPlausibleImage, imageDimensions, MIN_ID_LONG_SIDE } from '../utils/image-validation';
 
 /**
  * Student-ID verification — HUMAN-ONLY by product decision.
@@ -29,6 +29,20 @@ export class VerificationService {
     }
     if (file.size > MAX_BYTES) {
       const e: any = new Error('Image must be under 8 MB'); e.status = 400; throw e;
+    }
+    // Magic bytes, not the client-supplied mimetype: ID uploads go to human
+    // reviewers, which makes a polyglot here a social-engineering vector.
+    if (!isPlausibleImage(file.buffer, file.mimetype)) {
+      const e: any = new Error('File is not a valid image'); e.status = 400; throw e;
+    }
+    // Legibility floor: a moderator must be able to READ the card. Tiny,
+    // blurry ID shots waste everyone's review cycle — retake up front.
+    // HEIC can't be probed header-only, so it skips this check (the human
+    // reviewer is the backstop there).
+    const dims = imageDimensions(file.buffer, file.mimetype);
+    if (dims && Math.max(dims.w, dims.h) < MIN_ID_LONG_SIDE) {
+      const e: any = new Error(`ID photo is too small to read (${dims.w}×${dims.h}) — retake it at least ${MIN_ID_LONG_SIDE}px on its long side`);
+      e.status = 400; throw e;
     }
 
     const user = await prisma.user.findUnique({

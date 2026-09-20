@@ -179,7 +179,7 @@ async function main() {
   check('passed user re-enters passer’s chain as recycled', !!cCard && cCard.recycled === true, JSON.stringify(deckA.map((u: any) => u.username)));
   r = await api(tokC, 'GET', '/matches/discover?page=0&limit=50');
   const deckC = r.data.users || [];
-  check('deck cards carry goals/verified/theyLikedMe fields', deckC.length === 0 || ('relationshipGoals' in deckC[0] && 'theyLikedMe' in deckC[0]));
+  check('deck cards hide goals but carry theyLikedMe', deckC.length === 0 || (!('relationshipGoals' in deckC[0]) && 'theyLikedMe' in deckC[0]));
 
   // B likes C → C's deck must show B FIRST with theyLikedMe
   await api(tokB, 'POST', '/matches/like', { receiverId: C.id });
