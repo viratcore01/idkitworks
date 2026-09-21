@@ -50,12 +50,14 @@ export default function NotificationsPage() {
  <h1 className="font-display font-bold text-2xl text-ink flex items-center gap-2">
  <Bell size={22} strokeWidth={2.5} /> Notifications
  </h1>
- <button
- onClick={() => markReadMutation.mutate()}
- className="nb-btn bg-nb-peri text-ink text-xs px-3 py-1.5 shrink-0"
- >
- Mark all read
- </button>
+  <button
+  onClick={() => markReadMutation.mutate()}
+  disabled={markReadMutation.isPending || notifications.length === 0}
+  aria-busy={markReadMutation.isPending}
+  className="nb-btn bg-nb-peri text-ink text-xs px-3 py-1.5 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+  {markReadMutation.isPending ? 'Marking…' : 'Mark all read'}
+  </button>
  </div>
 
  {isLoading ? (
@@ -67,14 +69,18 @@ export default function NotificationsPage() {
  description="When someone likes your post, comments, or matches with you — it'll show up here."
  />
  ) : (
- <div className="space-y-2"> {notifications.map((notif: any) => (
- <div
- key={notif.id}
- onClick={() => notif.postId && navigate(`/post/${notif.postId}`)}
- className={`nb-card p-4 flex items-center gap-3 ${
- !notif.isRead ? 'border-l-4 border-l-nb-yellow bg-yellow-50' : ''
- } ${notif.postId ? 'cursor-pointer' : ''}`}
- >
+  <div className="space-y-2"> {notifications.map((notif: any) => (
+  <div
+  key={notif.id}
+  onClick={() => notif.postId && navigate(`/post/${notif.postId}`)}
+  onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && notif.postId) { e.preventDefault(); navigate(`/post/${notif.postId}`); } }}
+  role={notif.postId ? 'link' : undefined}
+  tabIndex={notif.postId ? 0 : undefined}
+  aria-label={notif.postId ? `${getNotificationText(notif.type, notif.actor?.displayName || 'Someone')} — open post` : undefined}
+  className={`nb-card p-4 flex items-center gap-3 min-w-0 ${
+  !notif.isRead ? 'border-l-nb border-l-nb-yellow bg-yellow-50' : ''
+  } ${notif.postId ? 'cursor-pointer' : ''}`}
+  >
  <span className="shrink-0">{typeIcons[notif.type] || <Megaphone size={20} strokeWidth={2.5} className="text-gray-400" />}</span>
  {notif.actor && (
  <Avatar src={notif.actor.avatarUrl} photoId={notif.actor.avatarPhotoId} name={notif.actor.displayName} size="sm" />
@@ -84,7 +90,7 @@ export default function NotificationsPage() {
   <>
   <p className="font-display font-bold text-sm flex items-center gap-1.5">
   <Megaphone size={14} strokeWidth={2.5} /> {notif.metadata.title}
-  <span className="text-[10px] font-body font-semibold text-gray-400">· from {notif.actor?.displayName || 'your moderators'}</span>
+  <span className="text-xs font-body font-semibold text-gray-400">· from {notif.actor?.displayName || 'your moderators'}</span>
   </p>
   <p className="font-body text-sm mt-0.5 whitespace-pre-wrap">{notif.metadata.body}</p>
   </>
@@ -95,25 +101,25 @@ export default function NotificationsPage() {
   )}
  {notif.type === 'MATCH' && notif.metadata && (
  (notif.metadata.goals?.length || notif.metadata.interests?.length) ? (
- <div className="flex flex-wrap items-center gap-1 mt-1.5">
- <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Why you match:</span>
- {notif.metadata.goals?.map((g: string) => (
- <span key={g} className="nb-badge bg-nb-violet text-white text-[10px] px-1.5 py-0.5">
- Looking for: {g === 'DATING' ? 'Dating' : g === 'RELATIONSHIP' ? 'Relationship' : g === 'HOOKUP' ? 'Hookup' : g === 'CASUAL' ? 'Casual' : 'Not sure'}
- </span>
- ))}
- {notif.metadata.interests?.slice(0, 4).map((i: { id: string; name: string }) => (
- <span key={i.id} className="nb-badge bg-nb-peri text-ink text-[10px] px-1.5 py-0.5">{i.name}</span>
- ))}
- {(notif.metadata.interests?.length ?? 0) > 4 && (
- <span className="text-[10px] text-gray-400">+{notif.metadata.interests.length - 4} more</span>
- )}
- </div>
- ) : (
- <p className="text-[11px] text-gray-400 mt-0.5 italic">No listed criteria in common — matched on vibes.</p>
- )
- )}
- <p className="text-xs text-gray-400 mt-0.5">
+  <div className="flex flex-wrap items-center gap-1 mt-1.5">
+  <span className="text-xs font-bold uppercase tracking-wide text-gray-400">Why you match:</span>
+  {notif.metadata.goals?.map((g: string) => (
+  <span key={g} className="nb-badge bg-nb-violet text-white text-xs px-1.5 py-0.5">
+  Looking for: {g === 'DATING' ? 'Dating' : g === 'RELATIONSHIP' ? 'Relationship' : g === 'HOOKUP' ? 'Hookup' : g === 'CASUAL' ? 'Casual' : 'Not sure'}
+  </span>
+  ))}
+  {notif.metadata.interests?.slice(0, 4).map((i: { id: string; name: string }) => (
+  <span key={i.id} className="nb-badge bg-nb-peri text-ink text-xs px-1.5 py-0.5">{i.name}</span>
+  ))}
+  {(notif.metadata.interests?.length ?? 0) > 4 && (
+  <span className="text-xs text-gray-400">+{notif.metadata.interests.length - 4} more</span>
+  )}
+  </div>
+  ) : (
+  <p className="text-xs text-gray-400 mt-0.5 italic">No listed criteria in common — matched on vibes.</p>
+  )
+  )}
+  <p className="text-xs text-gray-400 mt-0.5">
  {formatDistanceToNow(notif.createdAt)}
  </p>
  </div>

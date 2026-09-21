@@ -7,8 +7,9 @@ import GoogleButton from '@/components/common/GoogleButton';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
- const [email, setEmail] = useState('');
- const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [slow, setSlow] = useState(false);
   const submittingRef = useRef(false); // ref guard: double-taps beat React re-render
@@ -23,22 +24,25 @@ export default function LoginPage() {
   return () => clearTimeout(t);
   }, [isLoading]);
 
- const handleSubmit = async (e: React.FormEvent) => {
- e.preventDefault();
- if (submittingRef.current) return;
- submittingRef.current = true;
- setIsLoading(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (submittingRef.current) return;
+  submittingRef.current = true;
+  setIsLoading(true);
+  setFormError(null);
   try {
   await login(email, password);
   toast.success('Welcome back!');
   navigate('/home');
   } catch (err: any) {
- toast.error(err.response?.data?.error || 'Login failed');
- } finally {
- setIsLoading(false);
- submittingRef.current = false;
- }
- };
+  const msg = err.response?.data?.error || 'Login failed';
+  setFormError(msg);
+  toast.error(msg);
+  } finally {
+  setIsLoading(false);
+  submittingRef.current = false;
+  }
+  };
 
  return (
  <div>
@@ -49,29 +53,40 @@ export default function LoginPage() {
  Sign in to see what's happening at your college
  </p>
 
- <form onSubmit={handleSubmit} className="space-y-4">
- <div>
- <label className="block font-display text-sm font-semibold mb-1.5">Email</label>
- <input
- type="email"
- className="nb-input"
- placeholder="your@email.com"
- value={email}
- onChange={(e) => setEmail(e.target.value)}
- required
- />
- </div>
+  <form onSubmit={handleSubmit} className="space-y-4" noValidate={false}>
+  <div>
+  <label htmlFor="login-email" className="block font-display text-sm font-semibold mb-1.5">Email</label>
+  <input
+  id="login-email"
+  type="email"
+  className="nb-input"
+  placeholder="your@email.com"
+  value={email}
+  onChange={(e) => setEmail(e.target.value)}
+  required
+  autoComplete="email"
+  aria-invalid={formError ? true : undefined}
+  aria-describedby={formError ? 'login-error' : undefined}
+  />
+  </div>
 
- <div>
- <label className="block font-display text-sm font-semibold mb-1.5">Password</label>
- <PasswordInput value={password} onChange={setPassword} />
- </div>
+  <div>
+  <label htmlFor="login-password" className="block font-display text-sm font-semibold mb-1.5">Password</label>
+  <PasswordInput id="login-password" value={password} onChange={setPassword} required autoComplete="current-password" />
+  </div>
 
- <button
- type="submit"
- disabled={isLoading}
- className="nb-btn-orange w-full text-center disabled:opacity-50"
- >
+  {formError && (
+  <p id="login-error" role="alert" className="text-sm font-body text-nb-pink font-semibold">
+  {formError}
+  </p>
+  )}
+
+  <button
+  type="submit"
+  disabled={isLoading}
+  aria-busy={isLoading}
+  className="nb-btn-primary w-full text-center disabled:opacity-50 disabled:cursor-not-allowed"
+  >
   {isLoading ? (
   <><Hourglass size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Signing in...</>
   ) : (

@@ -192,11 +192,11 @@ export default function VerificationPage() {
  <Camera size={44} className="mx-auto text-nb-violet" />
  <p className="text-xs opacity-60 mt-3">JPG, PNG or WebP · up to 8 MB</p>
  </div>
- {error && (
- <p className="text-sm text-nb-violet mt-4 text-center flex items-center justify-center gap-1">
- <AlertTriangle size={14} /> {error}
- </p>
- )}
+  {error && (
+  <p role="alert" className="text-sm text-nb-pink font-semibold mt-4 text-center flex items-center justify-center gap-1">
+  <AlertTriangle size={14} /> {error}
+  </p>
+  )}
  <button onClick={openCamera} className="nb-btn-primary w-full mt-6">
  <Camera size={18} className="inline mr-2" /> Open camera
  </button>

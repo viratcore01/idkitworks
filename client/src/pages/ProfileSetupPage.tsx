@@ -7,6 +7,7 @@ import api from '@/services/api';
 import CollegeSelect, { CollegeOption } from '@/components/common/CollegeSelect';
 import { photoSrc, usePhotoVersion } from '@/utils/photo';
 import ImageEditorModal from '@/components/common/ImageEditorModal';
+import LoadingSpinner from '@/components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
 
 export default function ProfileSetupPage() {
@@ -107,80 +108,87 @@ export default function ProfileSetupPage() {
  </p>
  </div>
 
- <form onSubmit={handleSubmit} className="nb-card p-6 space-y-4">
- <div>
- <label className="block font-display text-sm font-semibold mb-1.5">College *</label>
- <CollegeSelect
- value={college}
- onChange={(c) => {
- setCollege(c);
- setFormData((d) => ({ ...d, collegeId: c?.id || '' }));
- }}
- />
- <p className="text-[11px] text-gray-500 mt-1">Search by name, short name or city — worldwide.</p>
- </div>
+  <form onSubmit={handleSubmit} className="nb-card p-4 sm:p-6 space-y-4 min-w-0">
+  <div>
+  <label htmlFor="setup-college" className="block font-display text-sm font-semibold mb-1.5">College *</label>
+  <CollegeSelect
+  value={college}
+  onChange={(c) => {
+  setCollege(c);
+  setFormData((d) => ({ ...d, collegeId: c?.id || '' }));
+  }}
+  />
+  <p className="text-xs text-gray-500 mt-1">Search by name, short name or city — worldwide.</p>
+  </div>
 
- <div>
- <label className="block font-display text-sm font-semibold mb-1.5">Course / Branch *</label>
- <input
- type="text"
- className="nb-input"
- placeholder="e.g. CSE, ECE"
- value={formData.course}
- onChange={(e) => setFormData((d) => ({ ...d, course: e.target.value }))}
- required
- />
- </div>
+  <div>
+  <label htmlFor="setup-course" className="block font-display text-sm font-semibold mb-1.5">Course / Branch *</label>
+  <input
+  id="setup-course"
+  type="text"
+  className="nb-input"
+  placeholder="e.g. CSE, ECE"
+  value={formData.course}
+  onChange={(e) => setFormData((d) => ({ ...d, course: e.target.value }))}
+  required
+  autoComplete="off"
+  />
+  </div>
 
- <div>
- <label className="block font-display text-sm font-semibold mb-1.5">Year</label>
- <div className="flex gap-2">
- {[1, 2, 3, 4].map((y) => (
- <button
- key={y}
- type="button"
- onClick={() => setFormData((d) => ({ ...d, year: y }))}
- className={`nb-btn flex-1 text-center text-sm ${
- formData.year === y ? 'bg-nb-violet text-white' : ''
- }`}
- >
- {y === 1 ? '1st' : y === 2 ? '2nd' : y === 3 ? '3rd' : '4th'}
- </button>
- ))}
- </div>
- </div>
+  <fieldset>
+  <legend className="block font-display text-sm font-semibold mb-1.5">Year</legend>
+  <div className="flex gap-2" role="radiogroup" aria-label="Year">
+  {[1, 2, 3, 4].map((y) => (
+  <button
+  key={y}
+  type="button"
+  role="radio"
+  aria-checked={formData.year === y}
+  onClick={() => setFormData((d) => ({ ...d, year: y }))}
+  className={`nb-btn flex-1 text-center text-sm ${
+  formData.year === y ? 'bg-nb-violet text-white' : ''
+  }`}
+  >
+  {y === 1 ? '1st' : y === 2 ? '2nd' : y === 3 ? '3rd' : '4th'}
+  </button>
+  ))}
+  </div>
+  </fieldset>
 
- <div>
- <label className="block font-display text-sm font-semibold mb-1.5">Bio</label>
- <textarea
- className="nb-input min-h-[80px] resize-none"
- placeholder="Tell us about yourself..."
- value={formData.bio}
- onChange={(e) => setFormData((d) => ({ ...d, bio: e.target.value }))}
- />
- </div>
+  <div>
+  <label htmlFor="setup-bio" className="block font-display text-sm font-semibold mb-1.5">Bio</label>
+  <textarea
+  id="setup-bio"
+  className="nb-input min-h-[80px] resize-none"
+  placeholder="Tell us about yourself..."
+  value={formData.bio}
+  onChange={(e) => setFormData((d) => ({ ...d, bio: e.target.value }))}
+  />
+  </div>
 
   <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3 min-w-0">
  <div>
- <label className="block font-display text-sm font-semibold mb-1.5">Birth date *</label>
- <input
- type="date"
- className="nb-input text-sm"
- required
- max={new Date(Date.now() - 16 * 365.25 * 24 * 3600 * 1000).toISOString().slice(0, 10)}
- value={formData.dateOfBirth}
- onChange={(e) => setFormData((d) => ({ ...d, dateOfBirth: e.target.value }))}
- />
+  <label htmlFor="setup-dob" className="block font-display text-sm font-semibold mb-1.5">Birth date *</label>
+  <input
+  id="setup-dob"
+  type="date"
+  className="nb-input text-sm"
+  required
+  max={new Date(Date.now() - 16 * 365.25 * 24 * 3600 * 1000).toISOString().slice(0, 10)}
+  value={formData.dateOfBirth}
+  onChange={(e) => setFormData((d) => ({ ...d, dateOfBirth: e.target.value }))}
+  />
   <p className="text-xs text-gray-500 mt-1">Must be 16+. Only your age is shown.</p>
- </div>
- <div>
- <label className="block font-display text-sm font-semibold mb-1.5">Gender *</label>
- <select
- className="nb-input text-sm"
- required
- value={formData.gender}
- onChange={(e) => setFormData((d) => ({ ...d, gender: e.target.value }))}
- >
+  </div>
+  <div>
+  <label htmlFor="setup-gender" className="block font-display text-sm font-semibold mb-1.5">Gender *</label>
+  <select
+  id="setup-gender"
+  className="nb-input text-sm"
+  required
+  value={formData.gender}
+  onChange={(e) => setFormData((d) => ({ ...d, gender: e.target.value }))}
+  >
  <option value="FEMALE">Female</option>
  <option value="MALE">Male</option>
  <option value="OTHER">Other</option>
@@ -199,27 +207,29 @@ export default function ProfileSetupPage() {
  const src = photo ? photoSrc(photo.id) + `&v=${photoVersion}` : null;
  return (
  <div key={slot} className="relative">
- {photo && (
- <button
- type="button"
- onClick={() => handleRemove(photo)}
- className="absolute -top-1.5 -right-1.5 z-10 w-5 h-5 bg-nb-pink text-white border-nb-2 border-ink flex items-center justify-center"
- title="Remove"
- >
- <X size={11} strokeWidth={3} />
- </button>
- )}
- <label className={`block cursor-pointer ${busySlot === slot ? 'opacity-50 pointer-events-none' : ''}`}>
- <input
- type="file"
- accept="image/*"
- className="hidden"
- onChange={(e) => {
- const f = e.target.files?.[0];
- e.currentTarget.value = '';
- if (f) setEditing({ slot, file: f });
- }}
- />
+  {photo && (
+  <button
+  type="button"
+  onClick={() => handleRemove(photo)}
+  aria-label={`Remove photo ${slot + 1}`}
+  className="absolute -top-1 -right-1 z-10 w-7 h-7 bg-nb-pink text-white border-nb-2 border-ink flex items-center justify-center"
+  title="Remove"
+  >
+  <X size={11} strokeWidth={3} />
+  </button>
+  )}
+  <label className={`block cursor-pointer focus-within:ring-2 focus-within:ring-nb-violet focus-within:ring-offset-2 ${busySlot === slot ? 'opacity-50 pointer-events-none' : ''}`} aria-label={slot === 0 ? 'Upload profile picture' : `Upload photo ${slot + 1}`}>
+  <input
+  type="file"
+  accept="image/*"
+  aria-label={slot === 0 ? 'Upload profile picture' : `Upload photo ${slot + 1}`}
+  className="sr-only focus:not-sr-only focus:w-px focus:h-px"
+  onChange={(e) => {
+  const f = e.target.files?.[0];
+  e.currentTarget.value = '';
+  if (f) setEditing({ slot, file: f });
+  }}
+  />
  {src ? (
  <img src={src} alt="" className={`w-full aspect-square object-cover nb-avatar ! ${slot === 0 ? 'ring-2 ring-nb-violet ring-offset-2' : ''}`} />
  ) : (
@@ -232,59 +242,70 @@ export default function ProfileSetupPage() {
  </div>
  );
  })}
- </div>
- <p className="text-[11px] text-gray-500 font-body mb-1">JPG / PNG / WebP · max 5 MB each.</p>
- </div>
+  </div>
+  <p className="text-xs text-gray-500 font-body mb-1">JPG / PNG / WebP · max 5 MB each.</p>
+  </div>
 
- <div>
- <label className="block font-display text-sm font-semibold mb-2">Avatar color</label>
- <div className="flex gap-2 flex-wrap">
- {['#6D28D9', '#F43F5E', '#FBBF24', '#10B981', '#60A5FA', '#C4B5FD', '#10B981', '#F43F5E', '#6D28D9', '#C4B5FD'].map((c) => (
- <button
- key={c}
- type="button"
- onClick={() => setFormData((d) => ({ ...d, avatarColor: c }))}
- className={`w-7 h-7 border-nb-2 transition-transform ${
- formData.avatarColor === c ? 'border-ink scale-110' : 'border-transparent'
- }`}
- style={{ backgroundColor: c }}
- />
- ))}
- </div>
- </div>
+  <fieldset>
+  <legend className="block font-display text-sm font-semibold mb-2">Avatar color</legend>
+  <div className="flex gap-2 flex-wrap" role="radiogroup" aria-label="Avatar color">
+  {['#6D28D9', '#F43F5E', '#FBBF24', '#10B981', '#60A5FA', '#C4B5FD'].map((c) => (
+  <button
+  key={c}
+  type="button"
+  role="radio"
+  aria-checked={formData.avatarColor === c}
+  aria-label={`Avatar color ${c}`}
+  onClick={() => setFormData((d) => ({ ...d, avatarColor: c }))}
+  className={`w-10 h-10 border-nb-2 transition-transform ${
+  formData.avatarColor === c ? 'border-ink scale-110' : 'border-transparent'
+  }`}
+  style={{ backgroundColor: c }}
+  />
+  ))}
+  </div>
+  </fieldset>
 
- <div>
- <label className="block font-display text-sm font-semibold mb-2">Interests</label>
- <div className="flex flex-wrap gap-2">
- {interests?.map((i: any) => (
- <button
- key={i.id}
- type="button"
- onClick={() =>
- setFormData((d) => ({
- ...d,
- interestIds: d.interestIds.includes(i.id)
- ? d.interestIds.filter((id) => id !== i.id)
- : [...d.interestIds, i.id],
- }))
- }
- className={`nb-tag cursor-pointer transition-all ${
- formData.interestIds.includes(i.id)
- ? 'bg-nb-violet text-white'
- : 'bg-white'
- }`}
- >
- {i.name}
- </button>
- ))}
- </div>
- </div>
+  <fieldset>
+  <legend className="block font-display text-sm font-semibold mb-2">Interests</legend>
+  {!interests ? (
+  <LoadingSpinner size="sm" />
+  ) : interests.length === 0 ? (
+  <p className="text-sm font-body text-gray-500">No interests to show right now — you can add them later from your profile.</p>
+  ) : (
+  <div className="flex flex-wrap gap-2" role="group" aria-label="Interests">
+  {interests?.map((i: any) => (
+  <button
+  key={i.id}
+  type="button"
+  aria-pressed={formData.interestIds.includes(i.id)}
+  onClick={() =>
+  setFormData((d) => ({
+  ...d,
+  interestIds: d.interestIds.includes(i.id)
+  ? d.interestIds.filter((id) => id !== i.id)
+  : [...d.interestIds, i.id],
+  }))
+  }
+  className={`nb-tag cursor-pointer transition-all ${
+  formData.interestIds.includes(i.id)
+  ? 'bg-nb-violet text-white'
+  : 'bg-white'
+  }`}
+  >
+  {i.name}
+  </button>
+  ))}
+  </div>
+  )}
+  </fieldset>
 
- <button
- type="submit"
- disabled={isLoading}
- className="nb-btn-orange w-full text-center disabled:opacity-50"
- >
+  <button
+  type="submit"
+  disabled={isLoading}
+  aria-busy={isLoading}
+  className="nb-btn-primary w-full text-center disabled:opacity-50 disabled:cursor-not-allowed"
+  >
  {isLoading ? (
  <><Hourglass size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Saving...</>
  ) : (

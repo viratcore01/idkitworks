@@ -1,15 +1,16 @@
 export default function LoadingSpinner({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
- const sizeClasses = {
- sm: 'w-5 h-5',
- md: 'w-8 h-8',
- lg: 'w-12 h-12',
- };
+  const sizeClasses = {
+  sm: 'w-5 h-5',
+  md: 'w-8 h-8',
+  lg: 'w-12 h-12',
+  };
 
- return (
- <div className="flex items-center justify-center py-8">
- <div
- className={`${sizeClasses[size]} border-nb-2 border-ink border-t-nb-violet animate-spin`}
- />
- </div>
- );
+  return (
+  <div className={`flex items-center justify-center ${size === 'sm' ? 'py-3' : 'py-8'}`} role="status" aria-label="Loading">
+  <div
+  className={`${sizeClasses[size]} border-nb-2 border-ink border-t-nb-violet animate-spin`}
+  aria-hidden="true"
+  />
+  </div>
+  );
 }

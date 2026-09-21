@@ -192,7 +192,7 @@ export default function ImageEditorModal({ file, title = 'Edit photo', aspects =
  setOffset((o) => clampOffset(o.x, o.y, z));
  };
 
- const iconBtn = 'w-10 h-10 bg-white border-nb-2 border-ink flex items-center justify-center hover:bg-nb-yellow/50 active:translate-y-[1px] transition-colors';
+  const iconBtn = 'w-11 h-11 bg-white border-nb-2 border-ink flex items-center justify-center hover:bg-nb-yellow/50 active:translate-y-[1px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nb-violet';
 
  const rotate = (dir: 1 | -1) => setRotation((r) => (r + dir * 90 + 360) % 360);
  const nudgeZoom = (dir: 1 | -1) => {
@@ -324,9 +324,9 @@ export default function ImageEditorModal({ file, title = 'Edit photo', aspects =
  </button>
  </div>
 
- <div className="flex gap-2 mt-5">
- <button onClick={onCancel} className="nb-btn-ghost flex-1">Cancel</button>
- <button onClick={apply} disabled={exporting} className="nb-btn-primary flex-1">
+  <div className="flex gap-2 mt-5">
+  <button type="button" onClick={onCancel} className="nb-btn-ghost flex-1">Cancel</button>
+  <button type="button" onClick={apply} disabled={exporting} aria-busy={exporting} className="nb-btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed">
  {exporting ? 'Processing…' : (<><Check size={16} className="inline mr-1" /> Use this photo</>)}
  </button>
  </div>

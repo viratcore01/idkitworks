@@ -57,10 +57,19 @@ body {
   .nb-btn {
     @apply px-5 py-2.5 border-nb border-ink shadow-nb font-display font-semibold
            transition-all duration-100 cursor-pointer select-none
-           active:shadow-none active:translate-x-[2px] active:translate-y-[2px];
+           active:shadow-none active:translate-x-[2px] active:translate-y-[2px]
+           disabled:cursor-not-allowed
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nb-violet focus-visible:ring-offset-2;
   }
 
   .nb-btn-orange {
+    @apply nb-btn bg-nb-violet text-white hover:bg-nb-violet/90;
+  }
+
+  /* Canonical primary action — single token for Sign In / Join / Verify /
+     Save across auth, settings, verification and photo flows. Alias of the
+     violet primary so legacy `nb-btn-primary` class names render correctly. */
+  .nb-btn-primary {
     @apply nb-btn bg-nb-violet text-white hover:bg-nb-violet/90;
   }
 
