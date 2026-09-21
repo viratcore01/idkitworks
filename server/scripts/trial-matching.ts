@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════
    HEAVY DUMMY-DATA TRIAL — matching feature, aggressive loop.
    Run:  cd server && npx tsx scripts/trial-matching.ts [baseURL] [phase]
-   Phases: setup | deck | storm | walls | criteria | perf | cleanup | all
+   Phases: setup | deck | storm | cap | walls | criteria | perf | cleanup | all
    (default: all). Resumable + idempotent: setup wipes stale zx_* first.
 
    PROD HYGIENE (this runs against the live DB by design):
@@ -13,15 +13,17 @@
      them as INFRA (not FAIL) — a wrong 200-body is a real bug, a pool 500
      after retries is the known saturated-pooler environment.
    ═══════════════════════════════════════════════════════════════════ */
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+// Use the NORMALIZED client (config/prisma.ts): pool size comes from
+// DATABASE_CONNECTION_LIMIT (default 10) — a raw `new PrismaClient()` here
+// would default to CPUs*2+1 and eat the whole pooler during trials.
+import { prisma } from '../src/config/prisma';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:5000';
 const PHASE = process.argv[3] || 'all';
 // Optional viewer slice for the deck phase: `deck 0,3` walks viewers 0-2.
 // Keeps each invocation bounded when the pooler forces long backoffs.
 const SLICE = (process.argv[4] || '0,99').split(',').map((x) => parseInt(x));
-const prisma = new PrismaClient();
 const PASSWORD_HASH = bcrypt.hashSync('password123', 10);
 
 // Deterministic RNG so every trial run builds the SAME world.
@@ -63,17 +65,21 @@ async function api(token: string, method: string, path: string, body?: any) {
 // Returns { exhausted:true } if the pool never frees (reported as INFRA).
 async function apiR(token: string, method: string, path: string, body?: any, tries = 8) {
   let last: any = null;
+  const modes: string[] = [];
   for (let i = 0; i < tries; i++) {
     try {
       const r = await api(token, method, path, body);
       if (r.status < 500 && r.status !== 429) return { ...r, exhausted: false as const, attempts: i + 1 };
       last = r;
-    } catch (e) {
+      modes.push(`s${r.status}`);
+    } catch (e: any) {
       last = { status: 0, data: null };
+      modes.push(`x${e?.cause?.code || e?.code || 'conn'}`);
     }
     await sleep(Math.min(1000 * 2 ** i, 20000));
     await sleep(150); // gentle cadence: never hammer prod
   }
+  (last || {}).modes = modes.join(',');
   return { ...(last || { status: 0, data: null }), exhausted: true as const, attempts: tries };
 }
 
@@ -201,10 +207,13 @@ async function phaseDeck() {
     const tok = await loginAs(v.email);
     // Exact age, same formula as the server (ms diff) — no boundary flakes.
     const ageOf = (dob: Date) => Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000));
+    // Pass memory expires after 90 days server-side (PASS_RECYCLE_DAYS) —
+    // the expected set must apply the same cutoff.
+    const passCutoff = Date.now() - 90 * 24 * 3600 * 1000;
     // Expected eligible set, computed straight from the DB.
-    const likes = await prisma.matchLike.findMany({ where: { senderId: v.id }, select: { receiverId: true, action: true } });
+    const likes = await prisma.matchLike.findMany({ where: { senderId: v.id }, select: { receiverId: true, action: true, createdAt: true } });
     const likedIds = new Set(likes.filter((l) => l.action === 'LIKE').map((l) => l.receiverId));
-    const passedIds = new Set(likes.filter((l) => l.action === 'PASS').map((l) => l.receiverId));
+    const passedIds = new Set(likes.filter((l) => l.action === 'PASS' && l.createdAt.getTime() > passCutoff).map((l) => l.receiverId));
     const blocks = await prisma.block.findMany({ where: { OR: [{ blockerId: v.id }, { blockedId: v.id }] } });
     const blockedIds = new Set(blocks.flatMap((b) => [b.blockerId, b.blockedId]));
     const myInterests = new Set((await prisma.userInterest.findMany({ where: { userId: v.id }, select: { interestId: true } })).map((x) => x.interestId));
@@ -324,8 +333,14 @@ async function phaseStorm() {
     if (n !== 2) notifBad++;
   }
   check('MATCH notifications exactly 2 per match', notifBad === 0, `${notifBad} off`);
-  // Like-cap: a FRESH actor (zero sent rows) rapid-fires 105 likes → the
-  // 100/12h cap must trip (429s) and no more than 100 LIKE rows may exist.
+}
+
+// Standalone cap probe (also the tail of the storm phase): fresh actor,
+// 99 seeded likes, 100th must 200, 101st+ must 429, DB count exactly 100.
+async function phaseCap() {
+  console.log('\n━━ LIKE-CAP boundary probe ━━');
+  const zxIds = [...zxUsers, ...ipecUsers].map((u) => u.id);
+  const targets = zxUsers.filter((u) => !u._inactive && !u._noPhoto);
   const sentCounts = await prisma.matchLike.groupBy({ by: ['senderId'], where: { senderId: { in: zxIds } } });
   const sentSet = new Set(sentCounts.map((g) => g.senderId));
   const cap = targets.find((t) => !sentSet.has(t.id))!;
@@ -333,17 +348,48 @@ async function phaseStorm() {
   // Exclude anyone block-walled with cap (403s would eat attempts and hide the cap trip).
   const capBlocks = await prisma.block.findMany({ where: { OR: [{ blockerId: cap.id }, { blockedId: cap.id }] } });
   const capWalled = new Set(capBlocks.flatMap((b) => [b.blockerId, b.blockedId]));
-  const freshTargets = targets.filter((t) => t.id !== cap.id && !capWalled.has(t.id)).slice(0, 105);
+  const freshTargets = targets.filter((t) => t.id !== cap.id && !capWalled.has(t.id)).slice(0, 110);
+  // Fast decisive boundary probe: seed 99 LIKE rows directly (one query —
+  // direct inserts create no matches/notifications, only cap-countable rows),
+  // then the 100th API like must succeed and the 101st+ must 429.
+  await prisma.matchLike.createMany({
+    data: freshTargets.slice(0, 99).map((t) => ({ senderId: cap.id, receiverId: t.id, action: 'LIKE' })),
+    skipDuplicates: true,
+  });
+  const boundaryTargets = freshTargets.slice(99, 105);
   let capped = 0, accepted = 0;
-  for (const t of freshTargets) {
-    const r = await apiR(capTok, 'POST', '/matches/like', { receiverId: t.id }, 3);
-    if (r.exhausted) { infraNote('like-cap burst'); continue; }
+  // Liveness witness: is the API itself reachable right now, or are we
+  // shouting into a dead socket? Distinguishes app-500s from a dead server.
+  const alive = async () => {
+    try {
+      const r = await fetch(`${BASE}/api/health`);
+      return r.status === 200;
+    } catch { return false; }
+  };
+  for (const t of boundaryTargets) {
+    // 429/200 are VERDICTS here (cap state is deterministic — retrying a 429
+    // is meaningless); only 500s/conn-failures are transient and retried.
+    let verdict: any = null;
+    for (let k = 0; k < 4 && !verdict; k++) {
+      try {
+        const r = await api(capTok, 'POST', '/matches/like', { receiverId: t.id });
+        if (r.status === 429 || r.status === 200) verdict = r;
+        else await sleep(2000);
+      } catch { await sleep(2000); }
+      await sleep(120);
+    }
+    if (!verdict) { infraNote(`like-cap burst apiAlive=${await alive()}`); continue; }
+    const r = verdict;
     if (r.status === 429) capped++;
     else if (r.status === 200) accepted++;
+    else check('like-cap boundary unexpected status', false, `got ${r.status} for ${t.username}`);
     await sleep(60);
   }
-  check('like cap trips at 100/12h', capped > 0, `accepted=${accepted} capped=${capped}`);
-  check('cap respected (≤100 counted)', accepted <= 100, `accepted=${accepted}`);
+  check('100th like accepted, 101st+ capped', accepted === 1 && capped === boundaryTargets.length - 1,
+    `accepted=${accepted} capped=${capped} of ${boundaryTargets.length}`);
+  const windowStart = new Date(Date.now() - 12 * 3600 * 1000);
+  const counted = await prisma.matchLike.count({ where: { senderId: cap.id, action: 'LIKE', createdAt: { gte: windowStart } } });
+  check('cap respected (exactly 100 counted)', counted === 100, `counted=${counted}`);
 }
 
 // ── WALLS AT VOLUME ──
@@ -376,6 +422,47 @@ async function phaseWalls() {
   if (dr.exhausted) infraNote('blocked deck absence');
   else check('blocked absent from deck', !(dr.data.users || []).some((u: any) => u.id === a.id));
   await prisma.block.deleteMany({ where: { blockerId: a.id, blockedId: x.id } });
+  // Blocked ex leaves the matches list (match itself stays ACTIVE underneath).
+  await apiR(tokA, 'POST', '/matches/like', { receiverId: x.id });
+  await apiR(tokX, 'POST', '/matches/like', { receiverId: a.id });
+  const axMatch = await prisma.match.findFirst({
+    where: { status: 'ACTIVE', OR: [{ userA: a.id, userB: x.id }, { userA: x.id, userB: a.id }] },
+  });
+  if (!axMatch) {
+    infraNote('blocked-match setup (no ACTIVE match formed)');
+  } else {
+    await prisma.block.create({ data: { blockerId: a.id, blockedId: x.id } });
+    const ml = await apiR(tokA, 'GET', '/matches?limit=50');
+    if (ml.exhausted) infraNote('blocked hidden from matches');
+    else check('blocked ex hidden from matches list', !(ml.data.matches || []).some((m: any) => m.partner.id === x.id));
+    await prisma.block.deleteMany({ where: { blockerId: a.id, blockedId: x.id } });
+    const ml2 = await apiR(tokA, 'GET', '/matches?limit=50');
+    if (ml2.exhausted) infraNote('unblocked match returns');
+    else check('unblocked ex returns to matches list', (ml2.data.matches || []).some((m: any) => m.partner.id === x.id));
+    // Matches pagination contract (client pages at 50+).
+    const mp = await apiR(tokA, 'GET', '/matches?limit=1');
+    if (mp.exhausted) infraNote('matches pagination');
+    else check('matches honors limit + hasMore', (mp.data.matches || []).length <= 1 && typeof mp.data.hasMore === 'boolean');
+  }
+  // Second-chance ping: receiver passed first, sender's first LIKE must still
+  // notify exactly once (and re-taps must not re-notify — see spam guard).
+  const priorPairs = await prisma.matchLike.findMany({
+    where: { OR: [{ senderId: a.id }, { receiverId: a.id }] },
+    select: { senderId: true, receiverId: true },
+  });
+  const touched = new Set(priorPairs.flatMap((r) => [r.senderId, r.receiverId]));
+  const y = zxUsers.find((u) => !u._inactive && !u._noPhoto && u.id !== a.id && u.id !== x.id && !touched.has(u.id))!;
+  const tokY = await loginAs(y.email);
+  await apiR(tokY, 'POST', '/matches/pass', { receiverId: a.id });
+  await apiR(tokA, 'POST', '/matches/like', { receiverId: y.id });
+  const sc = await prisma.notification.count({ where: { type: 'LIKE', recipientId: y.id, actorId: a.id } });
+  check('pass-first still gets exactly one second-chance ping', sc === 1, `got ${sc}`);
+  // Photo gate covers PASS too (not just LIKE).
+  const nophU = zxUsers.find((u) => u._noPhoto && !u._inactive)!;
+  const tokN = await loginAs(nophU.email);
+  const np = await apiR(tokN, 'POST', '/matches/pass', { receiverId: a.id }, 4);
+  if (np.exhausted) infraNote('no-photo pass gate');
+  else check('no-photo pass → 403', np.status === 403, `got ${np.status}`);
   // Inactive + photo-less never surface.
   const inact = zxUsers.find((u) => u._inactive)!;
   const noph = zxUsers.find((u) => u._noPhoto && !u._inactive)!;
@@ -536,6 +623,7 @@ async function main() {
   await run('setup', phaseSetup);
   await run('deck', phaseDeck);
   await run('storm', phaseStorm);
+  await run('cap', phaseCap);
   await run('walls', phaseWalls);
   await run('criteria', phaseCriteria);
   await run('perf', phasePerf);

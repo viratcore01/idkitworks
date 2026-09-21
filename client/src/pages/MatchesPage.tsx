@@ -74,11 +74,29 @@ export default function MatchesPage() {
  }
  }, [deck, deckPage]);
 
- const { data: matchesData, isLoading: loadingMatches } = useQuery({
- queryKey: ['matches'],
- queryFn: () => api.get('/matches').then((r) => r.data),
- // Always on: the tab badge needs a live count even before the tab is opened
- });
+  // Matches list is paginated (server default 50/page): power users with
+  // 100+ matches page through instead of one giant fetch. Pages append;
+  // any match mutation invalidates the whole ['matches'] prefix.
+  const [matchesPage, setMatchesPage] = useState(0);
+  const { data: matchesData, isLoading: loadingMatches, isFetching: fetchingMatches } = useQuery({
+  queryKey: ['matches', matchesPage],
+  queryFn: () => api.get('/matches', { params: { page: matchesPage } }).then((r) => r.data),
+  // Always on: the tab badge needs a live count even before the tab is opened
+  placeholderData: (prev: any) => prev,
+  });
+  const [matchPages, setMatchPages] = useState<any[][]>([]);
+  const matchesHasMore = !!matchesData?.hasMore;
+  useEffect(() => {
+  if (matchesData?.matches) {
+  setMatchPages((prev) => {
+  const next = [...prev];
+  next[matchesPage] = matchesData.matches;
+  return next;
+  });
+  }
+  }, [matchesData, matchesPage]);
+  // View/discover churn must not resurrect stale appended pages.
+  useEffect(() => { setMatchPages([]); setMatchesPage(0); }, [view]);
 
  const { data: conversations, isLoading: loadingConversations } = useQuery({
  queryKey: ['conversations'],
@@ -131,10 +149,11 @@ export default function MatchesPage() {
   onSettled: () => setLikeBackId(null),
   });
 
- const users = deck?.users || [];
- const currentIndex = 0; // each action moves to the next card; page refetch gives a fresh deck
- const currentUser = users[currentIndex];
- const matches = matchesData?.matches || [];
+  const users = deck?.users || [];
+  const currentIndex = 0; // each action moves to the next card; page refetch gives a fresh deck
+  const currentUser = users[currentIndex];
+  // Flattened across fetched pages (see paginated matches query above).
+  const matches = matchPages.flat();
 
   // Reset the photo carousel whenever a new card comes up
   useEffect(() => {
@@ -162,6 +181,10 @@ export default function MatchesPage() {
   queryClient.invalidateQueries({ queryKey: ['matches'] });
   queryClient.invalidateQueries({ queryKey: ['match-stats'] });
   queryClient.invalidateQueries({ queryKey: ['likes-you'] });
+  // Paginated matches list: restart from page 0 so appended pages can't go
+  // stale underneath a mutation (unmatch/like-back change list membership).
+  setMatchPages([]);
+  setMatchesPage(0);
   };
 
   // Which swipe is in flight (like vs pass tracked separately so a pending
@@ -713,20 +736,20 @@ export default function MatchesPage() {
  {matches.map((match: any) => {
  const conv = (conversations || []).find((c: any) => c.otherUser?.id === match.partner.id);
  return (
- <div key={match.id} className="nb-card-hover p-4 flex items-center gap-3">
- <Avatar src={match.partner.avatarUrl} photoId={match.partner.avatarPhotoId} color={match.partner.avatarColor} name={match.partner.displayName} />
- <div className="flex-1 min-w-0">
- <p className="font-display font-semibold text-sm">{match.partner.displayName}</p>
- <p className="text-xs text-gray-500 truncate">{match.partner.bio || 'No bio yet'}</p>
- </div>
- {conv && (
- <Link
- to={`/messages/${conv.id}`}
- className="nb-btn bg-nb-peri text-ink text-xs shrink-0"
- >
- <MessageSquare size={12} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Chat
- </Link>
- )}
+  <div key={match.id} className="nb-card-hover p-4 flex items-center gap-3">
+  <Avatar src={match.partner.avatarUrl} photoId={match.partner.avatarPhotoId} color={match.partner.avatarColor} name={match.partner.displayName} />
+  <div className="flex-1 min-w-0">
+  <p className="font-display font-semibold text-sm">{match.partner.displayName}</p>
+  <p className="text-xs text-gray-500 truncate">{match.partner.bio || 'No bio yet'}</p>
+  </div>
+  {conv && (
+  <Link
+  to={`/messages/${conv.id}`}
+  className="nb-btn bg-nb-peri text-ink text-xs shrink-0"
+  >
+  <MessageSquare size={12} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Chat
+  </Link>
+  )}
   <button
   onClick={() => !unmatchMutation.isPending && unmatchMutation.mutate(match.id)}
   disabled={unmatchMutation.isPending}
@@ -734,15 +757,25 @@ export default function MatchesPage() {
   className="text-gray-500 hover:text-nb-pink transition-colors shrink-0 p-2 min-w-[44px] min-h-[44px] grid place-items-center disabled:opacity-50"
   title="Unmatch"
   >
- <UserMinus size={16} strokeWidth={2.5} />
- </button>
- </div>
- );
- })}
- </div>
- )}
- </>
- )}
+  <UserMinus size={16} strokeWidth={2.5} />
+  </button>
+  </div>
+  );
+  })}
+  </div>
+  )}
+  {matches.length > 0 && matchesHasMore && (
+  <button
+  onClick={() => setMatchesPage((p) => p + 1)}
+  disabled={fetchingMatches}
+  aria-busy={fetchingMatches}
+  className="nb-btn-ghost w-full text-center text-sm mt-3 disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+  {fetchingMatches ? 'Loading...' : 'Show more matches'}
+  </button>
+  )}
+  </>
+  )}
 
  {view === 'chat' && (
  <>

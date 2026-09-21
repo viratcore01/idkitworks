@@ -25,6 +25,9 @@ async function needsPhotoGate(userId: string): Promise<boolean> {
 }
 /** Deck page size: swipe through ~a page, then fetch the next. */
 const DECK_PAGE_SIZE = 20;
+/** Pass memory: passes older than this stop shaping the loop chain and the
+ * profile becomes fresh again (bounds the exclusion arrays at volume). */
+const PASS_RECYCLE_DAYS = 90;
 /** Like cap per rolling window — spam/scraper protection (Tinder-style). */
 const LIKE_CAP = 100;
 const LIKE_WINDOW_HOURS = 12;
@@ -169,10 +172,15 @@ export class MatchService {
 
     // LIKEd ids leave the deck permanently (pending the other person's answer);
     // passes only shape ORDER (they re-enter at the back), never visibility.
+    // PASS EXPIRY (90 days): pass memory can't grow unbounded — a power
+    // swiper would otherwise drag 10k+ stale ids through every deck read
+    // (param bloat + slower plans). Expired passes simply become fresh again
+    // ("fresh start" UX beats a permanently haunted deck); likes never expire.
     const likedIds = actioned.filter((a) => a.action === 'LIKE').map((a) => a.receiverId);
+    const passCutoff = Date.now() - PASS_RECYCLE_DAYS * 24 * 3600 * 1000;
     // oldest pass first — the back of the loop chain
     const passedIds = actioned
-      .filter((a) => a.action === 'PASS')
+      .filter((a) => a.action === 'PASS' && a.createdAt.getTime() > passCutoff)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
       .map((a) => a.receiverId);
 
@@ -536,11 +544,16 @@ export class MatchService {
         return { matched: true, matchId: match.id, criteria };
       }
 
-      // One-sided like → notify the receiver (Hinge-style: likes are free to
-      // see). Deduped: only on the FIRST like, never on action updates.
-      // Fire-and-forget after the swipe transaction so a notification hiccup
-      // can never fail the like itself.
-      if (!mutual) {
+      // One-sided like → notify the receiver exactly ONCE per like-lifecycle.
+      // First LIKE (a PASS→LIKE update counts — it's new information, the
+      // "second chance" ping when the other side passed first). Never on
+      // re-taps: without the firstLikeEver guard every double-tap minted a
+      // fresh LIKE notification (spam). A mutual LIKE means a match, handled
+      // above — reaching here with a mutual row means they PASSED, still
+      // worth exactly one ping. Fire-and-forget after the swipe transaction
+      // so a notification hiccup can never fail the like itself.
+      const firstLikeEver = !existing || existing.action !== 'LIKE';
+      if (mutual?.action !== 'LIKE' && firstLikeEver) {
         prisma.notification.create({
           data: { recipientId: receiverId, actorId: senderId, type: 'LIKE' } as any,
         })
@@ -591,6 +604,19 @@ export class MatchService {
         // creation); this filter also hides any legacy cross-college rows.
         userAObj: { collegeId: viewer.collegeId },
         userBObj: { collegeId: viewer.collegeId },
+        // BLOCK WALL: a blocked ex (either direction, either side) leaves the
+        // matches list. Messaging + conversation creation already refuse
+        // blocked pairs — without this the list showed a Chat door into a
+        // room you can't speak in. Unblock restores it (the match stays
+        // ACTIVE underneath; unmatch remains the explicit end).
+        // (Self-cases, e.g. userA=viewer blocking viewer, are impossible, so
+        // the four clauses are safe to apply blindly to both sides.)
+        NOT: [
+          { userAObj: { blockedUsers: { some: { blockedId: userId } } } },
+          { userAObj: { blockedBy: { some: { blockerId: userId } } } },
+          { userBObj: { blockedUsers: { some: { blockedId: userId } } } },
+          { userBObj: { blockedBy: { some: { blockerId: userId } } } },
+        ],
       },
       include: {
         userAObj: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true, bio: true } },

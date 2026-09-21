@@ -118,6 +118,10 @@ export class MessageService {
         },
       },
       orderBy: { conversation: { messages: { _count: 'desc' } } },
+      // Launch bound: one row per match max, but cap the list anyway — an
+      // unbounded include-heavy query is a memory spike waiting for a
+      // power user (100 most-recent threads is generous for a campus app).
+      take: 100,
     });
 
     return memberships.map((m) => {

@@ -5,11 +5,13 @@
    adversarial scenario, prints PASS/FAIL per case, cleans up.
    Non-zero exit code if anything fails.
    ═══════════════════════════════════════════════════════════════ */
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+// Normalized client (config/prisma.ts): pool from DATABASE_CONNECTION_LIMIT.
+// A raw `new PrismaClient()` defaults to CPUs*2+1 and can single-handedly
+// saturate a small pooler mid-suite (measured failure mode).
+import { prisma } from '../src/config/prisma';
 
 const BASE = process.argv[2] || 'http://localhost:5000';
-const prisma = new PrismaClient();
 const PASSWORD_HASH = bcrypt.hashSync('password123', 10);
 
 let pass = 0, fail = 0;
@@ -72,6 +74,8 @@ async function main() {
   check('first like → matched:false', r.status === 200 && r.data.matched === false, JSON.stringify(r.data));
   r = await api(tokA, 'POST', '/matches/like', { receiverId: B.id });
   check('re-like is flagged as duplicate', r.status === 200 && r.data.matched === false && r.data.duplicate === true);
+  const likeNotifs = await prisma.notification.count({ where: { type: 'LIKE', recipientId: B.id, actorId: A.id } });
+  check('re-tap does not re-notify (exactly 1 LIKE notif)', likeNotifs === 1, `got ${likeNotifs}`);
   const likeCount = await prisma.matchLike.count({ where: { senderId: A.id, receiverId: B.id } });
   check('exactly ONE like row exists', likeCount === 1);
 
@@ -160,6 +164,14 @@ async function main() {
   const blockedVisible = (r.data.users || []).some((u: any) => u.id === B.id);
   check('blocker hidden from blocker’s deck (bidirectional)', !blockedVisible);
   await prisma.block.deleteMany({ where: { blockerId: B.id, blockedId: A.id } });
+
+  // Block wall in the matches list (match stays ACTIVE underneath).
+  await prisma.block.create({ data: { blockerId: B.id, blockedId: A.id } });
+  r = await api(tokA, 'GET', '/matches?limit=50');
+  check('blocked ex hidden from matches list', r.status === 200 && !(r.data.matches || []).some((m: any) => m.partner.id === B.id));
+  await prisma.block.deleteMany({ where: { blockerId: B.id, blockedId: A.id } });
+  r = await api(tokA, 'GET', '/matches?limit=50');
+  check('unblocked ex returns to matches list', r.status === 200 && (r.data.matches || []).some((m: any) => m.partner.id === B.id));
 
   // ── 6. Photo gate ──
   console.log('━━ 6. Photo gate ━━');
