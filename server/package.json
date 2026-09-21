@@ -5,10 +5,6 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "node -e \"try{require('fs').rmSync('node_modules/.prisma',{recursive:true,force:true})}catch{}\" && prisma generate --schema=../prisma/schema.prisma && tsc",
-    // LAUNCH-SAFE start: applies pending migrations (no-op when current) then
-    // boots. `db push` is FORBIDDEN on prod from here on — it can drop data
-    // and bypasses history. One-time prod baseline: resolve 0001 as applied
-    // (tables already exist via push), then deploy applies 0002+ (see LAUNCH.md).
     "start": "prisma migrate deploy --schema=../prisma/schema.prisma && node dist/server.js",
     "db:generate": "prisma generate --schema=../prisma/schema.prisma",
     "db:push": "prisma db push --schema=../prisma/schema.prisma",

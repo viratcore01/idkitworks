@@ -40,8 +40,10 @@ reviewers only ever see their own campus queue.
 ## 2. Env checklist (Render dashboard + Vercel)
 
 Render API (production): `NODE_ENV=production`, `PORT=5000`,
-`DATABASE_URL` (pooler + `?connection_limit=4&connect_timeout=15`),
-`DIRECT_URL` (direct, migrations only), `JWT_SECRET` + `JWT_REFRESH_SECRET`
+`DATABASE_URL` (pooler + `?connect_timeout=15`),
+`DATABASE_CONNECTION_LIMIT=4` (pool math: instances × limit + scripts < 15
+free-pool sessions — the code overwrites URL pool params, so this var owns
+it), `DIRECT_URL` (direct, migrations only), `JWT_SECRET` + `JWT_REFRESH_SECRET`
 (strong random ≥32 chars — boot REFUSES weak secrets in prod),
 `CLIENT_URL=https://<vercel-app>.vercel.app`, `GOOGLE_CLIENT_ID`,
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PHOTOS_BUCKET=user-photos`,
@@ -78,7 +80,7 @@ npm run ops:bootstrap-admin -- founder@yourcollege.edu
 curl https://<api>/api/health        # expect status:ok (<5ms, never 429)
 curl https://<api>/api/health/db     # expect database:reachable
 # Run the adversarial suite (lean pools — see SCALING.md pool note)
-DATABASE_URL="<url>&connection_limit=2" npx tsx scripts/test-matching.ts https://<api>
+$env:DATABASE_CONNECTION_LIMIT=2; npx tsx scripts/test-matching.ts https://<api>
 ```
 
 **Rollout:** open 2–3 colleges → confirm verification queue drains (<24 h SLA),

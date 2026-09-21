@@ -41,3 +41,38 @@ export const prisma =
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
+
+// ── Pool warm-up + heartbeat (launch hardening) ──
+// A saturated pooler (Supabase free: 15 sessions) refuses NEW sessions while
+// letting HELD ones work. Cold pools therefore 500 every parallel-wave query
+// until sessions establish — exactly the launch-night failure mode. Warming
+// grabs the full pool at boot (when slots are most likely free) and the
+// heartbeat holds them so idle reaping can't strand us mid-burst.
+// Tuning: DATABASE_CONNECTION_LIMIT (default 10), DATABASE_HEARTBEAT_SEC
+// (default 60, 0 = off). Never blocks boot, never throws.
+const HEARTBEAT_SEC = Number(process.env.DATABASE_HEARTBEAT_SEC || 60);
+let heartbeatOn = false;
+
+export async function warmPool(): Promise<void> {
+  try {
+    await prisma.$connect();
+    await Promise.all(
+      Array.from({ length: Math.max(CONNECTION_LIMIT, 1) }, () => prisma.$queryRaw`SELECT 1`),
+    );
+    console.log(`[db] pool warm (${CONNECTION_LIMIT} sessions)`);
+  } catch (e: any) {
+    console.error('[db] pool warm-up failed (will retry on demand):', e?.message?.slice(0, 120) || e);
+  }
+  if (HEARTBEAT_SEC > 0 && !heartbeatOn) {
+    heartbeatOn = true;
+    const beat = async () => {
+      try {
+        await Promise.all(
+          Array.from({ length: Math.max(CONNECTION_LIMIT, 1) }, () => prisma.$queryRaw`SELECT 1`),
+        );
+      } catch { /* a failed beat just means the next one retries */ }
+    };
+    const t = setInterval(beat, HEARTBEAT_SEC * 1000);
+    (t as any).unref?.();
+  }
+}

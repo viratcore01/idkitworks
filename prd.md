@@ -189,7 +189,7 @@ Socket.IO (same process)   PostgreSQL (Supabase) — 19 tables
 > *"Verified students only" was shipped as a dealbreaker and later removed end-to-end (UI, filter, API, DB column) — a stale client sending it is ignored gracefully.*
 
 **Likes-you priority (Hinge/Tinder-Gold pattern, free):**
-- People who already liked you **surface first** in the deck with a **"likes you" badge**, plus a chip *"• N waiting to match with you"*; `stats.likesYou` feeds it. Liking back = instant match.
+- People who already liked you **surface first within each deck window** with a **"likes you" badge** (newest first), plus a chip *"• N waiting to match with you"*; `stats.likesYou` feeds it. Liking back = instant match. Reorder-only by design: prepending admirers from outside the window duplicated/skipped cards across pages (trial-proven); the waiting strip covers instant action regardless of window.
 - Every incoming first-like fires a **LIKE notification** (realtime + inbox).
 
 **Like workflow:**

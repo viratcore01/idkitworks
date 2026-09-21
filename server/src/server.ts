@@ -295,16 +295,17 @@ new CollegeService().seedDirectory().then(({ added, total }) => {
 }).catch((e) => console.error('[college-seed]', e.message));
 
 // ── Launch guardrail: log the effective DB pool size at boot ──
-// The pooler is the #1 launch-day killer (free tier: 15 sessions). If the URL
-// carries no connection_limit, Prisma defaults to CPUs*2+1 — on a big build
-// box that silently eats the whole pooler. This log makes the setting visible
-// in every deploy; keep it ≤ (pooler_size − headroom_for_scripts).
+// The pooler is the #1 launch-day killer (free tier: 15 sessions). The pool
+// size is owned by DATABASE_CONNECTION_LIMIT (see config/prisma.ts), NOT by
+// URL params — those are overwritten at boot. Keep instances × limit well
+// under the pooler size with headroom left for scripts/monitors.
 try {
-  const m = /connection_limit=(\d+)/.exec(process.env.DATABASE_URL || '');
-  const poolNote = m ? `connection_limit=${m[1]}` : 'connection_limit=UNSET (Prisma default CPUs*2+1!)';
-  console.log(`[db] ${poolNote} · NODE_ENV=${process.env.NODE_ENV || 'development'}`);
-  if (!m) console.warn('[db] WARNING: set ?connection_limit=N on DATABASE_URL (see SCALING.md pool note)');
+  console.log(`[db] pool limit=${process.env.DATABASE_CONNECTION_LIMIT || 10} timeout=${process.env.DATABASE_POOL_TIMEOUT || 20}s heartbeat=${process.env.DATABASE_HEARTBEAT_SEC || 60}s · NODE_ENV=${process.env.NODE_ENV || 'development'}`);
 } catch { /* never block boot on a log line */ }
+
+// Warm the pool now (grabs sessions while they're free) — boot continues regardless.
+import { warmPool } from './config/prisma';
+warmPool().catch(() => {});
 
 httpServer.listen(env.PORT, () => {
   console.log(`🚀 Server running on http://localhost:${env.PORT}`);

@@ -331,40 +331,24 @@ export class MatchService {
     }
 
     // "LIKES YOU" priority (Hinge/Tinder Gold pattern, free for everyone):
-    // people who already liked you surface at the FRONT of page 0, newest
-    // like first — like back = instant match. They keep their fresh/recycled
-    // badge state; the client adds a 'likes you' badge from the flag.
-    // (likedMeRows was fetched in the first parallel wave; this boost query
-    // is bounded to `take` ids so it stays O(page), not O(pool).)
+    // people who already liked you surface at the FRONT of the current page —
+    // like back = instant match. REORDER-ONLY, deliberately: the old code
+    // fetched boosted rows and PREPENDED them (displacing chain cards), which
+    // broke pagination two ways — a boosted card sitting in a LATER window
+    // appeared TWICE (page 0 via boost + its natural page), and displaced
+    // chain cards ([take-k, take)) were SKIPPED forever (page 1 starts at the
+    // raw chain offset). Reordering within the window keeps every page an
+    // exact chain slice: no dupes, no skips, no extra query. Likers outside
+    // the current window still surface with the badge on their natural page,
+    // plus the waiting strip + chip cover instant action (trial-proven).
+    // (likedMeSet was fetched in the first parallel wave; no extra round trip.)
     const likedMeSet = new Set(likedMeRows.map((r) => r.senderId));
-    if (page === 0 && likedMeSet.size > 0 && chainLength > 0) {
-      const boostIds = likedMeRows.map((r) => r.senderId).slice(0, take);
-      const boosted = await prisma.user.findMany({
-        where: {
-          ...recycledBaseWhere,
-          id: { in: boostIds },
-        },
-        select: DECK_SELECT,
-      });
-      if (boosted.length) {
-        const boostedById = new Map((boosted as any[]).map((u) => [u.id, u]));
-        // Newest like first (likedMeRows arrived ordered by createdAt desc).
-        // Under a strict shared-interest filter the boost respects it too —
-        // admirers below the viewer's own threshold stay in the waiting list,
-        // never jump the deck queue.
-        const orderedBoost = boostIds
-          .map((id) => boostedById.get(id))
-          .filter(Boolean as any)
-          .filter((u: any) => !needCountFilter || countShared(u) >= minShared);
-        const boostedIds = new Set(orderedBoost.map((u: any) => u.id));
-        pageSlice = [...orderedBoost, ...pageSlice.filter((u: any) => !boostedIds.has(u.id))].slice(
-          0,
-          take,
-        );
-      }
-    } else {
-      // Deeper pages keep chain order; the badge still flags who liked you.
-      const likedFront = pageSlice.filter((u: any) => likedMeSet.has(u.id));
+    {
+      // Newest like first within the front (likedMeRows arrived newest-first).
+      const likeRank = new Map(likedMeRows.map((r, i) => [r.senderId, i] as const));
+      const likedFront = pageSlice
+        .filter((u: any) => likedMeSet.has(u.id))
+        .sort((a: any, b: any) => (likeRank.get(a.id) ?? 0) - (likeRank.get(b.id) ?? 0));
       const rest = pageSlice.filter((u: any) => !likedMeSet.has(u.id));
       pageSlice = [...likedFront, ...rest];
     }

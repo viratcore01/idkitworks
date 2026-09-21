@@ -25,9 +25,11 @@ services:
       - key: PORT
         value: 5000
       # ── Set these as SECRET/static values in the dashboard (never committed) ──
-      # DATABASE_URL: Supabase session pooler URL + ?connection_limit=4
-      #   (pooler is 15 sessions total: 4 app + headroom for scripts/monitors.
-      #   10+ eats the pooler alive — measured, see SCALING.md pool note.)
+      # DATABASE_URL: Supabase session pooler URL + ?connect_timeout=15
+      # DATABASE_CONNECTION_LIMIT: 4 (pool math — instances × limit + scripts
+      #   must stay under the pooler size; the app overwrites URL pool params
+      #   at boot, so THIS var owns it. 10+ eats the free 15-session pooler
+      #   alive — measured, see SCALING.md pool note.)
       # DIRECT_URL: Supabase direct connection (migrations only).
       # JWT_SECRET / JWT_REFRESH_SECRET: strong random, ≥32 chars each.
       # CLIENT_URL: https://<vercel-app>.vercel.app (comma-separated if more).
