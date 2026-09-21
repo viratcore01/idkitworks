@@ -92,10 +92,10 @@ export default function PostCard({ post, detailView = false, activeTab = 'all' }
  const authorUsername = post.isAnonymous ? null : post.author.username;
  const authorAvatar = post.isAnonymous ? null : post.author.avatarUrl;
 
- return (
- <div className={`nb-card p-4 mb-4 animate-slide-up ${post.type === 'CONFESSION' ? 'border-nb-lilac' : ''}`}>
- {/* Header */}
- <div className="flex items-start gap-3">
+  return (
+  <div className={`nb-card p-3 sm:p-4 mb-3 sm:mb-4 animate-slide-up min-w-0 overflow-hidden ${post.type === 'CONFESSION' ? 'border-nb-lilac' : ''}`}>
+  {/* Header */}
+  <div className="flex items-start gap-2.5 sm:gap-3">
  {post.isAnonymous ? (
  <div className="w-10 h-10 bg-nb-lilac border-nb-2 border-ink flex items-center justify-center text-white shrink-0">
  <Ghost size={20} strokeWidth={2.5} />
@@ -106,45 +106,45 @@ export default function PostCard({ post, detailView = false, activeTab = 'all' }
  </Link>
  )}
 
- <div className="flex-1 min-w-0">
- <div className="flex items-center gap-2">
- <span className="font-display font-semibold text-sm">
- {authorUsername ? (
- <Link to={`/profile/${authorUsername}`} className="hover:text-nb-violet">
- {authorName}
- </Link>
- ) : (
- authorName
- )}
- </span>
- {post.type === 'CONFESSION' && (
- <span className="nb-badge bg-nb-lilac text-ink text-[10px] inline-flex items-center gap-1" title="Anonymous confession">
- <Ghost size={12} strokeWidth={2.5} /> Confession
- </span>
- )}
- {post.type === 'QUESTION' && (
- <span className="nb-badge bg-nb-yellow text-ink text-[10px] inline-flex items-center gap-1" title="Question post">
- <FileText size={12} strokeWidth={2.5} /> Question
- </span>
- )}
- {activeTab !== 'all' && post.type === 'NORMAL' && (
- <span className="nb-badge bg-white text-gray-500 text-[10px] inline-flex items-center gap-1">
- <Zap size={12} strokeWidth={2.5} /> POST
- </span>
- )}
- </div>
- {!post.isAnonymous && post.author.college && (
- <p className="text-xs text-gray-500 font-body">
- {post.author.course || ''} {post.author.course && '•'}{' '}
- {post.author.college.shortName || post.author.college.name}
- {post.author.year && ` • ${post.author.year}${post.author.year === 1 ? 'st' : post.author.year === 2 ? 'nd' : post.author.year === 3 ? 'rd' : 'th'} Year`}
- </p>
- )}
- </div>
+  <div className="flex-1 min-w-0">
+  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
+  <span className="font-display font-semibold text-sm truncate max-w-full">
+  {authorUsername ? (
+  <Link to={`/profile/${authorUsername}`} className="hover:text-nb-violet">
+  {authorName}
+  </Link>
+  ) : (
+  authorName
+  )}
+  </span>
+  {post.type === 'CONFESSION' && (
+  <span className="nb-badge bg-nb-lilac text-ink text-xs inline-flex items-center gap-1 shrink-0" title="Anonymous confession">
+  <Ghost size={12} strokeWidth={2.5} /> Confession
+  </span>
+  )}
+  {post.type === 'QUESTION' && (
+  <span className="nb-badge bg-nb-yellow text-ink text-xs inline-flex items-center gap-1 shrink-0" title="Question post">
+  <FileText size={12} strokeWidth={2.5} /> Question
+  </span>
+  )}
+  {activeTab !== 'all' && post.type === 'NORMAL' && (
+  <span className="nb-badge bg-white text-gray-500 text-xs inline-flex items-center gap-1 shrink-0">
+  <Zap size={12} strokeWidth={2.5} /> POST
+  </span>
+  )}
+  </div>
+  {!post.isAnonymous && post.author.college && (
+  <p className="text-xs text-gray-500 font-body truncate">
+  {post.author.course || ''} {post.author.course && '•'}{' '}
+  {post.author.college.shortName || post.author.college.name}
+  {post.author.year && ` • ${post.author.year}${post.author.year === 1 ? 'st' : post.author.year === 2 ? 'nd' : post.author.year === 3 ? 'rd' : 'th'} Year`}
+  </p>
+  )}
+  </div>
 
- <span className="text-xs text-gray-400 font-body shrink-0">
- {formatDistanceToNow(post.createdAt)}
- </span>
+  <span className="text-xs text-gray-400 font-body shrink-0 whitespace-nowrap">
+  {formatDistanceToNow(post.createdAt)}
+  </span>
  </div>
 
  {/* Content */}
@@ -154,23 +154,23 @@ export default function PostCard({ post, detailView = false, activeTab = 'all' }
  role={detailView ? undefined : 'link'}
  aria-label={detailView ? undefined : 'Open post'}
  >
- <p className="font-body text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
+  <p className="font-body text-sm leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere">{post.content}</p>
  </div>
 
- {/* Media */}
- {post.mediaUrl && (
- <div className="mt-3 border-nb-2 border-ink overflow-hidden">
- {post.mediaType === 'IMAGE' && (
- <img src={post.mediaUrl} alt="" loading="lazy" decoding="async" className="w-full object-cover" />
- )}
- {post.mediaType === 'VIDEO' && (
- <video src={post.mediaUrl} controls preload="metadata" className="w-full" />
- )}
+  {/* Media */}
+  {post.mediaUrl && (
+  <div className="mt-3 border-nb-2 border-ink overflow-hidden bg-nb-cream">
+  {post.mediaType === 'IMAGE' && (
+  <img src={post.mediaUrl} alt="" loading="lazy" decoding="async" className="w-full max-h-[60vh] sm:max-h-[70vh] object-cover" />
+  )}
+  {post.mediaType === 'VIDEO' && (
+  <video src={post.mediaUrl} controls preload="metadata" className="w-full max-h-[60vh]" />
+  )}
  </div>
  )}
 
- {/* Actions */}
- <div className="flex items-center gap-4 mt-4 pt-3 border-t-2 border-gray-300">
+  {/* Actions */}
+  <div className="flex items-center gap-3 sm:gap-4 mt-4 pt-3 border-t-2 border-gray-300 flex-wrap min-w-0">
  <button
  onClick={() => !likeMutation.isPending && likeMutation.mutate()}
  disabled={likeMutation.isPending}
@@ -219,10 +219,10 @@ export default function PostCard({ post, detailView = false, activeTab = 'all' }
  >
  <Flag size={16} strokeWidth={2.5} />
  </button>
- {menuOpen && (
- <>
- <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
- <div className="absolute right-0 bottom-8 z-30 nb-card bg-white py-1.5 min-w-[150px] flex flex-col">
+  {menuOpen && (
+  <>
+  <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
+  <div className="absolute right-0 bottom-8 z-30 nb-card bg-white py-1.5 min-w-[150px] max-w-[calc(100vw-3rem)] flex flex-col">
  {post.isMine && (
  <button
  onClick={() => {

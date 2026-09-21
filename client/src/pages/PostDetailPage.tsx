@@ -214,16 +214,16 @@ export default function PostDetailPage() {
  const isDeleted = !!(c as any).isDeleted;
  const isEditing = editingId === c.id;
 
- return (
- <div key={c.id} id={`comment-${c.id}`} className={!isReply ? 'space-y-3' : ''}>
- <div
- className={`group relative px-2 py-1.5 -mx-2 transition-colors ${
- highlighted ? 'comment-highlight' : ''
- } ${isReply ? 'ml-9' : ''}`}
- >
- <div className="flex items-start justify-between gap-2">
- <div
- className={`flex-1 min-w-0 cursor-default select-none ${isReply && !isEditing && !isDeleted ? 'hover:bg-nb-yellow/20 px-1 -mx-1 transition-colors' : ''}`}
+  return (
+  <div key={c.id} id={`comment-${c.id}`} className={!isReply ? 'space-y-3' : ''}>
+  <div
+  className={`group relative px-2 py-1.5 -mx-2 transition-colors min-w-0 ${
+  highlighted ? 'comment-highlight' : ''
+  } ${isReply ? 'ml-4 sm:ml-9' : ''}`}
+  >
+  <div className="flex items-start justify-between gap-2 min-w-0">
+  <div
+  className={`flex-1 min-w-0 cursor-default select-none ${isReply && !isEditing && !isDeleted ? 'hover:bg-nb-yellow/20 px-1 -mx-1 transition-colors' : ''}`}
  onClick={() => handleRowClick(c)}
  onDoubleClick={() => {
  if (replyClickTimer.current) {
@@ -312,30 +312,30 @@ export default function PostDetailPage() {
  </div>
 
  {/* Replies nested under the parent */}
- {c.replies && c.replies.length > 0 && (
- <div className="ml-9 space-y-1 border-l-nb-2 border-gray-200 pl-3">
- {c.replies.map((r) => renderComment(r as Comment & { replies?: Comment[] }, true))}
- </div>
- )}
+  {c.replies && c.replies.length > 0 && (
+  <div className="ml-4 sm:ml-9 space-y-1 border-l-nb-2 border-gray-200 pl-2.5 sm:pl-3 min-w-0">
+  {c.replies.map((r) => renderComment(r as Comment & { replies?: Comment[] }, true))}
+  </div>
+  )}
  </div>
  );
  };
 
- return (
- <div>
- {/* Sticky back header */}
- <button
- onClick={handleBack}
- className="nb-btn bg-white text-sm px-3 py-1.5 mb-4 inline-flex items-center gap-1.5"
- >
+  return (
+  <div className="min-w-0 overflow-x-clip">
+  {/* Sticky back header */}
+  <button
+  onClick={handleBack}
+  className="nb-btn bg-white text-sm px-3 py-1.5 mb-4 inline-flex items-center gap-1.5 sticky top-[4.5rem] z-30"
+  >
  <ArrowLeft size={16} strokeWidth={2.5} /> Back
  </button>
 
  {/* The post */}
  <PostCard post={typedPost} detailView />
 
- {/* Comments — own white surface so text reads on white, not on the doodle canvas */}
- <div className="mt-4 nb-card bg-white p-4 sm:p-5" id="post-comments">
+  {/* Comments — own white surface so text reads on white, not on the doodle canvas */}
+  <div className="mt-4 nb-card bg-white p-3 sm:p-5 min-w-0 overflow-hidden" id="post-comments">
  <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2">
  <MessageCircle size={18} strokeWidth={2.5} /> Comments ({typedPost._count.comments})
  </h2>
@@ -378,10 +378,10 @@ export default function PostDetailPage() {
  </button>
  </div>
  )}
- <div className="flex gap-2">
- <input
- ref={commentInputRef}
- className="nb-input text-sm py-2 flex-1"
+  <div className="flex gap-2 min-w-0">
+  <input
+  ref={commentInputRef}
+  className="nb-input text-base sm:text-sm py-2 flex-1 min-w-0"
  placeholder={
  replyTo
  ? `Reply to ${replyTo.isAnonymous || !replyTo.author ? 'Anonymous Student' : replyTo.author!.displayName}...`

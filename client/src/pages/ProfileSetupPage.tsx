@@ -160,7 +160,7 @@ export default function ProfileSetupPage() {
  />
  </div>
 
- <div className="grid grid-cols-2 gap-3">
+  <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3 min-w-0">
  <div>
  <label className="block font-display text-sm font-semibold mb-1.5">Birth date *</label>
  <input
@@ -171,7 +171,7 @@ export default function ProfileSetupPage() {
  value={formData.dateOfBirth}
  onChange={(e) => setFormData((d) => ({ ...d, dateOfBirth: e.target.value }))}
  />
- <p className="text-[10px] text-gray-500 mt-1">Must be 16+. Only your age is shown.</p>
+  <p className="text-xs text-gray-500 mt-1">Must be 16+. Only your age is shown.</p>
  </div>
  <div>
  <label className="block font-display text-sm font-semibold mb-1.5">Gender *</label>

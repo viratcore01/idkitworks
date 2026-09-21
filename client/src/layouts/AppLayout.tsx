@@ -67,14 +67,15 @@ export default function AppLayout() {
  <div className="min-h-dvh nb-canvas-surface">
  <Topbar />
  <div className="flex">
- {/* Desktop sidebar */}
- <div className="hidden lg:block w-64 fixed top-0 left-0 h-dvh pt-16">
- <Sidebar />
- </div>
+  {/* Desktop sidebar */}
+  <div className="hidden lg:block w-64 fixed top-0 left-0 h-dvh pt-16 z-40 overflow-y-auto overscroll-contain">
+  <Sidebar />
+  </div>
 
- {/* Main content — bottom padding clears the mobile nav + iPhone home indicator */}
- <main className="flex-1 w-full min-w-0 lg:ml-64 pt-16 pb-24 lg:pb-6" style={{ paddingBottom: undefined }}>
- <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-6">
+  {/* Main content — bottom padding clears the mobile nav + iPhone home indicator.
+      Single source of bottom clearance (inner div only) to avoid double 192px gap. */}
+  <main className="flex-1 w-full min-w-0 lg:ml-64 pt-16 pb-0 lg:pb-6">
+  <div className="max-w-2xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8 overflow-x-clip">
  <Outlet />
  </div>
  </main>

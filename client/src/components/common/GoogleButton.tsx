@@ -81,14 +81,14 @@ export default function GoogleButton({ mode }: { mode: 'login' | 'signup' }) {
  }
  },
  });
- window.google.accounts.id.renderButton(btnRef.current, {
- type: 'standard',
- theme: 'outline',
- size: 'large',
- shape: 'pill',
- text: mode === 'signup' ? 'signup_with' : 'signin_with',
- width: 320,
- });
+  window.google.accounts.id.renderButton(btnRef.current, {
+  type: 'standard',
+  theme: 'outline',
+  size: 'large',
+  shape: 'rectangular',
+  text: mode === 'signup' ? 'signup_with' : 'signin_with',
+  width: Math.min(320, Math.floor(window.innerWidth - 64)),
+  });
  };
 
  const SCRIPT_ID = 'google-gsi-client';
@@ -112,12 +112,12 @@ export default function GoogleButton({ mode }: { mode: 'login' | 'signup' }) {
 
  if (!enabled) return null;
 
- return (
- <div
- className="flex justify-center transition-opacity"
- style={{ opacity: busy ? 0.5 : 1, pointerEvents: busy ? 'none' : 'auto' }}
- >
- <div ref={btnRef} />
- </div>
- );
+  return (
+  <div
+  className="flex justify-center w-full min-w-0 max-w-full overflow-hidden transition-opacity"
+  style={{ opacity: busy ? 0.5 : 1, pointerEvents: busy ? 'none' : 'auto' }}
+  >
+  <div ref={btnRef} className="max-w-full min-w-0" />
+  </div>
+  );
 }

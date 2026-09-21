@@ -64,10 +64,10 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
   };
 
   return (
-    <div className="nb-card p-4 mb-4 animate-slide-up">
-      <div className="flex flex-col gap-3">
+    <div className="nb-card p-3 sm:p-4 mb-3 sm:mb-4 animate-slide-up min-w-0 overflow-hidden">
+      <div className="flex flex-col gap-3 min-w-0">
         {/* Context line — shows which section you're posting into */}
-        <div className="flex items-center gap-1.5 text-xs font-display font-bold text-gray-500">
+        <div className="flex items-center gap-1.5 text-xs font-display font-bold text-gray-500 flex-wrap min-w-0">
           <Icon size={14} strokeWidth={2.5} className="text-ink" />
           Posting a {meta.label.toLowerCase()}
           {type === 'QUESTION' && (
@@ -78,7 +78,7 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
           )}
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-2.5 sm:gap-3 min-w-0">
           {!effectiveAnonymous && (
             <div className="w-10 h-10 bg-nb-violet border-nb-2 border-ink flex items-center justify-center text-white font-bold text-sm shrink-0">
               {user?.displayName?.[0]?.toUpperCase() || '?'}
@@ -90,9 +90,9 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
             </div>
           )}
 
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <textarea
-              className="w-full border-nb-2 border-ink p-3 font-body text-sm resize-none focus:outline-none focus:ring-2 focus:ring-nb-violet min-h-[80px] bg-white"
+              className="w-full border-nb-2 border-ink p-3 font-body text-base sm:text-sm resize-none focus:outline-none focus:ring-2 focus:ring-nb-violet min-h-[80px] max-h-[40vh] bg-white"
               placeholder={
                 type === 'CONFESSION'
                   ? 'Confess something anonymously...'
@@ -106,8 +106,8 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
               onChange={(e) => setContent(e.target.value)}
             />
 
-            <div className="flex items-center justify-between mt-3">
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-2 mt-3 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
                 <button
                   onClick={() => (type === 'CONFESSION' ? setConfessionAnon(!confessionAnon) : setIsAnonymous(!isAnonymous))}
                   className={`nb-badge cursor-pointer transition-all ${
@@ -123,8 +123,8 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
                   Anonymous
                 </button>
                 {effectiveAnonymous && (
-                  <span className="text-xs font-body text-nb-violet font-semibold inline-flex items-center gap-1">
-                    <Ghost size={12} strokeWidth={2.5} /> Posting as Anonymous Student
+                  <span className="text-xs font-body text-nb-violet font-semibold hidden min-[400px]:inline-flex items-center gap-1 truncate">
+                    <Ghost size={12} strokeWidth={2.5} /> Posting as Anonymous
                   </span>
                 )}
               </div>

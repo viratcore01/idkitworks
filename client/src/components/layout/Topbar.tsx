@@ -88,32 +88,33 @@ export default function Topbar() {
 
  const unreadCount = unreadData?.count || 0;
 
- return (
- <div
- className="fixed top-0 left-0 right-0 h-16 bg-ink z-[60] flex items-center gap-2 px-3 sm:px-4"
- style={{ paddingLeft: 'max(0.75rem, env(safe-area-inset-left))' }}
- >
- {/* Desktop: reserve exactly the sidebar's width so content never hides under it */}
- <div className="hidden lg:block w-64 shrink-0" aria-hidden="true">
- <Logo size={30} />
- </div>
- <Link to="/home" className="lg:hidden shrink-0">
- <Logo size={26} />
- </Link>
+  return (
+  <div
+  className="fixed top-0 left-0 right-0 h-16 bg-ink z-[60] flex items-center gap-2 px-3 sm:px-4 overflow-x-clip"
+  style={{ paddingLeft: 'max(0.75rem, env(safe-area-inset-left))', paddingTop: 'env(safe-area-inset-top)' }}
+  >
+  {/* Desktop: reserve exactly the sidebar's width so content never hides under it */}
+  <div className="hidden lg:block w-64 shrink-0" aria-hidden="true">
+  <Logo size={30} />
+  </div>
+  <Link to="/home" className="lg:hidden shrink-0 min-w-0" aria-label="Zoclo home">
+  <Logo size={26} />
+  </Link>
 
- <form onSubmit={handleSearch} className="flex-1 min-w-0 max-w-md">
+  <form onSubmit={handleSearch} className="flex-1 min-w-0 max-w-md" role="search">
  <div className="relative" ref={searchBoxRef}>
- <input
- type="text"
- placeholder="Search people, posts..."
- value={searchQuery}
- onChange={(e) => {
- setSearchQuery(e.target.value);
- setDropOpen(true);
- }}
- onFocus={() => setDropOpen(true)}
- className="nb-input py-2 text-sm pl-10 pr-8"
- />
+  <input
+  type="text"
+  placeholder="Search people, posts..."
+  aria-label="Search people and posts"
+  value={searchQuery}
+  onChange={(e) => {
+  setSearchQuery(e.target.value);
+  setDropOpen(true);
+  }}
+  onFocus={() => setDropOpen(true)}
+  className="nb-input py-2 text-base sm:text-sm pl-10 pr-8 min-w-0"
+  />
  <Search size={16} strokeWidth={2.5} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
  {searchQuery && (
  <button
@@ -126,9 +127,9 @@ export default function Topbar() {
  </button>
  )}
 
- {/* Live results dropdown — smart search as you type */}
- {showDrop && (
- <div className="absolute top-full left-0 right-0 mt-2 nb-card bg-white max-h-[70vh] overflow-y-auto z-[70]">
+  {/* Live results dropdown — smart search as you type */}
+  {showDrop && (
+  <div className="absolute top-full left-0 right-0 mt-2 nb-card bg-white max-h-[60dvh] overflow-y-auto overscroll-contain z-[70] max-w-[calc(100vw-2rem)]">
  {liveFetching && !live ? (
  <p className="p-4 text-sm text-gray-500 font-body">Searching…</p>
  ) : liveUsers.length === 0 && livePosts.length === 0 ? (
@@ -139,9 +140,9 @@ export default function Topbar() {
  <>
  {liveUsers.length > 0 && (
  <div className="py-1">
- <p className="px-3 pt-1.5 pb-1 text-[10px] font-display font-bold uppercase tracking-wide text-gray-400 flex items-center gap-1">
- <Users size={11} strokeWidth={2.5} /> People
- </p>
+  <p className="px-3 pt-1.5 pb-1 text-xs font-display font-bold uppercase tracking-wide text-gray-400 flex items-center gap-1">
+  <Users size={11} strokeWidth={2.5} /> People
+  </p>
  {liveUsers.map((u: any) => (
  <button
  key={u.id}
@@ -160,9 +161,9 @@ export default function Topbar() {
  )}
  {livePosts.length > 0 && (
  <div className="py-1 border-t-2 border-gray-200">
- <p className="px-3 pt-1.5 pb-1 text-[10px] font-display font-bold uppercase tracking-wide text-gray-400 flex items-center gap-1">
- <FileText size={11} strokeWidth={2.5} /> Posts
- </p>
+  <p className="px-3 pt-1.5 pb-1 text-xs font-display font-bold uppercase tracking-wide text-gray-400 flex items-center gap-1">
+  <FileText size={11} strokeWidth={2.5} /> Posts
+  </p>
  {livePosts.slice(0, 4).map((p: any) => (
  <button
  key={p.id}

@@ -224,17 +224,17 @@ export default function MatchesPage() {
  >
  <Search size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Discover
  </button>
- <button
- onClick={() => setView('matches')}
- className={`nb-btn text-sm ${view === 'matches' ? 'bg-nb-pink text-white' : ''}`}
- >
- <Heart size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Matches{matches.length > 0 && (<span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-display border-nb-2 border-ink bg-nb-yellow text-ink">{matches.length}</span>)}
+  <button
+  onClick={() => setView('matches')}
+  className={`nb-btn text-sm shrink-0 ${view === 'matches' ? 'bg-nb-pink text-white' : ''}`}
+  >
+  <Heart size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Matches{matches.length > 0 && (<span className="ml-1.5 px-1.5 py-0.5 text-xs font-display border-nb-2 border-ink bg-nb-yellow text-ink">{matches.length}</span>)}
  </button>
- <button
- onClick={() => setView('chat')}
- className={`nb-btn text-sm ${view === 'chat' ? 'bg-nb-peri text-ink' : ''}`}
- >
- <MessageSquare size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Chat{conversations && conversations.length > 0 && (<span className="ml-1.5 px-1.5 py-0.5 text-[10px] font-display border-nb-2 border-ink bg-nb-yellow text-ink">{conversations.length}</span>)}
+  <button
+  onClick={() => setView('chat')}
+  className={`nb-btn text-sm shrink-0 ${view === 'chat' ? 'bg-nb-peri text-ink' : ''}`}
+  >
+  <MessageSquare size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Chat{conversations && conversations.length > 0 && (<span className="ml-1.5 px-1.5 py-0.5 text-xs font-display border-nb-2 border-ink bg-nb-yellow text-ink">{conversations.length}</span>)}
  </button>
  {view === 'discover' && (
  <button onClick={openPrefs} className="nb-btn bg-white text-sm shrink-0" title="Discovery preferences">
@@ -292,9 +292,9 @@ export default function MatchesPage() {
 
  {/* Preferences editor */}
  {showPrefs && (
- <div className="fixed inset-0 z-[80] bg-black/60 overflow-y-auto overscroll-contain" onClick={() => setShowPrefs(false)}>
- <div className="min-h-full flex items-center justify-center p-4" onClick={() => setShowPrefs(false)}>
- <div className="nb-card bg-white p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+  <div className="fixed inset-0 z-[80] bg-black/60 overflow-y-auto overscroll-contain" onClick={() => setShowPrefs(false)}>
+  <div className="min-h-full flex items-center justify-center p-3 sm:p-4 pb-[calc(2rem+env(safe-area-inset-bottom))]" onClick={() => setShowPrefs(false)}>
+  <div className="nb-card bg-white p-4 sm:p-6 max-w-sm w-full min-w-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
  <h2 className="font-display font-bold text-xl mb-4 flex items-center gap-2">
  <SlidersHorizontal size={18} strokeWidth={2.5} /> Discovery preferences
  </h2>
@@ -334,10 +334,10 @@ export default function MatchesPage() {
 
  {/* ── Looking for (intent matching) ── */}
  {/* SYNCED with the profile's "Looking for" — one setting, two doors. */}
- <label className="block font-display font-semibold text-sm mb-1">Looking for</label>
- <p className="text-[11px] text-gray-500 mb-2 font-body">
- Same setting as on your profile — change it here or there, it stays in sync.
- </p>
+  <label className="block font-display font-semibold text-sm mb-1">Looking for</label>
+  <p className="text-xs text-gray-500 mb-2 font-body">
+  Same setting as on your profile — change it here or there, it stays in sync.
+  </p>
  <div className="flex gap-2 mb-2 flex-wrap">
  {GOALS.map((g) => {
  const on = prefs.openToGoals.includes(g.value);
@@ -356,7 +356,7 @@ export default function MatchesPage() {
  );
  })}
  </div>
- <p className="text-[11px] text-gray-500 mb-4 font-body flex items-start gap-1">
+  <p className="text-xs text-gray-500 mb-4 font-body flex items-start gap-1">
  <Lock size={11} strokeWidth={2.5} className="mt-0.5 shrink-0" />
  <span>
  {prefs.openToGoals.length === 0
@@ -368,9 +368,9 @@ export default function MatchesPage() {
 
  {/* ── Dealbreakers ── */}
  <label className="block font-display font-semibold text-sm mb-2">Dealbreakers</label>
- <div className="space-y-2 mb-4">
- <div className="flex items-center gap-2">
- <span className="font-body text-xs text-gray-600 shrink-0">Year</span>
+  <div className="space-y-2 mb-4 min-w-0">
+  <div className="flex items-center gap-2 flex-wrap">
+  <span className="font-body text-xs text-gray-600 shrink-0">Year</span>
  {[null, 1, 2, 3, 4].map((y) => (
  <button
  key={String(y)}
@@ -381,8 +381,8 @@ export default function MatchesPage() {
  </button>
  ))}
  </div>
- <div className="flex items-center gap-2">
- <span className="font-body text-xs text-gray-600 shrink-0">Shared interests</span>
+  <div className="flex items-center gap-2 flex-wrap">
+  <span className="font-body text-xs text-gray-600 shrink-0">Shared interests</span>
  {[0, 1, 2, 3].map((n) => (
  <button
  key={n}
@@ -442,30 +442,33 @@ export default function MatchesPage() {
  }
  />
  ) : (
- <div className="nb-card p-4 sm:p-6 max-w-md mx-auto relative">
- {/* Pass — top corner, like every real swipe app */}
- <button
- onClick={() => actionMutation.mutate({ receiverId: currentUser.id, action: 'pass' })}
- disabled={actionMutation.isPending}
- className="absolute top-3 right-3 w-9 h-9 bg-white border-nb-2 border-ink flex items-center justify-center hover:bg-nb-pink hover:text-white transition-colors z-10"
- title="Pass"
- >
+  <div className="nb-card p-4 sm:p-6 max-w-md mx-auto relative overflow-hidden min-w-0">
+  {/* Pass — top corner, like every real swipe app */}
+  <button
+  onClick={() => actionMutation.mutate({ receiverId: currentUser.id, action: 'pass' })}
+  disabled={actionMutation.isPending}
+  className="absolute top-3 right-3 w-10 h-10 bg-white border-nb-2 border-ink flex items-center justify-center hover:bg-nb-pink hover:text-white transition-colors z-10 disabled:opacity-50"
+  title="Pass"
+  aria-label="Pass"
+  >
  <X size={18} strokeWidth={2.5} />
  </button>
 
- <div className="text-center">
- {/* Photo carousel — profile pic + up to 3 extra photos */}
- {cardPhotos.length > 0 ? (
- <div className="relative mb-4">
- <div className="nb-card overflow-hidden !p-0">
-  <img
-  src={cardPhotos[photoIdx]}
-  alt={currentUser.displayName}
-  decoding="async"
-  draggable={false}
-  className="w-full aspect-[4/5] object-cover bg-nb-cream"
-  />
- </div>
+  <div className="text-center min-w-0">
+  {/* Photo carousel — profile pic + up to 3 extra photos. Clamped so the
+      Like button stays above the fold on phones and small laptops. */}
+  {cardPhotos.length > 0 ? (
+  <div className="relative mb-4">
+  <div className="nb-card overflow-hidden !p-0">
+   <img
+   src={cardPhotos[photoIdx]}
+   alt={currentUser.displayName}
+   decoding="async"
+   draggable={false}
+   loading="lazy"
+   className="w-full aspect-[4/5] max-h-[52dvh] sm:max-h-[55vh] object-cover bg-nb-cream"
+   />
+  </div>
  {cardPhotos.length > 1 && (
  <>
  <button
@@ -496,43 +499,45 @@ export default function MatchesPage() {
  </div>
  )}
 
- <h2 className="font-display font-bold text-xl">{currentUser.displayName}</h2>
+  <h2 className="font-display font-bold text-xl break-words overflow-wrap-anywhere px-8">{currentUser.displayName}</h2>
 
- {currentUser.isVerified && <BadgeCheck size={15} strokeWidth={2.5} className="text-nb-mint inline-block align-text-bottom" />}
- {currentUser.sharedInterests != null && currentUser.sharedInterests > 0 && (
- <span className="nb-badge bg-nb-yellow text-ink text-[10px] inline-flex items-center gap-1 mb-1">
- <Sparkles size={10} strokeWidth={3} /> {currentUser.sharedInterests} shared interest{currentUser.sharedInterests === 1 ? '' : 's'}
- </span>
- )}
- {currentUser.theyLikedMe && (
- <span className="nb-badge bg-nb-pink text-white text-[10px] inline-flex items-center gap-1 mb-1" title="They already liked you — like back to match instantly">
- <Heart size={10} strokeWidth={3} fill="currentColor" /> likes you
- </span>
- )}
- {currentUser.recycled && (
- <span className="nb-badge bg-nb-peri text-ink text-[10px] inline-flex items-center gap-1 mb-1" title="You passed on this profile earlier — it's back around in your loop">
- <RotateCcw size={10} strokeWidth={3} /> back in your loop
- </span>
- )}
- <p className="text-sm text-gray-500 font-body">@{currentUser.username}</p>
+  <div className="flex flex-wrap items-center justify-center gap-1.5 mt-1.5 px-2">
+  {currentUser.isVerified && <span className="inline-flex items-center" title="Verified student"><BadgeCheck size={15} strokeWidth={2.5} className="text-nb-mint" /></span>}
+  {currentUser.sharedInterests != null && currentUser.sharedInterests > 0 && (
+  <span className="nb-badge bg-nb-yellow text-ink text-xs inline-flex items-center gap-1">
+  <Sparkles size={10} strokeWidth={3} /> {currentUser.sharedInterests} shared interest{currentUser.sharedInterests === 1 ? '' : 's'}
+  </span>
+  )}
+  {currentUser.theyLikedMe && (
+  <span className="nb-badge bg-nb-pink text-white text-xs inline-flex items-center gap-1" title="They already liked you — like back to match instantly">
+  <Heart size={10} strokeWidth={3} fill="currentColor" /> likes you
+  </span>
+  )}
+  {currentUser.recycled && (
+  <span className="nb-badge bg-nb-peri text-ink text-xs inline-flex items-center gap-1" title="You passed on this profile earlier — it's back around in your loop">
+  <RotateCcw size={10} strokeWidth={3} /> back in your loop
+  </span>
+  )}
+  </div>
+  <p className="text-sm text-gray-500 font-body truncate px-2">@{currentUser.username}</p>
 
- <p className="mt-2 text-sm font-body">
- {[currentUser.course, currentUser.college?.shortName || currentUser.college?.name, currentUser.age ? `${currentUser.age} yrs` : null]
- .filter(Boolean)
- .join(' • ')}
- </p>
+  <p className="mt-2 text-sm font-body break-words px-2">
+  {[currentUser.course, currentUser.college?.shortName || currentUser.college?.name, currentUser.age ? `${currentUser.age} yrs` : null]
+  .filter(Boolean)
+  .join(' • ')}
+  </p>
 
- {currentUser.bio && (
- <p className="mt-3 text-sm font-body text-gray-600 italic">"{currentUser.bio}"</p>
- )}
+  {currentUser.bio && (
+  <p className="mt-3 text-sm font-body text-gray-600 italic break-words overflow-wrap-anywhere line-clamp-4 px-2">"{currentUser.bio}"</p>
+  )}
 
- {currentUser.interests?.length > 0 && (
- <div className="mt-4 flex flex-wrap gap-1.5 justify-center">
- {currentUser.interests.map((i: any) => (
- <span key={i.id} className="nb-tag text-xs">{i.name}</span>
- ))}
- </div>
- )}
+  {currentUser.interests?.length > 0 && (
+  <div className="mt-4 flex flex-wrap gap-1.5 justify-center max-h-24 overflow-y-auto overscroll-contain px-1">
+  {currentUser.interests.map((i: any) => (
+  <span key={i.id} className="nb-tag text-xs break-words">{i.name}</span>
+  ))}
+  </div>
+  )}
 
  {/* Like — the single big centered action */}
  <div className="flex items-center justify-center gap-4 mt-6">
@@ -555,9 +560,9 @@ export default function MatchesPage() {
  </button>
  </div>
 
- {deck && (
- <p className="mt-4 text-[11px] text-gray-500 font-body">
- {deck.totalRemaining} student{deck.totalRemaining === 1 ? '' : 's'} in your deck
+  {deck && (
+  <p className="mt-4 text-xs text-gray-500 font-body break-words">
+  {deck.totalRemaining} student{deck.totalRemaining === 1 ? '' : 's'} in your deck
  {!!matchStats?.likesYou && (
  <span className="ml-1 text-nb-pink font-semibold">• {matchStats.likesYou} waiting to match with you</span>
  )}

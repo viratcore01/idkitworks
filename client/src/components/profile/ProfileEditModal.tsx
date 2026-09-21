@@ -134,32 +134,33 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  // above the scroll origin — the header became unreachable.)
  return (
  <div className="fixed inset-0 z-[80] bg-black/60 overflow-y-auto overscroll-contain" onClick={onClose}>
- <div className="min-h-full flex items-center justify-center p-4 pb-[calc(2rem+env(safe-area-inset-bottom))]" onClick={onClose}>
- <div className="nb-card bg-white p-6 max-w-lg w-full" onClick={(e) => e.stopPropagation()}>
- <div className="flex items-center justify-between mb-4">
- <h2 className="font-display font-bold text-xl">Edit profile</h2>
- <button onClick={onClose} className="text-gray-500 hover:text-ink">
- <X size={20} strokeWidth={2.5} />
- </button>
- </div>
+  <div className="min-h-full flex items-center justify-center p-3 sm:p-4 pb-[calc(2rem+env(safe-area-inset-bottom))] my-2 sm:my-4" onClick={onClose}>
+  <div className="nb-card bg-white p-4 sm:p-6 max-w-lg w-full min-w-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+  <div className="flex items-center justify-between gap-2 mb-4 min-w-0">
+  <h2 className="font-display font-bold text-xl truncate">Edit profile</h2>
+  <button onClick={onClose} aria-label="Close" className="text-gray-500 hover:text-ink shrink-0 w-10 h-10 grid place-items-center">
+  <X size={20} strokeWidth={2.5} />
+  </button>
+  </div>
 
  {/* Photos: profile pic + 3 extra — exactly what matching shows */}
  <label className="block font-display text-sm font-semibold mb-2">
  Photos <span className="font-normal text-gray-500">(up to {MAX_PHOTOS} — first one is your profile pic)</span>
  </label>
- <div className="grid grid-cols-4 gap-2 mb-1">
+  <div className="grid grid-cols-4 gap-1.5 sm:gap-2 mb-1 min-w-0">
  {Array.from({ length: MAX_PHOTOS }).map((_, slot) => {
  const photo = slots.find((s) => s.slot === slot) || null;
  const src = photo ? photoSrc(photo.id) + `&v=${photoVersion}` : null;
  return (
  <div key={slot} className="relative">
  {photo && (
- <button
- onClick={() => handleDelete(photo)}
- disabled={busySlot === slot}
- className="absolute -top-1.5 -right-1.5 z-10 w-5 h-5 bg-nb-pink text-white border-nb-2 border-ink flex items-center justify-center"
- title="Remove photo"
- >
+  <button
+  onClick={() => handleDelete(photo)}
+  disabled={busySlot === slot}
+  aria-label="Remove photo"
+  className="absolute -top-1 -right-1 z-10 w-7 h-7 bg-nb-pink text-white border-nb-2 border-ink flex items-center justify-center"
+  title="Remove photo"
+  >
  <X size={11} strokeWidth={3} />
  </button>
  )}
@@ -254,7 +255,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
  />
 
- <div className="grid grid-cols-2 gap-3 mb-3">
+  <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3 mb-3 min-w-0">
  <div>
  <label className="block font-display text-sm font-semibold mb-1.5">
  <Calendar size={12} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Birth date
@@ -309,7 +310,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  );
  })}
  </div>
- <p className="text-[11px] text-gray-500 mb-4 font-body flex items-start gap-1">
+  <p className="text-xs text-gray-500 mb-4 font-body flex items-start gap-1">
  <Lock size={11} strokeWidth={2.5} className="mt-0.5 shrink-0" />
  <span>
  {form.relationshipGoals.length === 0
@@ -319,7 +320,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  </span>
  </p>
 
- <div className="grid grid-cols-2 gap-3 mb-3">
+  <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3 mb-3 min-w-0">
  <div>
  <label className="block font-display text-sm font-semibold mb-1.5">College</label>
  {/* PRODUCT RULE: college is permanent — it defines your entire world in the app */}
@@ -356,7 +357,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  <label className="block font-display text-sm font-semibold mb-2">
  Interests <span className="font-normal text-gray-500">({form.interestIds.length}/15)</span>
  </label>
- <div className="flex flex-wrap gap-1.5 mb-5 max-h-32 overflow-y-auto">
+  <div className="flex flex-wrap gap-1.5 mb-5 max-h-32 overflow-y-auto overscroll-contain">
  {interests?.map((i: any) => (
  <button
  key={i.id}
@@ -380,7 +381,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  ))}
  </div>
 
- <div className="flex gap-2 justify-end">
+  <div className="flex gap-2 justify-end sticky bottom-0 bg-white pt-3 pb-1 -mb-1 flex-wrap">
  <button onClick={onClose} className="nb-btn bg-white text-sm">Cancel</button>
  <button onClick={handleSave} disabled={isSaving} className="nb-btn-orange text-sm inline-flex items-center gap-1.5 disabled:opacity-50">
  {isSaving ? <><Hourglass size={14} strokeWidth={2.5} /> Saving...</> : <><Save size={14} strokeWidth={2.5} /> Save</>}

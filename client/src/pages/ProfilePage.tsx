@@ -118,20 +118,20 @@ export default function ProfilePage() {
  }
  if (!profile) return <EmptyState icon={<CircleHelp strokeWidth={2.5} />} title="User not found" />;
 
- return (
- <div>
- <div className="nb-card p-6 mb-4">
- <div className="flex items-start gap-4">
- <Avatar src={profile.avatarUrl} photoId={profile.photos?.find((p: any) => p.slot === 0)?.id} name={profile.displayName} size="lg" color={profile.avatarColor} />
- <div className="flex-1 min-w-0">
- <div className="flex items-center gap-2 flex-wrap">
- <h1 className="font-display font-bold text-xl">{profile.displayName}</h1>
- {profile.isVerified && <BadgeCheck size={18} strokeWidth={2.5} className="text-nb-peri" />}
- {profile.age && (
- <span className="nb-badge bg-nb-yellow text-ink text-[10px]">{profile.age} yrs</span>
- )}
- {isOwnProfile && (profile.relationshipGoals || []).map((g: string) => (
- <span key={g} className={`nb-badge text-[10px] inline-flex items-center gap-1 ${
+  return (
+  <div className="min-w-0 overflow-x-clip">
+  <div className="nb-card p-4 sm:p-6 mb-4 min-w-0 overflow-hidden">
+  <div className="flex flex-col min-[420px]:flex-row min-[420px]:items-start gap-3 sm:gap-4 min-w-0">
+  <Avatar src={profile.avatarUrl} photoId={profile.photos?.find((p: any) => p.slot === 0)?.id} name={profile.displayName} size="lg" color={profile.avatarColor} />
+  <div className="flex-1 min-w-0">
+  <div className="flex items-center gap-2 flex-wrap min-w-0">
+  <h1 className="font-display font-bold text-xl break-words min-w-0">{profile.displayName}</h1>
+  {profile.isVerified && <BadgeCheck size={18} strokeWidth={2.5} className="text-nb-peri shrink-0" />}
+  {profile.age && (
+  <span className="nb-badge bg-nb-yellow text-ink text-xs shrink-0">{profile.age} yrs</span>
+  )}
+  {isOwnProfile && (profile.relationshipGoals || []).map((g: string) => (
+  <span key={g} className={`nb-badge text-xs inline-flex items-center gap-1 shrink-0 ${
  g === 'RELATIONSHIP' ? 'bg-nb-violet text-white' :
  g === 'DATING' ? 'bg-nb-pink text-white' :
  g === 'HOOKUP' ? 'bg-nb-mint text-ink' :
@@ -146,23 +146,23 @@ export default function ProfilePage() {
  </span>
  ))}
  </div>
- <p className="text-sm text-gray-500 font-body">@{profile.username}</p>
+  <p className="text-sm text-gray-500 font-body truncate">@{profile.username}</p>
 
- {profile.college && (
- <p className="mt-1 text-sm font-body flex items-center gap-1.5 flex-wrap">
- <GraduationCap size={14} strokeWidth={2.5} className="text-gray-500" />
+  {profile.college && (
+  <p className="mt-1 text-sm font-body flex items-center gap-1.5 flex-wrap break-words min-w-0">
+  <GraduationCap size={14} strokeWidth={2.5} className="text-gray-500 shrink-0" />
  {profile.course || ''} {profile.course && '•'}{' '}
  {profile.college.shortName || profile.college.name}
  {profile.year && ` • ${profile.year}${profile.year === 1 ? 'st' : profile.year === 2 ? 'nd' : profile.year === 3 ? 'rd' : 'th'} Year`}
  </p>
  )}
 
- {profile.bio && (
- <p className="mt-2 text-sm font-body text-gray-600">"{profile.bio}"</p>
- )}
- </div>        {/* Own profile: edit + settings. Others: 3-dot menu (block/report/unmatch) */}
-        {isOwnProfile ? (
-          <div className="shrink-0 flex gap-2">
+  {profile.bio && (
+  <p className="mt-2 text-sm font-body text-gray-600 break-words overflow-wrap-anywhere">"{profile.bio}"</p>
+  )}
+  </div>        {/* Own profile: edit + settings. Others: 3-dot menu (block/report/unmatch) */}
+  {isOwnProfile ? (
+  <div className="shrink-0 flex gap-2 min-[420px]:flex-col sm:flex-row min-[420px]:items-end sm:items-center">
             <button
               onClick={() => navigate('/settings')}
               className="nb-btn bg-white text-sm p-2"
@@ -278,9 +278,9 @@ export default function ProfilePage() {
  </div>
  )}
 
- {/* Action row for other profiles — relationship-aware */}
- {!isOwnProfile && rel && (
- <div className="mt-4 flex gap-2">
+  {/* Action row for other profiles — relationship-aware. Wraps on 320px. */}
+  {!isOwnProfile && rel && (
+  <div className="mt-4 flex gap-2 flex-wrap min-w-0">
  {rel.isMatched ? (
  <>
  <button

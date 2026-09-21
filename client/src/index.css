@@ -158,7 +158,23 @@ body {
 /* ── Cross-device resilience ───────────────────────────────
    1. iOS Safari zooms the page when an input's font-size is <16px.
       Force 16px on form controls on small screens so focus never zooms.
-   2. Long words (URLs, handles) must never blow out flex/grid cards. */
+   2. Long words (URLs, handles) must never blow out flex/grid cards.
+   3. No page-level horizontal scroll on any viewport — clipped at root. */
+html, body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+@supports not (overflow: clip) {
+  html, body {
+    overflow-x: hidden;
+  }
+}
+
+img, video, canvas, svg {
+  max-width: 100%;
+}
+
 @media (max-width: 640px) {
   input, textarea, select {
     font-size: 16px !important;
@@ -167,6 +183,12 @@ body {
 
 .font-body, p, h1, h2, h3, span {
   overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.overflow-wrap-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Scrollbar styling */

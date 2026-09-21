@@ -104,12 +104,12 @@ export default function HomePage() {
  return () => observerRef.current?.disconnect();
  }, [handleObserver]);
 
- return (
- <div>
- <CreatePost type={tab === 'all' ? 'NORMAL' : tab} />
+  return (
+  <div className="min-w-0 overflow-x-clip">
+  <CreatePost type={tab === 'all' ? 'NORMAL' : tab} />
 
- {/* Feed sections — Reddit-style tabs */}
- <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
+  {/* Feed sections — Reddit-style tabs. Scrollable row, never wraps. */}
+  <div className="flex gap-2 mb-4 overflow-x-auto overscroll-x-contain pb-1.5 -mx-1 px-1" role="tablist" aria-label="Feed sections">
  {FEED_TABS.map((t) => (
  <button
  key={t.key}

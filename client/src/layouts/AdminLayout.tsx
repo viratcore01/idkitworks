@@ -107,23 +107,25 @@ export default function AdminLayout() {
 
       {/* Main column */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Mobile nav */}
-        <div className="md:hidden flex gap-1 overflow-x-auto p-2 border-b border-white/10 bg-[#0B1120]">
+        {/* Mobile nav — sticky so ops tabs stay reachable on long queues */}
+        <div className="md:hidden flex gap-1 overflow-x-auto overscroll-x-contain p-2 border-b border-white/10 bg-[#0B1120] sticky top-0 z-30">
           {NAV.map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
               end={n.end}
               className={({ isActive }) =>
-                `flex items-center gap-1.5 px-3 py-2 text-xs font-bold shrink-0 ${isActive ? 'bg-[#FBBF24] text-[#0F172A]' : 'text-slate-300'}`
+                `flex items-center gap-1.5 px-3 py-2.5 min-h-[44px] text-xs font-bold shrink-0 ${isActive ? 'bg-[#FBBF24] text-[#0F172A]' : 'text-slate-300'}`
               }
             >
               {n.icon} {n.label}
             </NavLink>
           ))}
         </div>
-        <main className="flex-1 min-w-0 p-4 sm:p-6 max-w-6xl w-full mx-auto">
+        <main className="flex-1 min-w-0 p-3 sm:p-6 max-w-6xl w-full mx-auto overflow-x-clip">
+          <div className="min-w-0 [&_table]:block [&_table]:overflow-x-auto [&_table]:max-w-full [&_table]:whitespace-nowrap sm:[&_table]:table sm:[&_table]:whitespace-normal">
           <Outlet />
+          </div>
         </main>
       </div>
 

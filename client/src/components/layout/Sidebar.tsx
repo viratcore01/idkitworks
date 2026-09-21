@@ -14,15 +14,15 @@ const navItems = [
 export default function Sidebar() {
  const { user } = useAuthStore();
 
- return (
- <div className="h-full bg-ink p-4 flex flex-col">
- {/* Logo */}
- <div className="mb-6 px-2">
- <Logo size={28} />
- </div>
+  return (
+  <div className="min-h-full bg-ink p-4 flex flex-col">
+  {/* Logo */}
+  <div className="mb-6 px-2">
+  <Logo size={28} />
+  </div>
 
- {/* Nav links */}
- <nav className="flex-1 space-y-1">
+  {/* Nav links */}
+  <nav className="flex-1 space-y-1 min-h-0 overflow-y-auto overscroll-contain">
  {navItems.map((item) => (
  <NavLink
  key={item.to}

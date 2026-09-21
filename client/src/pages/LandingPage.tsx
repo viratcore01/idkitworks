@@ -817,8 +817,8 @@ export default function LandingPage() {
  <FeedMockCard />
  </div>
 
- {/* mini cards: static row under the post card on < lg */}
- <div className="mt-5 lg:mt-0 flex sm:flex-row gap-4 sm:gap-5 justify-center lg:block lg:static">
+  {/* mini cards: stacked on phones, side-by-side from sm, floating on lg */}
+  <div className="mt-5 lg:mt-0 flex flex-col min-[420px]:flex-row gap-4 sm:gap-5 justify-center items-stretch min-[420px]:items-start lg:block lg:static min-w-0">
  <div className="lg:absolute lg:-left-4 lg:bottom-14 lp-float">
  <div className="rotate-[-2.5deg] lg:rotate-[-3deg]">
  <MatchMockCard />

@@ -150,10 +150,10 @@ export default function ChatPage() {
  }
  };
 
- return (
- <div className="flex flex-col h-[calc(100dvh-12rem)] min-h-[420px]">
- {/* Chat header — mobile has no sidebar, so back + identity live here */}
- <div className="flex items-center gap-2.5 pb-3 mb-2 border-b-2 border-gray-300">
+  return (
+  <div className="flex flex-col min-h-0 h-[calc(100dvh-13.5rem)] sm:h-[calc(100dvh-12rem)] lg:h-[calc(100dvh-10rem)]">
+  {/* Chat header — mobile has no sidebar, so back + identity live here */}
+  <div className="flex items-center gap-2.5 pb-3 mb-2 border-b-2 border-gray-300 shrink-0 min-w-0">
  <button
  onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/matches'))}
  className="w-9 h-9 shrink-0 bg-white border-nb-2 border-ink flex items-center justify-center hover:bg-nb-cream transition-colors"
@@ -175,8 +175,8 @@ export default function ChatPage() {
  </Link>
  )}
  </div>
- {/* Messages */}
- <div className="flex-1 overflow-y-auto space-y-1 pb-4 min-h-0">
+  {/* Messages */}
+  <div className="flex-1 overflow-y-auto overscroll-contain space-y-1.5 pb-4 min-h-0 px-0.5">
  {isLoading ? (
  <LoadingSpinner />
  ) : (
@@ -236,45 +236,45 @@ export default function ChatPage() {
  )}
  </div>
  )}
- <div
- className={`max-w-[75%] nb-card px-4 py-2.5 ${
- isDeleted ? 'bg-gray-100 border-dashed opacity-70' : isMe ? 'bg-nb-violet text-white' : 'bg-white'
- }`}
- >
- {isEditing ? (
- <div className="flex items-center gap-2 w-full">
- <input
- ref={editInputRef}
- className="nb-input text-base py-1 flex-1 min-w-0 !bg-white !text-ink"
- value={editText}
- onChange={(e) => setEditText(e.target.value)}
- onKeyDown={(e) => {
- if (e.key === 'Enter') saveEdit();
- if (e.key === 'Escape') setEditingId(null);
- }}
- />
- <button onClick={saveEdit} title="Save" className="text-ink hover:scale-110 transition-transform">
- <Check size={16} strokeWidth={2.5} />
- </button>
- <button onClick={() => setEditingId(null)} title="Cancel" className="text-gray-400 hover:text-nb-pink transition-colors">
- <X size={16} strokeWidth={2.5} />
- </button>
- </div>
- ) : isDeleted ? (
- <p className="font-body text-sm italic text-gray-500">This message was deleted</p>
- ) : (
- <>
- <p className="font-body text-sm whitespace-pre-wrap break-words">{msg.content}</p>
- <p className={`text-[10px] mt-1 flex items-center gap-1 ${isMe ? 'text-white/90' : 'text-gray-500'}`}>
- {timeLabel(new Date(msg.createdAt))}
- {msg.editedAt && <span className="italic">· edited</span>}
- </p>
- </>
- )}
- </div>
- {!isMe && (
- <Avatar src={msg.sender?.avatarUrl} photoId={msg.sender?.avatarPhotoId} name={msg.sender?.displayName} size="sm" className="!w-6 !h-6 !text-[10px] shrink-0 self-end opacity-0 group-hover:opacity-100 transition-opacity" />
- )}
+  <div
+  className={`max-w-[82%] sm:max-w-[75%] nb-card px-3 sm:px-4 py-2.5 min-w-0 ${
+  isDeleted ? 'bg-gray-100 border-dashed opacity-70' : isMe ? 'bg-nb-violet text-white' : 'bg-white'
+  }`}
+  >
+  {isEditing ? (
+  <div className="flex items-center gap-1.5 w-full min-w-0">
+  <input
+  ref={editInputRef}
+  className="nb-input text-base py-1 flex-1 min-w-0 !bg-white !text-ink"
+  value={editText}
+  onChange={(e) => setEditText(e.target.value)}
+  onKeyDown={(e) => {
+  if (e.key === 'Enter') saveEdit();
+  if (e.key === 'Escape') setEditingId(null);
+  }}
+  />
+  <button onClick={saveEdit} title="Save" aria-label="Save edit" className="text-ink hover:scale-110 transition-transform shrink-0 w-9 h-9 grid place-items-center">
+  <Check size={16} strokeWidth={2.5} />
+  </button>
+  <button onClick={() => setEditingId(null)} title="Cancel" aria-label="Cancel edit" className="text-gray-400 hover:text-nb-pink transition-colors shrink-0 w-9 h-9 grid place-items-center">
+  <X size={16} strokeWidth={2.5} />
+  </button>
+  </div>
+  ) : isDeleted ? (
+  <p className="font-body text-sm italic text-gray-500">This message was deleted</p>
+  ) : (
+  <>
+  <p className="font-body text-sm whitespace-pre-wrap break-words overflow-wrap-anywhere">{msg.content}</p>
+  <p className={`text-xs mt-1 flex items-center gap-1 ${isMe ? 'text-white/90' : 'text-gray-500'}`}>
+  {timeLabel(new Date(msg.createdAt))}
+  {msg.editedAt && <span className="italic">· edited</span>}
+  </p>
+  </>
+  )}
+  </div>
+  {!isMe && (
+  <div className="w-6 shrink-0 self-end hidden sm:block" aria-hidden="true" />
+  )}
  </div>
  </div>
  );
@@ -283,26 +283,28 @@ export default function ChatPage() {
  <div ref={messagesEndRef} />
  </div>
 
- {/* Input */}
- <div className="border-t-nb border-ink pt-3">
- <div className="flex gap-2">
- <input
- type="text"
- className="nb-input flex-1"
- placeholder="Type a message..."
- value={message}
- onChange={(e) => setMessage(e.target.value)}
- onKeyDown={(e) => {
- if (e.key === 'Enter' && message.trim()) sendMutation.mutate();
- }}
- />
- <button
- onClick={() => {
- if (message.trim()) sendMutation.mutate();
- }}
- disabled={!message.trim()}
- className="nb-btn-orange disabled:opacity-50"
- >
+  {/* Input — safe-area padded so iOS home indicator never covers Send */}
+  <div className="border-t-nb border-ink pt-3 pb-[env(safe-area-inset-bottom)] shrink-0 bg-transparent">
+  <div className="flex gap-2 min-w-0">
+  <input
+  type="text"
+  className="nb-input flex-1 min-w-0 text-base"
+  placeholder="Type a message..."
+  aria-label="Type a message"
+  value={message}
+  onChange={(e) => setMessage(e.target.value)}
+  onKeyDown={(e) => {
+  if (e.key === 'Enter' && message.trim()) sendMutation.mutate();
+  }}
+  />
+  <button
+  onClick={() => {
+  if (message.trim()) sendMutation.mutate();
+  }}
+  disabled={!message.trim()}
+  aria-label="Send message"
+  className="nb-btn-orange disabled:opacity-50 shrink-0"
+  >
  <Zap size={18} strokeWidth={2.5} fill="currentColor" />
  </button>
  </div>

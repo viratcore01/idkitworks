@@ -25,22 +25,23 @@ export default function MobileNav() {
  paddingBottom: 'env(safe-area-inset-bottom)',
  }}
  >
- {items.map((item) => (
- <NavLink
- key={item.to}
- to={item.to}
- className={({ isActive }) => {            // /profile/:username should highlight Profile for any own-profile depth route
-            const active = isActive || (item.label === 'Profile' && location.pathname.startsWith('/profile/') && location.pathname.split('/')[2] === user?.username);
-            // px-2.5 (not px-4): 5 tabs must fit a 360px budget phone without clipping
-            return `flex flex-col items-center gap-0.5 px-2.5 py-1.5 border-2 transition-colors ${
- active
- ? 'bg-white text-ink border-white shadow-[3px_3px_0_0_#FBBF24]'
- : 'text-white border-transparent'
- }`;
- }}
- >
- <item.Icon size={22} strokeWidth={2.5} />
- <span className="text-[10px] font-display font-semibold">{item.label}</span>
+  {items.map((item) => (
+  <NavLink
+  key={item.to}
+  to={item.to}
+  aria-label={item.label}
+  className={({ isActive }) => {            // /profile/:username should highlight Profile for any own-profile depth route
+             const active = isActive || (item.label === 'Profile' && location.pathname.startsWith('/profile/') && location.pathname.split('/')[2] === user?.username);
+             // px-2 (not px-4): 5 tabs must fit a 320px budget phone without clipping
+             return `flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 min-w-[56px] min-h-[48px] border-2 transition-colors ${
+  active
+  ? 'bg-white text-ink border-white shadow-[3px_3px_0_0_#FBBF24]'
+  : 'text-white border-transparent'
+  }`;
+  }}
+  >
+  <item.Icon size={22} strokeWidth={2.5} aria-hidden="true" />
+  <span className="text-xs font-display font-semibold leading-none">{item.label}</span>
  </NavLink>
  ))}
  </div>
