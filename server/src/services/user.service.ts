@@ -287,9 +287,11 @@ export class UserService {
       create: { blockerId, blockedId },
       update: {},
     });
-    // The blocked person vanishes from the blocker's deck/feed cache immediately.
+    // Both sides' caches go stale the moment a wall appears/disappears — the
+    // BLOCKED user's cached deck must also drop (or re-gain) the blocker.
     invalidateDeckForUser(blockerId);
     invalidateUserFeed(blockerId);
+    invalidateDeckForUser(blockedId);
     return block;
   }
 
@@ -299,6 +301,7 @@ export class UserService {
     });
     invalidateDeckForUser(blockerId);
     invalidateUserFeed(blockerId);
+    invalidateDeckForUser(blockedId);
     return block;
   }
 
