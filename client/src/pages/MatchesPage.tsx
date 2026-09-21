@@ -111,11 +111,12 @@ export default function MatchesPage() {
  enabled: showPrefs,
  });
 
-  // Waiting likes — powers the "N waiting" chip on the deck header
+  // Waiting likes — powers the "N waiting" chip on the deck header AND the
+  // honest total on the Matches tab badge (matches pages are capped at 50,
+  // so `matches.length` undercounts for power users — stats never lies).
   const { data: matchStats } = useQuery({
   queryKey: ['match-stats'],
   queryFn: () => api.get('/matches/stats').then((r) => r.data),
-  enabled: view === 'discover',
   });
 
   // WHO LIKED YOU (waiting list): fetched only for the Matches tab so the
@@ -316,7 +317,7 @@ export default function MatchesPage() {
   onClick={() => setView('matches')}
   className={`nb-btn text-sm shrink-0 ${view === 'matches' ? 'bg-nb-pink text-white' : ''}`}
   >
-  <Heart size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Matches{matches.length > 0 && (<span className="ml-1.5 px-1.5 py-0.5 text-xs font-display border-nb-2 border-ink bg-nb-yellow text-ink">{matches.length}</span>)}
+  <Heart size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Matches{(matchStats?.totalMatches ?? matches.length) > 0 && (<span className="ml-1.5 px-1.5 py-0.5 text-xs font-display border-nb-2 border-ink bg-nb-yellow text-ink" title="Total matches">{matchStats?.totalMatches ?? matches.length}</span>)}
  </button>
   <button
   onClick={() => setView('chat')}

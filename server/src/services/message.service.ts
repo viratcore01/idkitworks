@@ -96,14 +96,41 @@ export class MessageService {
   }
 
   async getConversations(userId: string, viewerCollegeId?: string | null) {
+    // College scope (legacy-data guard) + BLOCK WALL, same semantics as the
+    // matches list: a blocked partner's thread disappears from the list
+    // (either direction — you blocked them, or they blocked you and you must
+    // not keep seeing the thread). Creation and sending already refuse
+    // blocked pairs; without this filter the list was the last surface that
+    // still showed the door. Unblock restores the thread; history is kept.
     const memberships = await prisma.conversationMember.findMany({
       where: {
         userId,
-        // PRODUCT RULE: hide any thread that has ANY member outside your college
-        // (only possible from legacy data — creation is already college-locked).
-        ...(viewerCollegeId && {
-          conversation: { members: { none: { user: { collegeId: { not: viewerCollegeId } } } } },
-        }),
+        conversation: {
+          AND: [
+            // BLOCK WALL: hide threads with a blocked member (either direction),
+            // same semantics as the matches list. Creation and sending already
+            // refuse blocked pairs; without this the list was the last surface
+            // still showing the door. Unblock restores the thread; history kept.
+            {
+              members: {
+                none: {
+                  user: {
+                    OR: [
+                      { blockedUsers: { some: { blockedId: userId } } },
+                      { blockedBy: { some: { blockerId: userId } } },
+                    ],
+                  },
+                },
+              },
+            },
+            // PRODUCT RULE: hide any thread that has ANY member outside your
+            // college (only possible from legacy data — creation is already
+            // college-locked).
+            ...(viewerCollegeId
+              ? [{ members: { none: { user: { collegeId: { not: viewerCollegeId } } } } }]
+              : []),
+          ],
+        },
       },
       include: {
         conversation: {

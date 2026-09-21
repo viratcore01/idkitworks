@@ -173,6 +173,19 @@ async function main() {
   r = await api(tokA, 'GET', '/matches?limit=50');
   check('unblocked ex returns to matches list', r.status === 200 && (r.data.matches || []).some((m: any) => m.partner.id === B.id));
 
+  // Block wall in the CHAT list too — A↔B have a conversation (matched
+  // earlier). While blocked, the thread must vanish from /conversations;
+  // unblock must restore it (history preserved underneath).
+  r = await api(tokA, 'POST', '/messages/conversation', { userId: B.id });
+  check('conversation opens between matched pair', r.status === 200 || r.status === 201);
+  const convosOf = (resp: any): any[] => (Array.isArray(resp.data) ? resp.data : resp.data.conversations || []);
+  await prisma.block.create({ data: { blockerId: B.id, blockedId: A.id } });
+  r = await api(tokA, 'GET', '/messages/conversations');
+  check('blocked ex conversation hidden from chat list', r.status === 200 && !convosOf(r).some((c: any) => c.otherUser?.id === B.id));
+  await prisma.block.deleteMany({ where: { blockerId: B.id, blockedId: A.id } });
+  r = await api(tokA, 'GET', '/messages/conversations');
+  check('unblocked ex conversation returns to chat list', r.status === 200 && convosOf(r).some((c: any) => c.otherUser?.id === B.id));
+
   // ── 6. Photo gate ──
   console.log('━━ 6. Photo gate ━━');
   r = await api(tokC, 'POST', '/matches/like', { receiverId: A.id });
