@@ -15,8 +15,11 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
  */
 
 export const PHOTOS_BUCKET = process.env.SUPABASE_PHOTOS_BUCKET || 'user-photos';
-/** Signed-URL TTL for photo redirects. Browsers cache the 302 for ~4 min. */
-export const PHOTO_URL_TTL_SEC = Number(process.env.PHOTO_URL_TTL_SEC || 300);
+/** Signed-URL TTL for photo redirects. 1h default: browsers cache the 302 for
+ * ~59 min, so deck scrolling costs one sign+redirect per photo per hour —
+ * not per 4 minutes. Safe at 1h: URLs are college-walled (auth-checked before
+ * signing) and single-photo scoped. Lower only if link-leak is a concern. */
+export const PHOTO_URL_TTL_SEC = Number(process.env.PHOTO_URL_TTL_SEC || 3600);
 
 let client: SupabaseClient | null = null;
 

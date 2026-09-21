@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '@/store/auth.store';
-import { getSocket } from '@/services/realtime';
+import { getSocket, onDebouncedEvent } from '@/services/realtime';
 import { useVerificationUnlock } from '@/hooks/useVerificationUnlock';
 import { useKeepAlive } from '@/hooks/useKeepAlive';
 import Sidebar from '@/components/layout/Sidebar';
@@ -20,19 +20,21 @@ export default function AppLayout() {
  // Ping health while the tab is open so the server never dozes mid-session.
  useKeepAlive(!!user);
 
- // Global realtime badges: incoming messages/matches/notifications refresh the
- // relevant queries instantly — no polling required for live counts.
- useEffect(() => {
- if (!user) return;
- const socket = getSocket();
- if (!socket) return;
- const onNotify = () => {
- queryClient.invalidateQueries({ queryKey: ['unread-notifications'] });
- queryClient.invalidateQueries({ queryKey: ['notifications'] });
- };
- const onMsg = () => {
- queryClient.invalidateQueries({ queryKey: ['conversations'] });
- };
+  // Global realtime badges: incoming messages/matches/notifications refresh the
+  // relevant queries. Invalidations are debounced+jittered — a match burst
+  // (match + 2 notifications + message) collapses into one refetch per burst
+  // instead of stampeding every open client at once.
+  useEffect(() => {
+  if (!user) return;
+  const socket = getSocket();
+  if (!socket) return;
+  const onNotify = () => {
+  queryClient.invalidateQueries({ queryKey: ['unread-notifications'] });
+  queryClient.invalidateQueries({ queryKey: ['notifications'] });
+  };
+  const onMsg = () => {
+  queryClient.invalidateQueries({ queryKey: ['conversations'] });
+  };
   const onMatch = () => {
   queryClient.invalidateQueries({ queryKey: ['matches'] });
   queryClient.invalidateQueries({ queryKey: ['match-stats'] });
@@ -41,15 +43,15 @@ export default function AppLayout() {
   queryClient.invalidateQueries({ queryKey: ['match-discover'] });
   queryClient.invalidateQueries({ queryKey: ['likes-you'] });
   };
- socket.on('notification-new', onNotify);
- socket.on('message-notify', onMsg);
- socket.on('match-new', onMatch);
- return () => {
- socket.off('notification-new', onNotify);
- socket.off('message-notify', onMsg);
- socket.off('match-new', onMatch);
- };
- }, [user, queryClient]);
+  const offNotify = onDebouncedEvent(socket, 'notification-new', onNotify, 2000);
+  const offMsg = onDebouncedEvent(socket, 'message-notify', onMsg, 2000);
+  const offMatch = onDebouncedEvent(socket, 'match-new', onMatch, 2000);
+  return () => {
+  offNotify();
+  offMsg();
+  offMatch();
+  };
+  }, [user, queryClient]);
 
  // Verified the instant a moderator approves — no reload, no manual step.
  useVerificationUnlock(() => {

@@ -111,3 +111,45 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+// ── Launch armor: retry idempotent GETs on transient failures ──
+// 429/5xx/network blips are guaranteed at launch scale (bursts, deploys,
+// pool saturation). Only GET is retried — never POST/PATCH/DELETE (a
+// retried swipe could double-apply; the server is idempotent, but the UX
+// must not depend on it). Honors Retry-After on 429, exponential backoff
+// otherwise, max 2 retries. Registered AFTER the 401 interceptor above, so
+// auth refresh still happens first (axios runs response interceptors in
+// registration order, and a rejection here skips straight to the caller).
+function retryableDelayMs(attempt: number, error: any): number {
+  const ra = error?.response?.headers?.['retry-after'];
+  if (ra) {
+    const secs = Number(Array.isArray(ra) ? ra[0] : ra);
+    if (Number.isFinite(secs) && secs >= 0) return Math.min(secs * 1000, 5000);
+  }
+  return Math.min(500 * 2 ** attempt, 2000);
+}
+
+function isRetryable(error: any): boolean {
+  const cfg = error?.config;
+  if (!cfg || cfg.method?.toLowerCase() !== 'get') return false;
+  if (cfg._retryCount != null && cfg._retryCount >= 2) return false;
+  const status = error?.response?.status;
+  if (status === 429) return true;
+  if (status != null && status >= 500) return true;
+  // No response at all = network blip / cold-start timeout.
+  if (!error?.response && (error?.code === 'ECONNABORTED' || error?.code === 'ERR_NETWORK' || !error?.code)) return true;
+  return false;
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (isRetryable(error)) {
+      const cfg = error.config;
+      cfg._retryCount = (cfg._retryCount ?? 0) + 1;
+      await new Promise((r) => setTimeout(r, retryableDelayMs(cfg._retryCount, error)));
+      return api(cfg);
+    }
+    return Promise.reject(error);
+  },
+);

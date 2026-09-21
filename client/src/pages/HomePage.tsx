@@ -2,7 +2,8 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText } from 'lucide-react';
 import api from '@/services/api';
-import { getSocket } from '@/services/realtime';
+import { getSocket, onDebouncedEvent } from '@/services/realtime';
+import { useSocketLive } from '@/hooks/useSocketLive';
 import CreatePost from '@/components/feed/CreatePost';
 import PostCard from '@/components/feed/PostCard';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
@@ -21,21 +22,21 @@ type FeedTab = (typeof FEED_TABS)[number]['key'];
 export default function HomePage() {
  const observerRef = useRef<IntersectionObserver | null>(null);
  const loadMoreRef = useRef<HTMLDivElement>(null);
- const [tab, setTab] = useState<FeedTab>('all');
- const queryClient = useQueryClient();
+  const [tab, setTab] = useState<FeedTab>('all');
+  const queryClient = useQueryClient();
+  const socketLive = useSocketLive();
 
- // LIVE FEED (push): the server emits feed-new whenever anyone on campus
- // posts. Refetching the cached feed once beats polling blindly — the 60s
- // interval below is only a fallback for missed events while disconnected.
- useEffect(() => {
- const socket = getSocket();
- if (!socket) return;
- const onNew = () => queryClient.invalidateQueries({ queryKey: ['feed'] });
- socket.on('feed-new', onNew);
- return () => {
- socket.off('feed-new', onNew);
- };
- }, [queryClient]);
+  // LIVE FEED (push): the server emits feed-new whenever anyone on campus
+  // posts. Pushes are debounced + jittered so one viral post doesn't stampede
+  // every connected client into a simultaneous full refetch; the interval
+  // below only runs while the socket is DOWN (missed-event fallback).
+  useEffect(() => {
+  const socket = getSocket();
+  if (!socket) return;
+  return onDebouncedEvent(socket, 'feed-new', () => {
+  queryClient.invalidateQueries({ queryKey: ['feed'] });
+  }, 6000);
+  }, [queryClient]);
 
   const {
   data,
@@ -54,9 +55,11 @@ export default function HomePage() {
   // PERF: switching tabs shows the cached list immediately and refetches in
   // the background, instead of blanking to a spinner every switch.
   placeholderData: (prev) => prev,
-  // LIVE FEED: push events above handle the instant case; this slower poll
-  // plus a refetch when the tab regains focus covers missed events.
-  refetchInterval: 60_000,
+  // LIVE FEED: push events above handle the instant case. The interval runs
+  // ONLY while disconnected (missed-event fallback); window-focus refetch
+  // covers returning users. At launch scale a fixed 60s poll per user is a
+  // self-inflicted DDoS — never run it while push is healthy.
+  refetchInterval: socketLive ? false : 60_000,
   refetchOnWindowFocus: true,
   });
 

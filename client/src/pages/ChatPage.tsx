@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Zap, MoreVertical, Pencil, Trash2, X, Check, ChevronLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
-import { getSocket, joinConversation } from '@/services/realtime';
+import { getSocket, joinConversation, onDebouncedEvent } from '@/services/realtime';
+import { useSocketLive } from '@/hooks/useSocketLive';
 import Avatar from '@/components/common/Avatar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import { formatDistanceToNow } from '@/utils/date';
@@ -39,11 +40,15 @@ export default function ChatPage() {
  const editInputRef = useRef<HTMLInputElement>(null);
  const queryClient = useQueryClient();
 
- const { data, isLoading } = useQuery({
- queryKey: ['messages', conversationId],
- queryFn: () => api.get(`/messages/${conversationId}`).then((r) => r.data),
- refetchInterval: 5000,
- });
+  const { data, isLoading } = useQuery({
+  queryKey: ['messages', conversationId],
+  queryFn: () => api.get(`/messages/${conversationId}`).then((r) => r.data),
+  // Socket-aware: live merges arrive via push below, so poll slow while
+  // healthy (edit/delete safety net) and fast while disconnected. The old
+  // fixed 5s poll was the hottest query in the app — at launch scale it
+  // alone could saturate the DB pool.
+  refetchInterval: useSocketLive() ? 30_000 : 5000,
+  });
 
  // Partner identity for the chat header (mobile has no sidebar): reuse the
  // cached conversations list; empty cache = neutral header, deep links still
@@ -110,12 +115,14 @@ export default function ChatPage() {
  queryClient.invalidateQueries({ queryKey: ['messages', conversationId] });
  queryClient.invalidateQueries({ queryKey: ['conversations'] });
  };
- socket.on('new-message', onNew);
- socket.on('message-updated', onUpdated);
- return () => {
- socket.off('new-message', onNew);
- socket.off('message-updated', onUpdated);
- };
+  socket.on('new-message', onNew);
+  // Edit/delete pushes collapse into one refetch per burst (typing storms,
+  // multi-device edits) instead of one per event.
+  const offUpdated = onDebouncedEvent(socket, 'message-updated', onUpdated, 3000);
+  return () => {
+  socket.off('new-message', onNew);
+  offUpdated();
+  };
  }, [conversationId, queryClient]);
 
  useEffect(() => {

@@ -4,7 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Search, Glasses, Bell, X, Users, FileText } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
-import { getSocket } from '@/services/realtime';
+import { getSocket, onDebouncedEvent } from '@/services/realtime';
+import { useSocketLive } from '@/hooks/useSocketLive';
 import Avatar from '@/components/common/Avatar';
 import Logo from '@/components/common/Logo';
 import { bestAvatarSrc, photoSrc } from '@/utils/photo';
@@ -63,28 +64,28 @@ export default function Topbar() {
  }
  };
 
- const { data: unreadData } = useQuery({
- queryKey: ['unread-notifications'],
- queryFn: () => api.get('/notifications/unread-count').then((r) => r.data),
- refetchInterval: 60_000,
- });
- const queryClient = useQueryClient();
+  const { data: unreadData } = useQuery({
+  queryKey: ['unread-notifications'],
+  queryFn: () => api.get('/notifications/unread-count').then((r) => r.data),
+  // Socket-aware: push covers the live case; poll slow when healthy (badge
+  // staleness of minutes is fine), faster when disconnected. A fixed 60s
+  // poll per user across 100k users is ~1.6k rps of pure badge traffic.
+  refetchInterval: useSocketLive() ? 300_000 : 30_000,
+  });
+  const queryClient = useQueryClient();
 
- // PUSH: the server emits notification-new the moment something happens —
- // refetch immediately instead of waiting out the polling interval (which
- // now only covers missed events while the socket is down).
- useEffect(() => {
- const socket = getSocket();
- if (!socket) return;
- const onNew = () => {
- queryClient.invalidateQueries({ queryKey: ['unread-notifications'] });
- queryClient.invalidateQueries({ queryKey: ['notifications'] });
- };
- socket.on('notification-new', onNew);
- return () => {
- socket.off('notification-new', onNew);
- };
- }, [queryClient]);
+  // PUSH: the server emits notification-new the moment something happens —
+  // debounced so a burst (match = 2 notifs + push) collapses into one refetch
+  // instead of stampeding every open client.
+  useEffect(() => {
+  const socket = getSocket();
+  if (!socket) return;
+  const onNew = () => {
+  queryClient.invalidateQueries({ queryKey: ['unread-notifications'] });
+  queryClient.invalidateQueries({ queryKey: ['notifications'] });
+  };
+  return onDebouncedEvent(socket, 'notification-new', onNew, 3000);
+  }, [queryClient]);
 
  const unreadCount = unreadData?.count || 0;
 

@@ -1,0 +1,37 @@
+# Render blueprint — Zoclo API (launch config).
+# Apply once in the Render dashboard: New → Blueprint → this repo.
+# After that, deploys follow git pushes to main automatically.
+#
+# WHY THESE VALUES (launch math in LAUNCH.md):
+# - starter instance (2 GB): one Node process holds ~2-5k concurrent sockets;
+#   free-tier 512 MB + sleeping will collapse on launch night. Paid = no sleep,
+#   so the client's keep-alive pings become harmless background noise.
+# - healthCheckPath hits the no-DB /api/health (never the pool-burning /db one).
+# - startCommand runs `prisma migrate deploy` first: pending migrations apply
+#   automatically on every deploy (no-op when current). `db push` stays banned.
+services:
+  - type: web
+    name: zoclo-api
+    runtime: node
+    plan: starter
+    rootDir: server
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      # ── Set these as SECRET/static values in the dashboard (never committed) ──
+      # DATABASE_URL: Supabase session pooler URL + ?connection_limit=4
+      #   (pooler is 15 sessions total: 4 app + headroom for scripts/monitors.
+      #   10+ eats the pooler alive — measured, see SCALING.md pool note.)
+      # DIRECT_URL: Supabase direct connection (migrations only).
+      # JWT_SECRET / JWT_REFRESH_SECRET: strong random, ≥32 chars each.
+      # CLIENT_URL: https://<vercel-app>.vercel.app (comma-separated if more).
+      # GOOGLE_CLIENT_ID: enables Google Sign-In button (optional but recommended).
+      # SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY: photo storage (private bucket).
+      # SUPABASE_PHOTOS_BUCKET: user-photos
+      # PHOTO_URL_TTL_SEC: 3600

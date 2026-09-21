@@ -36,7 +36,12 @@ export const env = {
   CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:5173',
   JWT_SECRET: process.env.JWT_SECRET || 'dev-secret-change-this',
   JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret-change-this',
-  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '15m',
+  // 60m default: every active user rotates tokens this often (1 DB write per
+  // rotation). At launch scale 15m access tokens quadruple refresh-write load
+  // for negligible security gain — the rotating 7d refresh is the real
+  // session control, and the client auto-refreshes at any TTL. Override via
+  // JWT_EXPIRES_IN only if you need tighter stolen-token windows.
+  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '60m',
   JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   DATABASE_URL: process.env.DATABASE_URL || '',
   // Google Sign-In (optional): set GOOGLE_CLIENT_ID to enable the feature.

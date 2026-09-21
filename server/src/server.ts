@@ -55,15 +55,21 @@ app.use(
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 
-// ── Global API brake: every IP, 600 req/min ──
-// Sized for a college campus: hundreds of students share one public IP via
-// campus WiFi/NAT, so per-IP budgets must assume whole-classroom traffic.
+// ── Global API brake: every IP, 1000 req/min ──
+// Sized for launch: carrier/campus NAT puts thousands of students behind a
+// handful of public IPs, so per-IP budgets must assume whole-campuses of
+// traffic. 1000/min (~16 rps) still stops scrapers while surviving NAT.
+// NOTE: /api/health is explicitly skipped below — keep-alive pings and
+// uptime monitors must NEVER consume this budget or get 429'd.
 const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 600,
+  limit: 1000,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many requests. Slow down.' },
+  // Mounted at /api so req.path here is the sub-path ('/health', …).
+  // /health/db stays limited on purpose — it burns a pool connection per hit.
+  skip: (req) => req.path === '/health',
 });
 app.use('/api', globalLimiter);
 
@@ -287,6 +293,18 @@ import { CollegeService } from './services/college.service';
 new CollegeService().seedDirectory().then(({ added, total }) => {
   if (added > 0) console.log(`🎓 College directory seeded: +${added} (${total} total)`);
 }).catch((e) => console.error('[college-seed]', e.message));
+
+// ── Launch guardrail: log the effective DB pool size at boot ──
+// The pooler is the #1 launch-day killer (free tier: 15 sessions). If the URL
+// carries no connection_limit, Prisma defaults to CPUs*2+1 — on a big build
+// box that silently eats the whole pooler. This log makes the setting visible
+// in every deploy; keep it ≤ (pooler_size − headroom_for_scripts).
+try {
+  const m = /connection_limit=(\d+)/.exec(process.env.DATABASE_URL || '');
+  const poolNote = m ? `connection_limit=${m[1]}` : 'connection_limit=UNSET (Prisma default CPUs*2+1!)';
+  console.log(`[db] ${poolNote} · NODE_ENV=${process.env.NODE_ENV || 'development'}`);
+  if (!m) console.warn('[db] WARNING: set ?connection_limit=N on DATABASE_URL (see SCALING.md pool note)');
+} catch { /* never block boot on a log line */ }
 
 httpServer.listen(env.PORT, () => {
   console.log(`🚀 Server running on http://localhost:${env.PORT}`);

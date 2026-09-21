@@ -149,6 +149,8 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([expiresAt])
+  // Password change kills ALL sessions (deleteMany by user) — indexed.
+  @@index([userId])
   @@map("refresh_tokens")
 }
 
@@ -195,6 +197,11 @@ model Post {
   @@index([authorId])
   @@index([createdAt])
   @@index([type])
+  // Launch hot paths: tab feeds filter (type) + order (createdAt); profile
+  // feeds filter (authorId) + order (createdAt). Composites keep both
+  // index-only at 100k-post scale instead of filter+sort scans.
+  @@index([type, createdAt])
+  @@index([authorId, createdAt])
   @@map("posts")
 }
 
@@ -216,6 +223,8 @@ model Comment {
   replies       Comment[] @relation("CommentReplies")
 
   @@index([postId])
+  // Thread fetch orders replies by time — composite avoids the sort.
+  @@index([postId, createdAt])
   @@map("comments")
 }
 
@@ -228,6 +237,9 @@ model PostLike {
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@id([userId, postId])
+  // Like-counts + liker lists scan by post first — without this every card's
+  // count is a full-table scan at scale.
+  @@index([postId])
   @@map("post_likes")
 }
 
@@ -331,6 +343,8 @@ model ConversationMember {
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([conversationId, userId])
+  // "My conversations" lists by user first — the chat tab's hot query.
+  @@index([userId])
   @@map("conversation_members")
 }
 
