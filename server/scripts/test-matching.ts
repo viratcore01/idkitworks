@@ -37,6 +37,24 @@ async function loginAs(email: string) {
   return r.data.accessToken as string;
 }
 
+/** Child-first teardown so re-runs never trip FK constraints (idempotent). */
+async function purgeUsers(userIds: string[]) {
+  if (!userIds.length) return;
+  const memRows = await prisma.conversationMember.findMany({ where: { userId: { in: userIds } }, select: { conversationId: true } });
+  const convIds = [...new Set(memRows.map((m) => m.conversationId))];
+  if (convIds.length) {
+    await prisma.message.deleteMany({ where: { conversationId: { in: convIds } } });
+    await prisma.conversationMember.deleteMany({ where: { conversationId: { in: convIds } } });
+    await prisma.conversation.deleteMany({ where: { id: { in: convIds } } });
+  }
+  await prisma.notification.deleteMany({ where: { OR: [{ recipientId: { in: userIds } }, { actorId: { in: userIds } }] } });
+  await prisma.match.deleteMany({ where: { OR: [{ userA: { in: userIds } }, { userB: { in: userIds } }] } });
+  await prisma.matchLike.deleteMany({ where: { OR: [{ senderId: { in: userIds } }, { receiverId: { in: userIds } }] } });
+  await prisma.matchPreference.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.userInterest.deleteMany({ where: { userId: { in: userIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+}
+
 async function main() {
   console.log('\n━━ Setting up throwaway users ━━');
   const college = await prisma.college.findFirst({ where: { shortName: 'IPEC' } });
@@ -44,8 +62,8 @@ async function main() {
   const otherCollege = await prisma.college.findFirst({ where: { NOT: { id: college.id } } });
 
   const mk = async (username: string, gender: string, withPhoto: boolean) => {
-    const old = await prisma.user.findUnique({ where: { email: `${username}@test.zoclo` } });
-    if (old) await prisma.user.delete({ where: { id: old.id } });
+    const old = await prisma.user.findMany({ where: { email: `${username}@test.zoclo` }, select: { id: true } });
+    if (old.length) await purgeUsers(old.map((u) => u.id));
     const u = await prisma.user.create({
       data: {
         email: `${username}@test.zoclo`, username, displayName: username.toUpperCase(),
@@ -145,6 +163,9 @@ async function main() {
   console.log('━━ 5. Guards ━━');
   r = await api(tokA, 'POST', '/matches/like', { receiverId: A.id });
   check("can't like yourself", r.status >= 400);
+  // Idempotent: a crashed earlier run may have left zt_x behind.
+  const staleX = await prisma.user.findMany({ where: { email: 'zt_x@test.zoclo' }, select: { id: true } });
+  if (staleX.length) await purgeUsers(staleX.map((u) => u.id));
   const outsider = await prisma.user.create({
     data: {
       email: 'zt_x@test.zoclo', username: 'zt_x', displayName: 'X', passwordHash: PASSWORD_HASH,
@@ -178,6 +199,7 @@ async function main() {
   // unblock must restore it (history preserved underneath).
   r = await api(tokA, 'POST', '/messages/conversation', { userId: B.id });
   check('conversation opens between matched pair', r.status === 200 || r.status === 201);
+  const convId = r.data?.id as string | undefined;
   const convosOf = (resp: any): any[] => (Array.isArray(resp.data) ? resp.data : resp.data.conversations || []);
   await prisma.block.create({ data: { blockerId: B.id, blockedId: A.id } });
   r = await api(tokA, 'GET', '/messages/conversations');
@@ -185,6 +207,41 @@ async function main() {
   await prisma.block.deleteMany({ where: { blockerId: B.id, blockedId: A.id } });
   r = await api(tokA, 'GET', '/messages/conversations');
   check('unblocked ex conversation returns to chat list', r.status === 200 && convosOf(r).some((c: any) => c.otherUser?.id === B.id));
+
+  // ── 5c. DM notification lifecycle ──
+  // The bell badge used to grow forever: nothing ever cleared NEW_MESSAGE
+  // pings. Reading the thread must clear them; unmatch must silence sends.
+  if (convId) {
+    const unreadPings = () => prisma.notification.count({ where: { recipientId: B.id, actorId: A.id, type: 'NEW_MESSAGE', isRead: false } });
+    r = await api(tokA, 'POST', `/messages/${convId}`, { content: 'ping' });
+    check('DM sends between matched pair', r.status === 200 || r.status === 201, `status=${r.status} body=${JSON.stringify(r.data)}`);
+    check('send pings recipient (exactly 1 unread NEW_MESSAGE)', await unreadPings() === 1);
+    const matchNotifsBefore = await prisma.notification.count({ where: { recipientId: B.id, type: 'MATCH', isRead: false } });
+    r = await api(tokB, 'GET', `/messages/${convId}`);
+    check('reading the thread works', r.status === 200);
+    check('reading clears DM pings', await unreadPings() === 0);
+    check('reading does NOT touch other notification types', await prisma.notification.count({ where: { recipientId: B.id, type: 'MATCH', isRead: false } }) === matchNotifsBefore);
+    r = await api(tokB, 'GET', '/notifications/unread-count');
+    check('unread-count endpoint answers with a number', r.status === 200 && typeof r.data.count === 'number');
+
+    // Unmatch via the real API — sending must die, reading must survive.
+    const matchRow = await prisma.match.findFirst({ where: { OR: [{ userA: A.id, userB: B.id }, { userA: B.id, userB: A.id }], status: 'ACTIVE' } });
+    if (matchRow) {
+      r = await api(tokA, 'DELETE', `/matches/${matchRow.id}`);
+      check('unmatch works (pre-DM-silence setup)', r.status === 200 && r.data.unmatched === true);
+      r = await api(tokA, 'POST', `/messages/${convId}`, { content: 'still here?' });
+      check('unmatched ex CANNOT send new DMs', r.status === 403);
+      check('rejection is MATCH_REQUIRED, not a crash', r.data.code === 'MATCH_REQUIRED' || r.data.error?.includes('Match'));
+      r = await api(tokB, 'GET', `/messages/${convId}`);
+      check('unmatched ex can still READ history', r.status === 200);
+      // Re-match through the real flow — sending must come back.
+      await api(tokA, 'POST', '/matches/like', { receiverId: B.id });
+      r = await api(tokB, 'POST', '/matches/like', { receiverId: A.id });
+      check('re-match restores sending', r.status === 200 && r.data.matched === true);
+      r = await api(tokA, 'POST', `/messages/${convId}`, { content: "we're back" });
+      check('DMs flow again after re-match', r.status === 200 || r.status === 201, `status=${r.status} body=${JSON.stringify(r.data)}`);
+    }
+  }
 
   // ── 6. Photo gate ──
   console.log('━━ 6. Photo gate ━━');
@@ -325,15 +382,11 @@ async function main() {
   console.log(`\n════════ RESULT: ${pass} passed, ${fail} failed ════════`);
   if (failures.length) { console.log('FAILED:', failures.join(' | ')); }
 
-  // ── Cleanup (children first — matches/likes/notifications FK the users) ──
+  // ── Cleanup — one idempotent child-first purge for every throwaway ──
   const extraIds = [D.id, E.id];
-  await prisma.userInterest.deleteMany({ where: { userId: { in: [A.id, B.id, C.id, ...extraIds] } } });
+  const xUser = await prisma.user.findUnique({ where: { email: 'zt_x@test.zoclo' }, select: { id: true } });
   await prisma.interest.deleteMany({ where: { name: { in: ['skateboarding', 'chess', 'anime'] } } });
-  await prisma.notification.deleteMany({ where: { OR: [{ recipientId: { in: [A.id, B.id, C.id, ...extraIds] } }, { actorId: { in: [A.id, B.id, C.id, ...extraIds] } }] } });
-  await prisma.match.deleteMany({ where: { OR: [{ userA: { in: [A.id, B.id, C.id, ...extraIds] } }, { userB: { in: [A.id, B.id, C.id, ...extraIds] } }] } });
-  await prisma.matchLike.deleteMany({ where: { OR: [{ senderId: { in: [A.id, B.id, C.id, ...extraIds] } }, { receiverId: { in: [A.id, B.id, C.id, ...extraIds] } }] } });
-  await prisma.matchPreference.deleteMany({ where: { userId: { in: [A.id, B.id, C.id, ...extraIds] } } });
-  await prisma.user.deleteMany({ where: { email: { in: ['zt_a@test.zoclo', 'zt_b@test.zoclo', 'zt_c@test.zoclo', 'zt_d@test.zoclo', 'zt_e@test.zoclo', 'zt_x@test.zoclo'] } } });
+  await purgeUsers([A.id, B.id, C.id, ...extraIds, ...(xUser ? [xUser.id] : [])]);
   console.log('🧹 throwaway users removed\n');
   await prisma.$disconnect();
   process.exit(fail > 0 ? 1 : 0);

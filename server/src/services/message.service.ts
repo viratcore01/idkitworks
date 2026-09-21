@@ -186,6 +186,23 @@ export class MessageService {
       where: { conversationId_userId: { conversationId, userId } },
     });
     if (!member) throw new Error('Not a member of this conversation');
+
+    // Reading the thread IS the read receipt for its DM notifications — the
+    // badge used to grow forever because nothing ever cleared NEW_MESSAGE.
+    const otherMemberIds = (
+      await prisma.conversationMember.findMany({
+        where: { conversationId, userId: { not: userId } },
+        select: { userId: true },
+      })
+    ).map((m) => m.userId);
+    if (otherMemberIds.length) {
+      const cleared = await prisma.notification.updateMany({
+        where: { recipientId: userId, actorId: { in: otherMemberIds }, type: 'NEW_MESSAGE', isRead: false },
+        data: { isRead: true },
+      });
+      if (cleared.count > 0) invalidateUnreadCount(userId);
+    }
+
     const take = Math.min(Math.max(limit || 50, 1), 100);
 
     const messages = await prisma.message.findMany({
@@ -258,6 +275,28 @@ export class MessageService {
     });
     if (!member) throw new Error('Not a member of this conversation');
 
+    // Match must STILL be active: unmatch ends the conversation's life too.
+    // Without this re-check, an ex could keep DMing (and re-notifying) from
+    // the pre-existing thread after unmatching — history stays readable in
+    // getMessages, but sending is dead the moment the match ends.
+    const [sender, otherMembersBefore] = await Promise.all([
+      prisma.user.findUnique({ where: { id: senderId }, select: { collegeId: true } }),
+      prisma.conversationMember.findMany({ where: { conversationId, userId: { not: senderId } }, select: { userId: true } }),
+    ]);
+    if (otherMembersBefore.length > 0) {
+      const [mA, mB] = [senderId, otherMembersBefore[0].userId].sort();
+      const activeMatch = await prisma.match.findUnique({
+        where: { userA_userB: { userA: mA, userB: mB } },
+        select: { status: true },
+      });
+      if (!activeMatch || activeMatch.status !== 'ACTIVE') {
+        const e: any = new Error('Match required to message');
+        e.status = 403;
+        e.code = 'MATCH_REQUIRED';
+        throw e;
+      }
+    }
+
     const trimmed = String(content || '').trim();
     if (!trimmed) throw new Error('Message cannot be empty');
     if (trimmed.length > 2000) throw new Error('Message must be under 2000 characters');
@@ -296,6 +335,17 @@ export class MessageService {
         sender: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true } },
       },
     });
+
+    // Opening the thread clears NEW_MESSAGE notifications: the list + the
+    // unread badge previously NEVER cleared them (markAllRead is manual and
+    // updateMany paths skip NEW_MESSAGE), so the bell badge grew forever no
+    // matter how many chats you'd actually read. Read state lives off the
+    // message row itself — nobody can infer when you read their DMs.
+    await prisma.notification.updateMany({
+      where: { recipientId: senderId, actorId: { in: otherIds }, type: 'NEW_MESSAGE' },
+      data: { isRead: true },
+    });
+    if (otherIds.length) invalidateUnreadCount(senderId);
 
     // Notify other members
     const otherMembers = await prisma.conversationMember.findMany({
