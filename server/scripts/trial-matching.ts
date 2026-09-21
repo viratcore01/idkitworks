@@ -453,10 +453,18 @@ async function phaseWalls() {
   const touched = new Set(priorPairs.flatMap((r) => [r.senderId, r.receiverId]));
   const y = zxUsers.find((u) => !u._inactive && !u._noPhoto && u.id !== a.id && u.id !== x.id && !touched.has(u.id))!;
   const tokY = await loginAs(y.email);
-  await apiR(tokY, 'POST', '/matches/pass', { receiverId: a.id });
-  await apiR(tokA, 'POST', '/matches/like', { receiverId: y.id });
-  const sc = await prisma.notification.count({ where: { type: 'LIKE', recipientId: y.id, actorId: a.id } });
-  check('pass-first still gets exactly one second-chance ping', sc === 1, `got ${sc}`);
+  const passR = await apiR(tokY, 'POST', '/matches/pass', { receiverId: a.id });
+  if (passR.exhausted) infraNote('second-chance pass');
+  const likeR = await apiR(tokA, 'POST', '/matches/like', { receiverId: y.id });
+  if (likeR.exhausted) infraNote('second-chance like');
+  // The LIKE notification is fire-and-forget server-side (created after the
+  // response, pool-slot willing) — poll briefly instead of racing it.
+  let sc = 0;
+  for (let i = 0; i < 20 && sc === 0; i++) {
+    sc = await prisma.notification.count({ where: { type: 'LIKE', recipientId: y.id, actorId: a.id } });
+    if (sc === 0) await sleep(300);
+  }
+  check('pass-first still gets exactly one second-chance ping', sc === 1, `got ${sc} (like status ${likeR.status})`);
   // Photo gate covers PASS too (not just LIKE).
   const nophU = zxUsers.find((u) => u._noPhoto && !u._inactive)!;
   const tokN = await loginAs(nophU.email);
