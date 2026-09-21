@@ -282,6 +282,9 @@ model MatchLike {
 
   @@id([senderId, receiverId])
   @@index([senderId, action, createdAt])
+  // Likes-you hot path: inbound LIKE scans per viewer (deck boost, waiting
+  // count, waiting list) — indexed so they never seq-scan the likes table.
+  @@index([receiverId, action, createdAt])
   @@map("match_likes")
 }
 

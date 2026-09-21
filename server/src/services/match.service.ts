@@ -66,6 +66,27 @@ function ageFrom(dob: Date | null): number | null {
 }
 
 /**
+ * The waiting-list sender filter, shared by likesYou() and likesYouCount():
+ * same-college, active, unblocked in both directions, no ACTIVE match with the
+ * viewer, and no answer from the viewer yet (no LIKE *or* PASS row back).
+ * Enforced in the DB so the count and the list can never disagree.
+ */
+function waitingSenderFilter(userId: string, collegeId: string) {
+  return {
+    isActive: true,
+    collegeId,
+    // Viewer hasn't answered this sender either way.
+    receivedLikes: { none: { senderId: userId } },
+    // No ACTIVE match between viewer and sender.
+    matchesA: { none: { userB: userId, status: 'ACTIVE' } },
+    matchesB: { none: { userA: userId, status: 'ACTIVE' } },
+    // No block wall either direction.
+    blockedUsers: { none: { blockedId: userId } },
+    blockedBy: { none: { blockerId: userId } },
+  };
+}
+
+/**
  * The ONE source of truth for "Looking for" (intent matching): the user's own
  * profile goals (User.relationshipGoals). Discovery filters, the deck and the
  * match-criteria snapshot all read it — there is no separate hidden preference.
@@ -240,39 +261,74 @@ export class MatchService {
     ]);
     const chainLength = freshCount + recycledCount;
 
-    // Fresh window: overlaps [offset, offset + take) with [0, freshCount).
-    const freshSkip = Math.min(offset, freshCount);
-    const freshTake = Math.max(Math.min(offset + take, freshCount) - freshSkip, 0);
-    // Recycled window: overlaps [offset, offset + take) with [freshCount, chainLength).
-    const recStart = Math.max(offset - freshCount, 0);
-    const recEnd = Math.max(Math.min(offset + take - freshCount, recycledCount), 0);
-    const recSliceIds = recEnd > recStart ? passedIds.slice(recStart, recEnd) : [];
+    // One chain window [off, off + take): fresh slice + recycled slice stitched.
+    const fetchWindow = async (off: number): Promise<any[]> => {
+      // Fresh window: overlaps [off, off + take) with [0, freshCount).
+      const freshSkip = Math.min(off, freshCount);
+      const freshTake = Math.max(Math.min(off + take, freshCount) - freshSkip, 0);
+      // Recycled window: overlaps [off, off + take) with [freshCount, chainLength).
+      const recStart = Math.max(off - freshCount, 0);
+      const recEnd = Math.max(Math.min(off + take - freshCount, recycledCount), 0);
+      const recSliceIds = recEnd > recStart ? passedIds.slice(recStart, recEnd) : [];
 
-    const [freshPage, recycledRows] = await Promise.all([
-      freshTake > 0
-        ? prisma.user.findMany({
-            where,
-            orderBy: { createdAt: 'desc' },
-            skip: freshSkip,
-            take: freshTake,
-            select: DECK_SELECT,
-          })
-        : Promise.resolve([] as never[]),
-      recSliceIds.length
-        ? prisma.user.findMany({
-            where: { ...recycledBaseWhere, id: { in: recSliceIds } },
-            select: DECK_SELECT,
-          })
-        : Promise.resolve([] as never[]),
-    ]);
-    // Restore oldest-pass-first order and drop ids filtered out since passing
-    // (deactivated, blocked, photo removed, prefs changed).
-    const recycledById = new Map((recycledRows as any[]).map((u) => [u.id, u]));
-    const recycledPage = recSliceIds
-      .map((pid) => recycledById.get(pid))
-      .filter(Boolean as any);
+      const [freshPage, recycledRows] = await Promise.all([
+        freshTake > 0
+          ? prisma.user.findMany({
+              where,
+              orderBy: { createdAt: 'desc' },
+              skip: freshSkip,
+              take: freshTake,
+              select: DECK_SELECT,
+            })
+          : Promise.resolve([] as never[]),
+        recSliceIds.length
+          ? prisma.user.findMany({
+              where: { ...recycledBaseWhere, id: { in: recSliceIds } },
+              select: DECK_SELECT,
+            })
+          : Promise.resolve([] as never[]),
+      ]);
+      // Restore oldest-pass-first order and drop ids filtered out since passing
+      // (deactivated, blocked, photo removed, prefs changed).
+      const recycledById = new Map((recycledRows as any[]).map((u) => [u.id, u]));
+      const recycledPage = recSliceIds
+        .map((pid) => recycledById.get(pid))
+        .filter(Boolean as any);
+      return [...(freshPage as any[]), ...recycledPage];
+    };
 
-    let pageSlice: any[] = [...(freshPage as any[]), ...recycledPage];
+    // Shared-interest minimum N>1: the DB `some` prefilter above only proves
+    // ≥1 common interest (Prisma can't express "any N of a set" in one query),
+    // so enforce the exact threshold here. Default users (filter off) take the
+    // single-window fast path — zero behavior change for them. Strict-filter
+    // users skip forward across consecutive windows (bounded: ≤6 windows) until
+    // the page is full of genuinely-eligible profiles or the chain ends.
+    // (totalRemaining/hasMore stay chain-based estimates under a strict filter;
+    // WHO you see is always exact, which is what relevance requires.)
+    const minShared = pref?.sharedInterestMin ?? 0;
+    const needCountFilter = minShared > 1 && viewerInterestIds.size > 0;
+    const countShared = (u: any) =>
+      u.interests.filter((ui: any) => viewerInterestIds.has(ui.interestId)).length;
+
+    let pageSlice: any[] = [];
+    let consumed = offset + take;
+    if (!needCountFilter) {
+      pageSlice = await fetchWindow(offset);
+    } else {
+      let guard = 0;
+      let off = offset;
+      while (pageSlice.length < take && off < chainLength && guard < 6) {
+        const win = await fetchWindow(off);
+        for (const u of win) {
+          if (pageSlice.length >= take) break;
+          if (countShared(u) >= minShared) pageSlice.push(u);
+        }
+        off += take;
+        guard++;
+        if (win.length === 0) break;
+      }
+      consumed = off;
+    }
 
     // "LIKES YOU" priority (Hinge/Tinder Gold pattern, free for everyone):
     // people who already liked you surface at the FRONT of page 0, newest
@@ -293,9 +349,13 @@ export class MatchService {
       if (boosted.length) {
         const boostedById = new Map((boosted as any[]).map((u) => [u.id, u]));
         // Newest like first (likedMeRows arrived ordered by createdAt desc).
+        // Under a strict shared-interest filter the boost respects it too —
+        // admirers below the viewer's own threshold stay in the waiting list,
+        // never jump the deck queue.
         const orderedBoost = boostIds
           .map((id) => boostedById.get(id))
-          .filter(Boolean as any);
+          .filter(Boolean as any)
+          .filter((u: any) => !needCountFilter || countShared(u) >= minShared);
         const boostedIds = new Set(orderedBoost.map((u: any) => u.id));
         pageSlice = [...orderedBoost, ...pageSlice.filter((u: any) => !boostedIds.has(u.id))].slice(
           0,
@@ -330,7 +390,10 @@ export class MatchService {
         // AFTER a mutual match, via match.criteria.
         relationshipGoals: undefined,
         theyLikedMe: likedMeSet.has(u.id),
-        sharedInterests: (pref?.sharedInterestMin ?? 0) > 0
+        // Always sent when the viewer has interests to compare against —
+        // powers the "N shared interests" relevance chip on every card, not
+        // just when the shared-interest dealbreaker is switched on.
+        sharedInterests: viewerInterestIds.size > 0
           ? u.interests.filter((ui: any) => viewerInterestIds.has(ui.interestId)).length
           : undefined,
         // true when this card came from the passed tail of the chain
@@ -338,8 +401,8 @@ export class MatchService {
       })),
       page,
       // the chain is closed: "hasMore" wraps via the client resetting to page 0
-      hasMore: offset + take < chainLength,
-      totalRemaining: Math.max(chainLength - offset, 0),
+      hasMore: consumed < chainLength,
+      totalRemaining: Math.max(chainLength - Math.min(consumed - take, chainLength), 0),
       totalFresh: freshCount,
     };
     cacheSet(deckKey, result, DECK_TTL_SEC, [deckTag(userId)]);
@@ -605,10 +668,19 @@ export class MatchService {
     return { likesSent, likeCap: LIKE_CAP, likesReceived, totalMatches };
   }
 
-  /** How many waiting likes the viewer hasn't acted on — powers the deck chip. */
+  /** How many waiting likes the viewer hasn't acted on — powers the deck chip.
+   * WAITING means exactly what likesYou() lists: one-sided LIKEs from
+   * same-college, active, unblocked people with no ACTIVE match and no answer
+   * from the viewer yet. (Counting raw inbound LIKE rows overcounted the chip
+   * the moment anyone matched, answered, or got blocked.)
+   * Single indexed COUNT — one round-trip, no row fetching. */
   async likesYouCount(userId: string) {
-    const count = await prisma.matchLike.count({ where: { receiverId: userId, action: 'LIKE' } });
-    return { likesYou: count };
+    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
+    if (!viewer?.collegeId) return { likesYou: 0 };
+    const likesYou = await prisma.matchLike.count({
+      where: { receiverId: userId, action: 'LIKE', sender: waitingSenderFilter(userId, viewer.collegeId) },
+    });
+    return { likesYou };
   }
 
   /**
@@ -622,28 +694,12 @@ export class MatchService {
     const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
     if (!viewer?.collegeId) return { users: [] };
 
-    const blocks = await prisma.block.findMany({
-      where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
-      select: { blockerId: true, blockedId: true },
-    });
-    const blockedIds = new Set(blocks.flatMap((b) => [b.blockerId, b.blockedId]));
-    // Already-answered likes (I swiped back either way) leave the waiting list.
-    const answered = await prisma.matchLike.findMany({
-      where: { senderId: userId },
-      select: { receiverId: true },
-    });
-    const answeredIds = new Set(answered.map((a) => a.receiverId));
-    // ACTIVE matches live in the matches list, not here.
-    const active = await prisma.match.findMany({
-      where: { status: 'ACTIVE', OR: [{ userA: userId }, { userB: userId }] },
-      select: { userA: true, userB: true },
-    });
-    const matchedIds = new Set(active.flatMap((m) => [m.userA, m.userB]));
-
+    // Waiting-list rules enforced in the DB (one indexed query, exact page —
+    // no over-fetch + in-JS filtering). Same filter as likesYouCount().
     const rows = await prisma.matchLike.findMany({
-      where: { receiverId: userId, action: 'LIKE' },
+      where: { receiverId: userId, action: 'LIKE', sender: waitingSenderFilter(userId, viewer.collegeId) },
       orderBy: { createdAt: 'desc' },
-      take: take + blockedIds.size + answeredIds.size + matchedIds.size + 1,
+      take,
       include: {
         sender: {
           select: {
@@ -658,9 +714,7 @@ export class MatchService {
     const users = [];
     for (const r of rows) {
       const s: any = r.sender;
-      if (!s?.isActive) continue;
-      if (s.collegeId !== viewer.collegeId) continue;
-      if (blockedIds.has(s.id) || answeredIds.has(s.id) || matchedIds.has(s.id)) continue;
+      if (!s?.isActive || s.collegeId !== viewer.collegeId) continue; // belt-and-braces
       users.push({
         id: s.id,
         username: s.username,
@@ -678,7 +732,6 @@ export class MatchService {
         relationshipGoals: undefined,
         likedAt: r.createdAt,
       });
-      if (users.length >= take) break;
     }
     return { users };
   }

@@ -7,11 +7,20 @@ const service = new MatchService();
 
 const isCuidLike = (s: any) => typeof s === 'string' && s.length >= 20 && s.length <= 40;
 
+/** Clamp a ?limit param into [min, max]; garbage/absent → undefined (service default). */
+const clampLimit = (raw: unknown, min: number, max: number): number | undefined => {
+  const n = parseInt(raw as string);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.min(Math.max(n, min), max);
+};
+
+const clampPage = (raw: unknown): number => Math.max(parseInt(raw as string) || 0, 0);
+
 export class MatchController {
   async discover(req: AuthRequest, res: Response) {
     try {
-      const page = Math.max(parseInt(req.query.page as string) || 0, 0);
-      const limit = parseInt(req.query.limit as string) || undefined;
+      const page = clampPage(req.query.page);
+      const limit = clampLimit(req.query.limit, 1, 50);
       const result = await service.discover(req.user!.id, page, limit);
       res.json(result);
     } catch (error: any) {
@@ -43,8 +52,8 @@ export class MatchController {
 
   async getMatches(req: AuthRequest, res: Response) {
     try {
-      const page = Math.max(parseInt(req.query.page as string) || 0, 0);
-      const limit = parseInt(req.query.limit as string) || undefined;
+      const page = clampPage(req.query.page);
+      const limit = clampLimit(req.query.limit, 1, 100);
       const result = await service.getMatches(req.user!.id, page, limit);
       res.json(result);
     } catch (error: any) {
@@ -54,10 +63,14 @@ export class MatchController {
 
   async unmatch(req: AuthRequest, res: Response) {
     try {
-      const result = await service.unmatch(req.user!.id, req.params.matchId as string);
+      const { matchId } = req.params;
+      if (!isCuidLike(matchId)) return res.status(400).json({ error: 'Invalid matchId' });
+      const result = await service.unmatch(req.user!.id, matchId as string);
       res.json(result);
     } catch (error: any) {
-      sendError(res, error, 403);
+      // 404 by default (not 403): a foreign/gone match's existence is not
+      // confirmable — same wall philosophy as cross-college content.
+      sendError(res, error, error.status || 404);
     }
   }
 
@@ -73,7 +86,7 @@ export class MatchController {
 
   async likesYou(req: AuthRequest, res: Response) {
     try {
-      const limit = parseInt(req.query.limit as string) || undefined;
+      const limit = clampLimit(req.query.limit, 1, 50);
       res.json(await service.likesYou(req.user!.id, limit));
     } catch (error: any) {
       sendError(res, error, 400);

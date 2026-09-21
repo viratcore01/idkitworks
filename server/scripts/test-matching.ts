@@ -216,8 +216,73 @@ async function main() {
   check('minYear 3 excludes 2nd-year users', !(r.data.users || []).some((u: any) => u.id === C.id));
   await api(tokA, 'PATCH', '/matches/preferences', { minYear: null });
 
-  // ── 9. Auth/abuse edges ──
-  console.log('━━ 9. Auth & abuse ━━');
+  // ── 9. Rewind, pass guards, limits, waiting accuracy, shared-interest N ──
+  console.log('━━ 9. Rewind & guards & relevance ━━');
+  const D = await mk('zt_d', 'FEMALE', true);
+  const E = await mk('zt_e', 'FEMALE', true);
+  const tokD = await loginAs(D.email);
+  await prisma.userInterest.createMany({ data: [
+    { userId: D.id, interestId: skate.id },
+    { userId: E.id, interestId: skate.id }, { userId: E.id, interestId: chess.id },
+  ] });
+
+  // Rewind undoes the last PASS only, within 10 minutes
+  r = await api(tokA, 'POST', '/matches/pass', { receiverId: D.id });
+  check('A passes D', r.status === 200 && r.data.matched === false);
+  r = await api(tokA, 'POST', '/matches/rewind');
+  check('rewind undoes the last pass', r.status === 200 && r.data.rewound === true && r.data.userId === D.id, JSON.stringify(r.data));
+  r = await api(tokA, 'GET', '/matches/discover?page=0&limit=50');
+  const dCard = (r.data.users || []).find((u: any) => u.id === D.id);
+  check('rewound profile returns as fresh (not recycled)', !!dCard && dCard.recycled !== true);
+  r = await api(tokD, 'POST', '/matches/rewind');
+  check('rewind on empty stack → 404', r.status === 404, `got ${r.status}`);
+  await api(tokB, 'POST', '/matches/like', { receiverId: D.id });
+  r = await api(tokB, 'POST', '/matches/rewind');
+  check('rewind after only-like (no pass) → 404', r.status === 404, `got ${r.status}`);
+
+  // Pass guards mirror the like guards
+  r = await api(tokA, 'POST', '/matches/pass', { receiverId: A.id });
+  check("can't pass yourself", r.status >= 400);
+  r = await api(tokA, 'POST', '/matches/pass', { receiverId: outsider.id });
+  check('cross-college pass rejected', r.status >= 400);
+  r = await api(tokA, 'POST', '/matches/pass', { receiverId: 'nonexistent00000000000' });
+  check('bogus pass rejected', r.status >= 400);
+
+  // Unmatch negatives (the A-B match is foreign to C)
+  const abMatch = await prisma.match.findFirst({ where: { status: 'ACTIVE', OR: [{ userA: A.id, userB: B.id }, { userA: B.id, userB: A.id }] } });
+  r = abMatch ? await api(tokC, 'DELETE', `/matches/${abMatch.id}`) : { status: 0, data: null };
+  check("can't unmatch someone else's match", r.status >= 400, `got ${r.status}`);
+  r = await api(tokA, 'DELETE', '/matches/nonexistent00000000000');
+  check('bogus matchId rejected', r.status >= 400, `got ${r.status}`);
+
+  // Controller clamps runaway pagination
+  r = await api(tokA, 'GET', '/matches/discover?page=0&limit=500');
+  check('discover limit clamped to ≤50', r.status === 200 && (r.data.users || []).length <= 50);
+  r = await api(tokA, 'GET', '/matches/likes-you?limit=500');
+  check('likes-you limit clamped to ≤50', r.status === 200 && (r.data.users || []).length <= 50);
+
+  // Waiting accuracy: B's like on D is waiting (==1); after D likes back it drops to 0
+  r = await api(tokD, 'GET', '/matches/stats');
+  check('likesYou counts only waiting likes', r.status === 200 && r.data.likesYou === 1, JSON.stringify(r.data));
+  r = await api(tokD, 'POST', '/matches/like', { receiverId: B.id });
+  check('D likes back B → instant match', r.status === 200 && r.data.matched === true);
+  r = await api(tokD, 'GET', '/matches/stats');
+  check('matched/answered likes leave the waiting count', r.status === 200 && r.data.likesYou === 0, JSON.stringify(r.data));
+
+  // Shared-interest N>1 is actually enforced (A shares skate+chess; D has 1, E has 2)
+  r = await api(tokA, 'PATCH', '/matches/preferences', { sharedInterestMin: 2 });
+  check('sharedInterestMin 2 saves', r.status === 200 && r.data.sharedInterestMin === 2);
+  r = await api(tokA, 'GET', '/matches/discover?page=0&limit=50');
+  const min2deck = r.data.users || [];
+  check('2+ filter keeps doubly-shared E', min2deck.some((u: any) => u.id === E.id), JSON.stringify(min2deck.map((u: any) => u.username)));
+  check('2+ filter hides singly-shared D', !min2deck.some((u: any) => u.id === D.id));
+  await api(tokA, 'PATCH', '/matches/preferences', { sharedInterestMin: 0 });
+
+  const dRows = await prisma.matchLike.findMany({ where: { senderId: D.id } });
+  check('D has no duplicate action rows', new Set(dRows.map((x) => x.receiverId)).size === dRows.length);
+
+  // ── 10. Auth/abuse edges ──
+  console.log('━━ 10. Auth & abuse ━━');
   r = await api('', 'GET', '/matches/discover');
   check('unauthenticated discover → 401', r.status === 401);
   r = await api('garbage.token.here', 'GET', '/matches/discover');
@@ -225,24 +290,25 @@ async function main() {
   r = await api(tokA, 'POST', '/matches/like', { receiverId: null });
   check('null receiverId → 400', r.status === 400);
 
-  // ── 10. State consistency after everything ──
-  console.log('━━ 10. Consistency ━━');
+  // ── 11. State consistency after everything ──
+  console.log('━━ 11. Consistency ━━');
   const aRows = await prisma.matchLike.findMany({ where: { senderId: A.id } });
   check('A has no duplicate action rows', new Set(aRows.map((x) => x.receiverId)).size === aRows.length);
-  const activeMatches = await prisma.match.count({ where: { status: 'ACTIVE', OR: [{ userA: A.id }, { userB: A.id }, { userA: B.id }, { userB: B.id }] } });
-  check('no runaway match rows', activeMatches <= 2, `got ${activeMatches}`);
+  const activeMatches = await prisma.match.count({ where: { status: 'ACTIVE', OR: [{ userA: A.id }, { userB: A.id }] } });
+  check('no runaway match rows for the swiper', activeMatches <= 2, `got ${activeMatches}`);
 
   console.log(`\n════════ RESULT: ${pass} passed, ${fail} failed ════════`);
   if (failures.length) { console.log('FAILED:', failures.join(' | ')); }
 
   // ── Cleanup (children first — matches/likes/notifications FK the users) ──
-  await prisma.userInterest.deleteMany({ where: { userId: { in: [A.id, B.id, C.id] } } });
+  const extraIds = [D.id, E.id];
+  await prisma.userInterest.deleteMany({ where: { userId: { in: [A.id, B.id, C.id, ...extraIds] } } });
   await prisma.interest.deleteMany({ where: { name: { in: ['skateboarding', 'chess', 'anime'] } } });
-  await prisma.notification.deleteMany({ where: { OR: [{ recipientId: A.id }, { recipientId: B.id }, { recipientId: C.id }, { actorId: A.id }, { actorId: B.id }, { actorId: C.id }] } });
-  await prisma.match.deleteMany({ where: { OR: [{ userA: A.id }, { userB: A.id }, { userA: B.id }, { userB: B.id }, { userA: C.id }, { userB: C.id }] } });
-  await prisma.matchLike.deleteMany({ where: { OR: [{ senderId: A.id }, { receiverId: A.id }, { senderId: B.id }, { receiverId: B.id }, { senderId: C.id }, { receiverId: C.id }] } });
-  await prisma.matchPreference.deleteMany({ where: { userId: { in: [A.id, B.id, C.id] } } });
-  await prisma.user.deleteMany({ where: { email: { in: ['zt_a@test.zoclo', 'zt_b@test.zoclo', 'zt_c@test.zoclo', 'zt_x@test.zoclo'] } } });
+  await prisma.notification.deleteMany({ where: { OR: [{ recipientId: { in: [A.id, B.id, C.id, ...extraIds] } }, { actorId: { in: [A.id, B.id, C.id, ...extraIds] } }] } });
+  await prisma.match.deleteMany({ where: { OR: [{ userA: { in: [A.id, B.id, C.id, ...extraIds] } }, { userB: { in: [A.id, B.id, C.id, ...extraIds] } }] } });
+  await prisma.matchLike.deleteMany({ where: { OR: [{ senderId: { in: [A.id, B.id, C.id, ...extraIds] } }, { receiverId: { in: [A.id, B.id, C.id, ...extraIds] } }] } });
+  await prisma.matchPreference.deleteMany({ where: { userId: { in: [A.id, B.id, C.id, ...extraIds] } } });
+  await prisma.user.deleteMany({ where: { email: { in: ['zt_a@test.zoclo', 'zt_b@test.zoclo', 'zt_c@test.zoclo', 'zt_d@test.zoclo', 'zt_e@test.zoclo', 'zt_x@test.zoclo'] } } });
   console.log('🧹 throwaway users removed\n');
   await prisma.$disconnect();
   process.exit(fail > 0 ? 1 : 0);

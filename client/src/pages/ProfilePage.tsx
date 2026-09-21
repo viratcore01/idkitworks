@@ -83,25 +83,35 @@ export default function ProfilePage() {
  },
  });
 
- const likeMutation = useMutation({
- mutationFn: () => api.post('/matches/like', { receiverId: profile.id }).then((r) => r.data),
- onSuccess: (data) => {
- if (data.matched) toast.success("It's a Match!");
- else toast('Like sent');
- invalidateProfile();
- },
- onError: (e: any) => toast.error(e.response?.data?.error || 'Could not like'),
- });
+  const likeMutation = useMutation({
+  mutationFn: () => api.post('/matches/like', { receiverId: profile.id }).then((r) => r.data),
+  onSuccess: (data) => {
+  if (data.matched) toast.success("It's a Match!");
+  else toast('Like sent');
+  invalidateProfile();
+  queryClient.invalidateQueries({ queryKey: ['match-discover'] });
+  queryClient.invalidateQueries({ queryKey: ['likes-you'] });
+  queryClient.invalidateQueries({ queryKey: ['match-stats'] });
+  },
+  onError: (e: any) => toast.error(e.response?.data?.error || 'Could not like'),
+  });
 
- const unmatchMutation = useMutation({
- mutationFn: () => api.delete(`/matches/${profile.relationship.matchId}`),
- onSuccess: () => {
- toast('Match removed');
- setMenuOpen(false);
- invalidateProfile();
- queryClient.invalidateQueries({ queryKey: ['matches'] });
- },
- });
+  const unmatchMutation = useMutation({
+  mutationFn: () => {
+  const matchId = profile.relationship?.matchId;
+  if (!matchId) throw new Error('No active match to remove');
+  return api.delete(`/matches/${matchId}`);
+  },
+  onSuccess: () => {
+  toast('Match removed');
+  setMenuOpen(false);
+  invalidateProfile();
+  queryClient.invalidateQueries({ queryKey: ['matches'] });
+  queryClient.invalidateQueries({ queryKey: ['match-discover'] });
+  queryClient.invalidateQueries({ queryKey: ['likes-you'] });
+  },
+  onError: (e: any) => toast.error(e.response?.data?.error || 'Could not unmatch'),
+  });
 
  const messagesMutation = useMutation({
  mutationFn: () => api.post('/messages/conversation', { userId: profile.id }).then((r) => r.data),
@@ -281,50 +291,60 @@ export default function ProfilePage() {
   {/* Action row for other profiles — relationship-aware. Wraps on 320px. */}
   {!isOwnProfile && rel && (
   <div className="mt-4 flex gap-2 flex-wrap min-w-0">
- {rel.isMatched ? (
- <>
- <button
- onClick={() => messagesMutation.mutate()}
- className="nb-btn-orange flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5"
- >
- <MessageSquare size={14} strokeWidth={2.5} /> Message
- </button>
+  {rel.isMatched ? (
+  <>
+  <button
+  onClick={() => !messagesMutation.isPending && messagesMutation.mutate()}
+  disabled={messagesMutation.isPending}
+  aria-busy={messagesMutation.isPending}
+  className="nb-btn-orange flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+  <MessageSquare size={14} strokeWidth={2.5} /> Message
+  </button>
  <span className="nb-badge bg-nb-pink text-white text-xs inline-flex items-center gap-1 px-3">
  <Heart size={12} strokeWidth={2.5} fill="currentColor" /> Matched
  </span>
  </>
- ) : rel.theyLikedMe ? (
- <>
- <button
- onClick={() => likeMutation.mutate()}
- className="nb-btn-pink flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5"
- >
- <Heart size={14} strokeWidth={2.5} fill="currentColor" /> Like back — it's a match!
- </button>
- </>
- ) : rel.conversationId ? (
- <>
- <Link to={`/messages/${rel.conversationId}`} className="nb-btn-cyan flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5">
- <MessageSquare size={14} strokeWidth={2.5} /> Open chat
- </Link>
- <button
- onClick={() => likeMutation.mutate()}
- disabled={!rel.canLike}
- className="nb-btn bg-white text-sm inline-flex items-center gap-1.5"
- title={rel.canLike ? 'Like' : 'Already matched'}
- >
- <Heart size={14} strokeWidth={2.5} /> Like
- </button>
- </>
- ) : (
- <>
- <button
- onClick={() => likeMutation.mutate()}
- disabled={!rel.canLike}
- className="nb-btn-pink flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5 disabled:opacity-50"
- >
- <Heart size={14} strokeWidth={2.5} /> {rel.iLikedThem ? 'Liked' : 'Like'}
- </button>
+  ) : rel.theyLikedMe ? (
+  <>
+  <button
+  onClick={() => !likeMutation.isPending && likeMutation.mutate()}
+  disabled={likeMutation.isPending}
+  aria-busy={likeMutation.isPending}
+  className="nb-btn-pink flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+  <Heart size={14} strokeWidth={2.5} fill="currentColor" /> Like back — it's a match!
+  </button>
+  {rel.conversationId && (
+  <Link to={`/messages/${rel.conversationId}`} className="nb-btn-cyan text-center text-sm inline-flex items-center justify-center gap-1.5">
+  <MessageSquare size={14} strokeWidth={2.5} /> Open chat
+  </Link>
+  )}
+  </>
+  ) : rel.conversationId ? (
+  <>
+  <Link to={`/messages/${rel.conversationId}`} className="nb-btn-cyan flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5">
+  <MessageSquare size={14} strokeWidth={2.5} /> Open chat
+  </Link>
+  <button
+  onClick={() => likeMutation.mutate()}
+  disabled={!rel.canLike || likeMutation.isPending}
+  className="nb-btn bg-white text-sm inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+  title={rel.canLike ? 'Like' : 'Already matched'}
+  >
+  <Heart size={14} strokeWidth={2.5} /> Like
+  </button>
+  </>
+  ) : (
+  <>
+  <button
+  onClick={() => !likeMutation.isPending && likeMutation.mutate()}
+  disabled={!rel.canLike || likeMutation.isPending}
+  aria-busy={likeMutation.isPending}
+  className="nb-btn-pink flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+  <Heart size={14} strokeWidth={2.5} /> {rel.iLikedThem ? 'Liked' : 'Like'}
+  </button>
  {rel.hasConversation && (
  <Link to={`/messages/${rel.conversationId}`} className="nb-btn-cyan text-center text-sm inline-flex items-center justify-center gap-1.5">
  <MessageSquare size={14} strokeWidth={2.5} />

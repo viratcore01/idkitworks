@@ -93,67 +93,121 @@ export default function MatchesPage() {
  enabled: showPrefs,
  });
 
- // Waiting likes — powers the "N waiting" chip on the deck header
- const { data: matchStats } = useQuery({
- queryKey: ['match-stats'],
- queryFn: () => api.get('/matches/stats').then((r) => r.data),
- enabled: view === 'discover',
- });
+  // Waiting likes — powers the "N waiting" chip on the deck header
+  const { data: matchStats } = useQuery({
+  queryKey: ['match-stats'],
+  queryFn: () => api.get('/matches/stats').then((r) => r.data),
+  enabled: view === 'discover',
+  });
+
+  // WHO LIKED YOU (waiting list): fetched only for the Matches tab so the
+  // deck query stays lean. Liking back from here is an instant match.
+  const { data: likesYouData, isLoading: loadingLikesYou } = useQuery({
+  queryKey: ['likes-you'],
+  queryFn: () => api.get('/matches/likes-you').then((r) => r.data),
+  enabled: view === 'matches',
+  staleTime: 30_000,
+  });
+  const waiting = likesYouData?.users || [];
+  const [likeBackId, setLikeBackId] = useState<string | null>(null);
+
+  const likeBackMutation = useMutation({
+  mutationFn: (receiverId: string) => api.post('/matches/like', { receiverId }).then((r) => r.data),
+  onMutate: (receiverId) => setLikeBackId(receiverId),
+  onSuccess: (data, receiverId) => {
+  const u = waiting.find((w: any) => w.id === receiverId);
+  if (data?.matched) {
+  setMatchBanner({ name: u?.displayName || 'Someone', username: u?.username || '', criteria: data.criteria });
+  } else {
+  toast('Like sent');
+  }
+  // Remove the answered row optimistically; server state follows.
+  queryClient.setQueryData(['likes-you'], (old: any) =>
+  old ? { ...old, users: (old.users || []).filter((x: any) => x.id !== receiverId) } : old,
+  );
+  refreshAll();
+  },
+  onError: (e: any) => toast.error(e.response?.data?.error || 'Could not like back'),
+  onSettled: () => setLikeBackId(null),
+  });
 
  const users = deck?.users || [];
  const currentIndex = 0; // each action moves to the next card; page refetch gives a fresh deck
  const currentUser = users[currentIndex];
  const matches = matchesData?.matches || [];
 
- // Reset the photo carousel whenever a new card comes up
- useEffect(() => {
- setPhotoIdx(0);
- }, [currentUser?.id]);
+  // Reset the photo carousel whenever a new card comes up
+  useEffect(() => {
+  setPhotoIdx(0);
+  setBrokenPhotos([]);
+  }, [currentUser?.id]);
 
- /** All displayable photos of the current card: stored slots first, then avatarUrl. */
- const pv = usePhotoVersion(); // token rotation → rebuild URLs → images reload
- const cardPhotos: string[] = currentUser
- ? [
- ...(currentUser.photos || []).map((p: any) => photoSrc(p.id)),
- currentUser.avatarUrl || null,
- ].filter(Boolean as any)
- : [];
+  /** All displayable photos of the current card: stored slots first, then avatarUrl.
+   * URLs that failed to load are dropped (expired tokens, deleted files) so a
+   * broken <img> never bricks the card — the Avatar fallback renders instead. */
+  const pv = usePhotoVersion(); // token rotation → rebuild URLs → images reload
+  const [brokenPhotos, setBrokenPhotos] = useState<string[]>([]);
+  const cardPhotos: string[] = currentUser
+  ? [
+  ...(currentUser.photos || []).map((p: any) => photoSrc(p.id)),
+  currentUser.avatarUrl || null,
+  ].filter((u) => Boolean(u) && !brokenPhotos.includes(u as string)) as string[]
+  : [];
+  // Clamp: the photo list can shrink under a stale index (recycled cards,
+  // filtered broken URLs) — never render src={undefined}.
+  const safePhotoIdx = Math.min(photoIdx, Math.max(cardPhotos.length - 1, 0));
 
- const refreshAll = () => {
- queryClient.invalidateQueries({ queryKey: ['match-discover'] });
- queryClient.invalidateQueries({ queryKey: ['matches'] });
- queryClient.invalidateQueries({ queryKey: ['match-stats'] });
- };
+  const refreshAll = () => {
+  queryClient.invalidateQueries({ queryKey: ['match-discover'] });
+  queryClient.invalidateQueries({ queryKey: ['matches'] });
+  queryClient.invalidateQueries({ queryKey: ['match-stats'] });
+  queryClient.invalidateQueries({ queryKey: ['likes-you'] });
+  };
 
- const actionMutation = useMutation({
- mutationFn: ({ receiverId, action }: { receiverId: string; action: 'like' | 'pass' }) =>
- api.post(`/matches/${action}`, { receiverId }).then((r) => r.data),
- onSuccess: (data) => {
- if (data?.matched) {
- setMatchBanner({
- name: currentUser?.displayName || 'Someone',
- username: currentUser?.username || '',
- criteria: data.criteria,
- });
- }
- // Move past the actioned card; refetch the deck when the page runs dry
- if (users.length <= 1) {
- setDeckPage((p) => p + 1);
- } else {
- queryClient.setQueryData(['match-discover', deckPage], (old: any) =>
- old ? { ...old, users: old.users.slice(1) } : old,
- );
- }
- refreshAll();
- },
- onError: (e: any) => {
- const msg = e.response?.data?.error || 'Something went wrong';
- toast.error(msg);
- // Rate-limited or blocked — still advance so the user isn't stuck on the card
- if (users.length <= 1) setDeckPage((p) => p + 1);
- else queryClient.setQueryData(['match-discover', deckPage], (old: any) => old ? { ...old, users: old.users.slice(1) } : old);
- },
- });
+  // Which swipe is in flight (like vs pass tracked separately so a pending
+  // pass never freezes the Like button and vice versa).
+  const [pendingAction, setPendingAction] = useState<{ receiverId: string; action: 'like' | 'pass' } | null>(null);
+
+  const actionMutation = useMutation({
+  mutationFn: ({ receiverId, action }: { receiverId: string; action: 'like' | 'pass' }) =>
+  api.post(`/matches/${action}`, { receiverId }).then((r) => r.data),
+  onMutate: (v) => {
+  setPendingAction(v);
+  // Snapshot the card being acted on — onSuccess must use THIS, not the
+  // (possibly already advanced) currentUser closure, or fast double-swipes
+  // show the wrong name and slice the wrong card.
+  return { user: currentUser };
+  },
+  onSuccess: (data, variables, context: any) => {
+  const acted = context?.user;
+  if (data?.matched) {
+  setMatchBanner({
+  name: acted?.displayName || 'Someone',
+  username: acted?.username || '',
+  criteria: data.criteria,
+  });
+  }
+  // Move past the ACTIONED card by id (not blind slice(1) — safe under
+  // races, page wraps and likes-you boosts that reorder the deck).
+  queryClient.setQueryData(['match-discover', deckPage], (old: any) =>
+  old ? { ...old, users: (old.users || []).filter((u: any) => u.id !== variables.receiverId), totalRemaining: Math.max((old.totalRemaining ?? 1) - 1, 0) } : old,
+  );
+  // Refetch the deck when the page runs dry
+  if (users.length <= 1) {
+  setDeckPage((p) => p + 1);
+  }
+  refreshAll();
+  },
+  onError: (e: any, variables) => {
+  const msg = e.response?.data?.error || 'Something went wrong';
+  toast.error(msg);
+  // Rate-limited or blocked — still advance past the stuck card so the
+  // user isn't frozen on it.
+  queryClient.setQueryData(['match-discover', deckPage], (old: any) => old ? { ...old, users: (old.users || []).filter((u: any) => u.id !== variables.receiverId) } : old);
+  if (users.length <= 1) setDeckPage((p) => p + 1);
+  },
+  onSettled: () => setPendingAction(null),
+  });
 
  const unmatchMutation = useMutation({
  mutationFn: (matchId: string) => api.delete(`/matches/${matchId}`),
@@ -209,9 +263,20 @@ export default function MatchesPage() {
  setShowPrefs(true);
  };
 
- return (
- <div>
- <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+  // Escape closes the match banner / prefs modal (focus-lite: no trap, but
+  // keyboard users are never stuck).
+  useEffect(() => {
+  if (!matchBanner && !showPrefs) return;
+  const onKey = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') { setMatchBanner(null); setShowPrefs(false); }
+  };
+  window.addEventListener('keydown', onKey);
+  return () => window.removeEventListener('keydown', onKey);
+  }, [matchBanner, showPrefs]);
+
+  return (
+  <div>
+  <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
  <h1 className="font-display font-bold text-2xl text-ink flex items-center gap-2">
  <Heart size={22} strokeWidth={2.5} className="text-nb-pink fill-current" /> Find Match
  </h1>
@@ -248,7 +313,7 @@ export default function MatchesPage() {
  {matchBanner && (
  <div className="fixed inset-0 z-[80] bg-black/60 overflow-y-auto overscroll-contain" onClick={() => setMatchBanner(null)}>
  <div className="min-h-full flex items-center justify-center p-4" onClick={() => setMatchBanner(null)}>
- <div className="nb-card bg-nb-yellow p-8 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
+  <div className="nb-card bg-nb-yellow p-6 sm:p-8 max-w-sm w-full min-w-0 text-center" role="dialog" aria-modal="true" aria-label="It's a match" onClick={(e) => e.stopPropagation()}>
  <PartyPopper size={48} strokeWidth={2.5} className="mx-auto mb-3 text-ink" />
  <h2 className="font-display font-bold text-2xl mb-1">It's a Match!</h2>
  <p className="font-body text-sm">
@@ -294,10 +359,15 @@ export default function MatchesPage() {
  {showPrefs && (
   <div className="fixed inset-0 z-[80] bg-black/60 overflow-y-auto overscroll-contain" onClick={() => setShowPrefs(false)}>
   <div className="min-h-full flex items-center justify-center p-3 sm:p-4 pb-[calc(2rem+env(safe-area-inset-bottom))]" onClick={() => setShowPrefs(false)}>
-  <div className="nb-card bg-white p-4 sm:p-6 max-w-sm w-full min-w-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
- <h2 className="font-display font-bold text-xl mb-4 flex items-center gap-2">
- <SlidersHorizontal size={18} strokeWidth={2.5} /> Discovery preferences
- </h2>
+  <div className="nb-card bg-white p-4 sm:p-6 max-w-sm w-full min-w-0 overflow-hidden" role="dialog" aria-modal="true" aria-label="Discovery preferences" onClick={(e) => e.stopPropagation()}>
+  <h2 className="font-display font-bold text-xl mb-1 flex items-center gap-2">
+  <SlidersHorizontal size={18} strokeWidth={2.5} /> Discovery preferences
+  </h2>
+  {!savedPrefs ? (
+  <p className="text-xs font-body text-gray-500 mb-4" role="status">Loading your saved filters…</p>
+  ) : (
+  <p className="text-xs font-body text-gray-500 mb-4">Filters apply to your college deck instantly on save.</p>
+  )}
 
  <label className="block font-display font-semibold text-sm mb-2">Show me</label>
  <div className="flex gap-2 mb-4 flex-wrap">
@@ -395,12 +465,12 @@ export default function MatchesPage() {
  </div>
  </div>
 
- <div className="flex gap-2 justify-end">
- <button onClick={() => setShowPrefs(false)} className="nb-btn bg-white text-sm">Cancel</button>
- <button onClick={() => savePrefsMutation.mutate()} disabled={savePrefsMutation.isPending} className="nb-btn-orange text-sm">
- {savePrefsMutation.isPending ? 'Saving...' : 'Save'}
- </button>
- </div>
+  <div className="flex gap-2 justify-end">
+  <button onClick={() => setShowPrefs(false)} className="nb-btn bg-white text-sm">Cancel</button>
+  <button onClick={() => savePrefsMutation.mutate()} disabled={savePrefsMutation.isPending || !savedPrefs} aria-busy={savePrefsMutation.isPending} title={!savedPrefs ? 'Wait for your saved filters to load' : undefined} className="nb-btn-orange text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+  {savePrefsMutation.isPending ? 'Saving...' : 'Save'}
+  </button>
+  </div>
  </div>
  </div>
  </div>
@@ -419,12 +489,15 @@ export default function MatchesPage() {
  Matching is for real people — every profile shows at least one photo.
  Add yours and your deck unlocks instantly.
  </p>
- <button
- onClick={() => navigate(`/profile/${useAuthStore.getState().user?.username || ''}`)}
- className="nb-btn-orange text-sm inline-flex items-center gap-1.5"
- >
- <Camera size={14} strokeWidth={2.5} /> Add your photos
- </button>
+  <button
+  onClick={() => {
+  const username = useAuthStore.getState().user?.username;
+  navigate(username ? `/profile/${username}` : '/home');
+  }}
+  className="nb-btn-orange text-sm inline-flex items-center gap-1.5"
+  >
+  <Camera size={14} strokeWidth={2.5} /> Add your photos
+  </button>
  </div>
  ) : loadingDiscover ? (
  <LoadingSpinner />
@@ -445,9 +518,10 @@ export default function MatchesPage() {
   <div className="nb-card p-4 sm:p-6 max-w-md mx-auto relative overflow-hidden min-w-0">
   {/* Pass — top corner, like every real swipe app */}
   <button
-  onClick={() => actionMutation.mutate({ receiverId: currentUser.id, action: 'pass' })}
-  disabled={actionMutation.isPending}
-  className="absolute top-3 right-3 w-10 h-10 bg-white border-nb-2 border-ink flex items-center justify-center hover:bg-nb-pink hover:text-white transition-colors z-10 disabled:opacity-50"
+  onClick={() => !pendingAction && actionMutation.mutate({ receiverId: currentUser.id, action: 'pass' })}
+  disabled={pendingAction?.action === 'pass'}
+  aria-busy={pendingAction?.action === 'pass'}
+  className="absolute top-3 right-3 w-10 h-10 bg-white border-nb-2 border-ink flex items-center justify-center hover:bg-nb-pink hover:text-white transition-colors z-10 disabled:opacity-50 disabled:cursor-not-allowed"
   title="Pass"
   aria-label="Pass"
   >
@@ -461,43 +535,54 @@ export default function MatchesPage() {
   <div className="relative mb-4">
   <div className="nb-card overflow-hidden !p-0">
    <img
-   src={cardPhotos[photoIdx]}
+   key={cardPhotos[safePhotoIdx]}
+   src={cardPhotos[safePhotoIdx]}
    alt={currentUser.displayName}
    decoding="async"
    draggable={false}
    loading="lazy"
+   onError={() => setBrokenPhotos((b) => [...b, cardPhotos[safePhotoIdx]])}
    className="w-full aspect-[4/5] max-h-[52dvh] sm:max-h-[55vh] object-cover bg-nb-cream"
    />
   </div>
- {cardPhotos.length > 1 && (
- <>
- <button
- onClick={() => setPhotoIdx((i) => (i - 1 + cardPhotos.length) % cardPhotos.length)}
- className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/90 border-nb-2 border-ink flex items-center justify-center"
- title="Previous photo"
- >
- <ChevronLeft size={16} strokeWidth={2.5} />
- </button>
- <button
- onClick={() => setPhotoIdx((i) => (i + 1) % cardPhotos.length)}
- className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/90 border-nb-2 border-ink flex items-center justify-center"
- title="Next photo"
- >
- <ChevronRight size={16} strokeWidth={2.5} />
- </button>
- <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
- {cardPhotos.map((_, i) => (
- <span key={i} className={`w-2 h-2 border border-ink ${i === photoIdx ? 'bg-nb-yellow' : 'bg-white'}`} />
- ))}
+  {cardPhotos.length > 1 && (
+  <>
+  <button
+  onClick={() => setPhotoIdx((i) => (i - 1 + cardPhotos.length) % cardPhotos.length)}
+  className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 border-nb-2 border-ink flex items-center justify-center"
+  title="Previous photo"
+  aria-label="Previous photo"
+  >
+  <ChevronLeft size={16} strokeWidth={2.5} />
+  </button>
+  <button
+  onClick={() => setPhotoIdx((i) => (i + 1) % cardPhotos.length)}
+  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-white/90 border-nb-2 border-ink flex items-center justify-center"
+  title="Next photo"
+  aria-label="Next photo"
+  >
+  <ChevronRight size={16} strokeWidth={2.5} />
+  </button>
+  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5" role="tablist" aria-label="Photos">
+  {cardPhotos.map((_, i) => (
+  <button
+  key={i}
+  role="tab"
+  aria-selected={i === safePhotoIdx}
+  aria-label={`Photo ${i + 1} of ${cardPhotos.length}`}
+  onClick={() => setPhotoIdx(i)}
+  className={`w-2.5 h-2.5 border border-ink ${i === safePhotoIdx ? 'bg-nb-yellow' : 'bg-white'}`}
+  />
+  ))}
+  </div>
+  </>
+  )}
  </div>
- </>
- )}
- </div>
- ) : (
- <div className="mb-4">
- <Avatar src={currentUser.avatarUrl} name={currentUser.displayName} size="xl" className="mx-auto" />
- </div>
- )}
+  ) : (
+  <div className="mb-4">
+  <Avatar src={currentUser.avatarUrl} photoId={currentUser.avatarPhotoId} color={currentUser.avatarColor} name={currentUser.displayName} size="xl" className="mx-auto" />
+  </div>
+  )}
 
   <h2 className="font-display font-bold text-xl break-words overflow-wrap-anywhere px-8">{currentUser.displayName}</h2>
 
@@ -539,26 +624,30 @@ export default function MatchesPage() {
   </div>
   )}
 
- {/* Like — the single big centered action */}
- <div className="flex items-center justify-center gap-4 mt-6">
- {/* Rewind — undo the last pass (Tinder's signature mercy button) */}
- <button
- onClick={() => rewindMutation.mutate()}
- disabled={rewindMutation.isPending}
- className="w-11 h-11 bg-white border-nb-2 border-ink flex items-center justify-center hover:bg-nb-yellow transition-colors disabled:opacity-50"
- title="Undo last pass (10 min window)"
- >
- <Undo2 size={18} strokeWidth={2.5} />
- </button>
- <button
- onClick={() => actionMutation.mutate({ receiverId: currentUser.id, action: 'like' })}
- disabled={actionMutation.isPending}
- className="nb-btn-pink w-16 h-16 !p-0 flex items-center justify-center "
- title="Like"
- >
- <Heart size={26} strokeWidth={2.5} fill="currentColor" />
- </button>
- </div>
+  {/* Like — the single big centered action */}
+  <div className="flex items-center justify-center gap-4 mt-6">
+  {/* Rewind — undo the last pass (Tinder's signature mercy button) */}
+  <button
+  onClick={() => !rewindMutation.isPending && rewindMutation.mutate()}
+  disabled={rewindMutation.isPending}
+  aria-busy={rewindMutation.isPending}
+  className="w-11 h-11 bg-white border-nb-2 border-ink flex items-center justify-center hover:bg-nb-yellow transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+  title="Undo last pass (10 min window)"
+  aria-label="Undo last pass"
+  >
+  <Undo2 size={18} strokeWidth={2.5} />
+  </button>
+  <button
+  onClick={() => !pendingAction && actionMutation.mutate({ receiverId: currentUser.id, action: 'like' })}
+  disabled={pendingAction?.action === 'like'}
+  aria-busy={pendingAction?.action === 'like'}
+  className="nb-btn-pink w-16 h-16 !p-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+  title="Like"
+  aria-label={`Like ${currentUser.displayName}`}
+  >
+  <Heart size={26} strokeWidth={2.5} fill="currentColor" />
+  </button>
+  </div>
 
   {deck && (
   <p className="mt-4 text-xs text-gray-500 font-body break-words">
@@ -574,11 +663,46 @@ export default function MatchesPage() {
  </>
  )}
 
- {view === 'matches' && (
- <>
- {loadingMatches ? (
- <LoadingSpinner />
- ) : !matches.length ? (
+  {view === 'matches' && (
+  <>
+  {/* Waiting for you — people who already liked you. Answering here is the
+      fastest path to a match; no need to wait for their card in the deck. */}
+  {loadingLikesYou ? (
+  <LoadingSpinner size="sm" />
+  ) : waiting.length > 0 ? (
+  <div className="mb-5">
+  <h2 className="font-display font-bold text-base mb-2 flex items-center gap-1.5">
+  <Heart size={16} strokeWidth={2.5} className="text-nb-pink fill-current" />
+  Waiting for you
+  <span className="px-1.5 py-0.5 text-xs font-display border-nb-2 border-ink bg-nb-yellow text-ink">{waiting.length}</span>
+  </h2>
+  <div className="flex gap-3 overflow-x-auto overscroll-x-contain pb-2 -mx-1 px-1">
+  {waiting.map((w: any) => (
+  <div key={w.id} className="nb-card p-3 w-44 shrink-0 text-center">
+  <Avatar src={w.avatarUrl} photoId={w.photos?.[0]?.id} color={w.avatarColor} name={w.displayName} className="mx-auto" />
+  <p className="font-display font-semibold text-sm mt-2 truncate">{w.displayName}{w.age ? `, ${w.age}` : ''}</p>
+  <p className="text-xs text-gray-500 truncate">{[w.course, w.college?.shortName || w.college?.name].filter(Boolean).join(' • ') || `@${w.username}`}</p>
+  {w.isVerified && <p className="text-xs text-nb-mint font-semibold mt-0.5">✓ Verified</p>}
+  <div className="flex gap-1.5 mt-2">
+  <Link to={`/profile/${w.username}`} className="nb-btn bg-white text-xs flex-1 text-center px-2 py-1.5">View</Link>
+  <button
+  onClick={() => !likeBackId && likeBackMutation.mutate(w.id)}
+  disabled={likeBackId === w.id}
+  aria-busy={likeBackId === w.id}
+  aria-label={`Like ${w.displayName} back`}
+  className="nb-btn-pink text-xs flex-1 px-2 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+  {likeBackId === w.id ? '…' : 'Like back'}
+  </button>
+  </div>
+  </div>
+  ))}
+  </div>
+  </div>
+  ) : null}
+  {loadingMatches ? (
+  <LoadingSpinner />
+  ) : !matches.length && waiting.length === 0 ? (
  <EmptyState
  icon={<HeartCrack strokeWidth={2.5} />}
  title="No matches yet"
@@ -603,11 +727,13 @@ export default function MatchesPage() {
  <MessageSquare size={12} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Chat
  </Link>
  )}
- <button
- onClick={() => unmatchMutation.mutate(match.id)}
- className="text-gray-500 hover:text-nb-pink transition-colors shrink-0 p-1"
- title="Unmatch"
- >
+  <button
+  onClick={() => !unmatchMutation.isPending && unmatchMutation.mutate(match.id)}
+  disabled={unmatchMutation.isPending}
+  aria-label={`Unmatch ${match.partner.displayName}`}
+  className="text-gray-500 hover:text-nb-pink transition-colors shrink-0 p-2 min-w-[44px] min-h-[44px] grid place-items-center disabled:opacity-50"
+  title="Unmatch"
+  >
  <UserMinus size={16} strokeWidth={2.5} />
  </button>
  </div>
@@ -645,11 +771,11 @@ export default function MatchesPage() {
  {conv.lastMessage?.isDeleted ? 'Message deleted' : conv.lastMessage?.content || 'No messages yet'}
  </p>
  </div>
- {conv.lastMessage && (
- <span className="text-[10px] text-gray-400 shrink-0">
- {formatDistanceToNow(conv.lastMessage.createdAt)}
- </span>
- )}
+  {conv.lastMessage && (
+  <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
+  {formatDistanceToNow(conv.lastMessage.createdAt)}
+  </span>
+  )}
  </>
  )}
  </Link>

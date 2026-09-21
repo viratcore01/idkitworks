@@ -41,6 +41,16 @@ With lakhs of users, in order of failure:
 This was the **single highest-leverage change** — done. Next DB lever when needed:
 raise connection_limit with a dedicated Supabase compute add-on, then PgBouncer tuning.
 
+> **MEASURED Sept 2026 — pool_red alert:** the free-tier session pooler caps at
+> `pool_size: 15` server sessions while the app alone holds `connection_limit=10`
+> persistently. Any second client (a second API instance, a dev server, or the
+> matching suite) tips it into `EMAXCONNSESSION`, and every parallel-wave read
+> (the deck first) starts 500ing — 12/12 `/discover` polls failed over 2 min
+> with zero local pool timeouts. Until the pool is bigger: keep Render's
+> `connection_limit` at 4–5 (one instance, low concurrency — plenty), run
+> scripts/suites at `connection_limit=2`, and never run two servers + the suite
+> at once. Long-term: dedicated compute or transaction-mode pooling.
+
 ### 3.2 Kill chat polling → turn on the Socket.IO layer you already have
 The server side exists (`server.ts`). On the client:
 - connect with the access token, join `user:{id}` on login

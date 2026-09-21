@@ -250,7 +250,7 @@ Socket.IO (same process)   PostgreSQL (Supabase) — 19 tables
 
 ## 6. Quality Assurance — the worst-case suite
 
-`server/scripts/test-matching.ts` — a **40-case adversarial suite** that runs against the real API + real DB (throwaway users, self-cleaning, non-zero exit on failure):
+`server/scripts/test-matching.ts` — a **59-case adversarial suite** that runs against the real API + real DB (throwaway users, self-cleaning, non-zero exit on failure):
 
 - Idempotent double-swipes (like & pass races) → exactly one row
 - Mutual-like race → exactly one match, both notifications, once
@@ -330,4 +330,6 @@ Production guard: API refuses to boot with weak secrets when `NODE_ENV=productio
 
 ---
 
-*This PRD reflects the product as built and verified (40/40 worst-case suite passing; all flows live-tested against the production database).*
+*This PRD reflects the product as built and verified (59-case adversarial suite;
+51/59 passing live — the 8 deck-read cases are infra-blocked by a saturated
+Supabase session pooler, zero app errors; see SCALING.md pool note).*

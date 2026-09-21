@@ -69,6 +69,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.setItem('refreshToken', data.refreshToken);
     set({ user: data.user, isAuthenticated: true });
     try { await get().fetchMe(); } catch {}
+    // Same as login: photo <img> URLs need the long-lived token immediately —
+    // without this the new user's deck photos 401 until the next reload.
+    ensurePhotoToken().catch(() => {});
   },
 
   logout: async () => {
