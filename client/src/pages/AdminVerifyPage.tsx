@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, X, Check, Inbox, GraduationCap } from 'lucide-react';
+import { ShieldCheck, X, Check, Inbox, GraduationCap, ArrowLeft } from 'lucide-react';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
@@ -58,6 +59,16 @@ export default function AdminVerifyPage() {
 
  return (
  <div className="max-w-3xl mx-auto p-4 sm:p-6">
+ {/* Way back: to the ops console, or straight to the student app — this
+     page renders OUTSIDE the AdminLayout shell, so nothing else offers it. */}
+ <div className="flex items-center gap-2 mb-4">
+ <Link to="/admin/ids" className="nb-btn bg-white text-xs inline-flex items-center gap-1.5">
+ <ArrowLeft size={14} strokeWidth={2.5} /> Ops console
+ </Link>
+ <Link to="/home" className="nb-btn bg-white text-xs inline-flex items-center gap-1.5">
+ <ShieldCheck size={14} strokeWidth={2.5} /> Back to home
+ </Link>
+ </div>
  <div className="flex items-center gap-3 mb-6">
  <div className="w-11 h-11 bg-nb-violet/15 flex items-center justify-center shrink-0">
  <GraduationCap size={22} className="text-nb-violet" />

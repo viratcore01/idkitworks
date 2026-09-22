@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   ShieldCheck, LayoutDashboard, IdCard, Flag, Users, Newspaper,
-  Activity, Megaphone, ArrowLeft, LogOut, Search, Command, Building2,
+  Activity, Megaphone, ArrowLeft, LogOut, Search, Command, Building2, Home,
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
@@ -107,20 +107,50 @@ export default function AdminLayout() {
 
       {/* Main column */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Mobile nav — sticky so ops tabs stay reachable on long queues */}
-        <div className="md:hidden flex gap-1 overflow-x-auto overscroll-x-contain p-2 border-b border-white/10 bg-[#0B1120] sticky top-0 z-30">
-          {NAV.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.end}
-              className={({ isActive }) =>
-                `flex items-center gap-1.5 px-3 py-2.5 min-h-[44px] text-xs font-bold shrink-0 ${isActive ? 'bg-[#FBBF24] text-[#0F172A]' : 'text-slate-300'}`
-              }
+        {/* Mobile bar — sticky so ops tabs stay reachable on long queues.
+            Home (back to the student app) + Logout live HERE because the
+            sidebar is hidden below md — without this row there was no way
+            back to the main screen on a phone. */}
+        <div className="md:hidden sticky top-0 z-30 border-b border-white/10 bg-[#0B1120]">
+          <div className="flex items-center justify-between gap-2 px-2 pt-2">
+            <button
+              onClick={() => navigate('/home')}
+              aria-label="Back to home screen"
+              className="flex items-center gap-1.5 px-3 py-2.5 min-h-[44px] text-xs font-bold shrink-0 bg-[#FBBF24] text-[#0F172A]"
             >
-              {n.icon} {n.label}
-            </NavLink>
-          ))}
+              <Home size={15} strokeWidth={2.5} /> Home
+            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPalette(true)}
+                aria-label="Open command palette"
+                className="flex items-center justify-center w-11 h-11 text-slate-300 hover:text-white"
+              >
+                <Command size={17} />
+              </button>
+              <button
+                onClick={handleLogout}
+                aria-label="Logout"
+                className="flex items-center justify-center w-11 h-11 text-slate-300 hover:text-white"
+              >
+                <LogOut size={17} />
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-1 overflow-x-auto overscroll-x-contain p-2">
+            {NAV.map((n) => (
+              <NavLink
+                key={n.to}
+                to={n.to}
+                end={n.end}
+                className={({ isActive }) =>
+                  `flex items-center gap-1.5 px-3 py-2.5 min-h-[44px] text-xs font-bold shrink-0 ${isActive ? 'bg-[#FBBF24] text-[#0F172A]' : 'text-slate-300'}`
+                }
+              >
+                {n.icon} {n.label}
+              </NavLink>
+            ))}
+          </div>
         </div>
         <main className="flex-1 min-w-0 p-3 sm:p-6 max-w-6xl w-full mx-auto overflow-x-clip">
           <div className="min-w-0 [&_table]:block [&_table]:overflow-x-auto [&_table]:max-w-full [&_table]:whitespace-nowrap sm:[&_table]:table sm:[&_table]:whitespace-normal">

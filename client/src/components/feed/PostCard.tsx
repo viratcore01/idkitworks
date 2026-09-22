@@ -90,7 +90,6 @@ export default function PostCard({ post, detailView = false, activeTab = 'all' }
 
  const authorName = post.isAnonymous ? 'Anonymous Student' : post.author.displayName;
  const authorUsername = post.isAnonymous ? null : post.author.username;
- const authorAvatar = post.isAnonymous ? null : post.author.avatarUrl;
 
   return (
   <div className={`nb-card p-3 sm:p-4 mb-3 sm:mb-4 animate-slide-up min-w-0 overflow-hidden ${post.type === 'CONFESSION' ? 'border-nb-lilac' : ''}`}>
@@ -102,7 +101,7 @@ export default function PostCard({ post, detailView = false, activeTab = 'all' }
  </div>
  ) : (
  <Link to={`/profile/${post.author.username}`}>
- <Avatar src={post.author.avatarUrl} photoId={post.author.avatarPhotoId} name={post.author.displayName} />
+ <Avatar src={post.author.avatarUrl} photoId={post.author.avatarPhotoId} color={(post.author as any).avatarColor} name={post.author.displayName} />
  </Link>
  )}
 

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
 import Logo from '@/components/common/Logo';
-import { bestAvatarSrc } from '@/utils/photo';
+import Avatar from '@/components/common/Avatar';
 import { Home, Heart, Bell, Settings, Bookmark } from 'lucide-react';
 
 const navItems = [
@@ -68,17 +68,15 @@ export default function Sidebar() {
  `nb-sidebar-link ${isActive ? 'active' : 'text-white/90 hover:text-ink'}`
  }
  >
- {bestAvatarSrc(user) ? (
- <img
- src={bestAvatarSrc(user)!}
- alt=""
- className="w-8 h-8 nb-avatar"
+ {/* Avatar handles photoId-first resolution + token self-heal */}
+ <Avatar
+ photoId={user?.avatarPhotoId}
+ src={user?.avatarUrl}
+ color={user?.avatarColor}
+ name={user?.displayName || '?'}
+ size="sm"
+ className="!border-white"
  />
- ) : (
- <div className="w-8 h-8 bg-nb-violet border-nb-2 border-white flex items-center justify-center text-white text-sm font-bold">
- {user?.displayName?.[0]?.toUpperCase() || '?'}
- </div>
- )}
  <div className="flex-1 min-w-0">
  <p className="font-display text-sm font-semibold truncate">
  {user?.displayName}

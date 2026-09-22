@@ -132,7 +132,7 @@ export default function ProfilePage() {
   <div className="min-w-0 overflow-x-clip">
   <div className="nb-card p-4 sm:p-6 mb-4 min-w-0 overflow-hidden">
   <div className="flex flex-col min-[420px]:flex-row min-[420px]:items-start gap-3 sm:gap-4 min-w-0">
-  <Avatar src={profile.avatarUrl} photoId={profile.photos?.find((p: any) => p.slot === 0)?.id} name={profile.displayName} size="lg" color={profile.avatarColor} />
+  <Avatar src={profile.avatarUrl} photoId={profile.avatarPhotoId ?? profile.photos?.find((p: any) => p.slot === 0)?.id} name={profile.displayName} size="lg" color={profile.avatarColor} />
   <div className="flex-1 min-w-0">
   <div className="flex items-center gap-2 flex-wrap min-w-0">
   <h1 className="font-display font-bold text-xl break-words min-w-0">{profile.displayName}</h1>

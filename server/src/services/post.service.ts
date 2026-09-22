@@ -213,7 +213,7 @@ export class PostService {
       where: { id: postId },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true, college: true, course: true, year: true, collegeId: true, isActive: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, avatarColor: true, college: true, course: true, year: true, collegeId: true, isActive: true },
         },
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
         likes: { where: { userId }, select: { userId: true } },

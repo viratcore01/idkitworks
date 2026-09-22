@@ -743,7 +743,7 @@ setShowPrefs(true);
   <div className="flex gap-3 overflow-x-auto overscroll-x-contain pb-2 -mx-1 px-1">
   {waiting.map((w: any) => (
   <div key={w.id} className="nb-card p-3 w-44 shrink-0 text-center">
-  <Avatar src={w.avatarUrl} photoId={w.photos?.[0]?.id} color={w.avatarColor} name={w.displayName} className="mx-auto" />
+  <Avatar src={w.avatarUrl} photoId={w.avatarPhotoId ?? w.photos?.[0]?.id} color={w.avatarColor} name={w.displayName} className="mx-auto" />
   <p className="font-display font-semibold text-sm mt-2 truncate">{w.displayName}{w.age ? `, ${w.age}` : ''}</p>
   <p className="text-xs text-gray-500 truncate">{[w.course, w.college?.shortName || w.college?.name].filter(Boolean).join(' • ') || `@${w.username}`}</p>
   {w.isVerified && <p className="text-xs text-nb-mint font-semibold mt-0.5">✓ Verified</p>}

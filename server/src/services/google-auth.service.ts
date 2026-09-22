@@ -160,6 +160,7 @@ export interface GoogleAuthResult {
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    avatarPhotoId: string | null;
     avatarColor: string | null;
     collegeId: string | null;
     isProfileSetup: boolean;
@@ -236,6 +237,7 @@ export async function googleAuth(idToken: string): Promise<GoogleAuthResult> {
       username: user.username,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      avatarPhotoId: (user as any).avatarPhotoId ?? null,
       avatarColor: user.avatarColor,
       collegeId: user.collegeId ?? null,
       isProfileSetup: !!(user.collegeId && user.course),

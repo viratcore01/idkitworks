@@ -26,6 +26,7 @@ interface AuthState {
   fetchMe: () => Promise<void>;
   retryBoot: () => Promise<void>;
   updateProfile: (data: any) => Promise<void>;
+  refreshUser: () => Promise<void>;
   applyCollegeChange: (college: User['college']) => void;
 }
 
@@ -156,6 +157,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   updateProfile: async (profileData) => {
     const { data } = await api.patch('/auth/me', profileData);
     set((s) => ({ user: s.user ? { ...s.user, ...data } : null }));
+  },
+
+  /** Re-pull /auth/me — called after avatar/photo changes so the new profile
+   *  picture shows EVERYWHERE at once (Topbar, Sidebar, MobileNav, profile
+   *  header) without waiting for the next refetch or a page reload. */
+  refreshUser: async () => {
+    try {
+      const { data } = await api.get('/auth/me');
+      set({ user: data, isAuthenticated: true });
+    } catch { /* non-fatal: next refetch will catch up */ }
   },
 
   /**

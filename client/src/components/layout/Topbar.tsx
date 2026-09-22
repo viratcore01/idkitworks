@@ -8,7 +8,7 @@ import { getSocket, onDebouncedEvent } from '@/services/realtime';
 import { useSocketLive } from '@/hooks/useSocketLive';
 import Avatar from '@/components/common/Avatar';
 import Logo from '@/components/common/Logo';
-import { bestAvatarSrc, photoSrc } from '@/utils/photo';
+import { photoSrc } from '@/utils/photo';
 
 export default function Topbar() {
  const { user, isIncognito, toggleIncognito } = useAuthStore();
@@ -226,13 +226,8 @@ export default function Topbar() {
  title="Your profile"
  className="block shrink-0"
  >
- {bestAvatarSrc(user) ? (
- <img src={bestAvatarSrc(user)!} alt="" className="w-9 h-9 nb-avatar !border-white" />
- ) : (
- <div className="w-9 h-9 bg-nb-violet border-nb-2 border-white flex items-center justify-center text-white text-sm font-bold">
- {user?.displayName?.[0]?.toUpperCase() || '?'}
- </div>
- )}
+ {/* Avatar handles photoId-first resolution + token self-heal */}
+ <Avatar photoId={user?.avatarPhotoId} src={user?.avatarUrl} color={user?.avatarColor} name={user?.displayName || '?'} size="md" className="!w-9 !h-9 !text-sm !border-white" />
  </Link>
  </div>
  </div>

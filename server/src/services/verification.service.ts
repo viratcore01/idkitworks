@@ -147,7 +147,7 @@ export class VerificationService {
       prisma.idVerification.findMany({
         where,
         include: {
-          user: { select: { id: true, username: true, displayName: true, email: true, avatarUrl: true, college: { select: { name: true, shortName: true } } } },
+          user: { select: { id: true, username: true, displayName: true, email: true, avatarUrl: true, avatarPhotoId: true, avatarColor: true, college: { select: { name: true, shortName: true } } } },
         },
         orderBy: { createdAt: 'asc' },
         skip: page * take,

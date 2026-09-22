@@ -11,7 +11,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
 
 export default function ProfileSetupPage() {
- const { user, updateProfile, fetchMe } = useAuthStore();
+ const { user, updateProfile, fetchMe, refreshUser } = useAuthStore();
  const navigate = useNavigate();
  const photoVersion = usePhotoVersion(); // token rotation → thumbnails reload
  const [college, setCollege] = useState<CollegeOption | null>(
@@ -47,6 +47,8 @@ export default function ProfileSetupPage() {
  await api.post('/users/me/photos', fd);
  const { data } = await api.get('/auth/me');
  setSlots(data.photos || []);
+ // New avatar propagates to Topbar/Sidebar/MobileNav immediately.
+ await refreshUser();
  toast.success(slot === 0 ? 'Profile picture set' : 'Photo added');
  } catch (e: any) {
  toast.error(e.response?.data?.error || 'Upload failed');
@@ -60,6 +62,7 @@ export default function ProfileSetupPage() {
  try {
  await api.delete(`/users/me/photos/${photo.id}`);
  setSlots((s) => s.filter((p) => p.id !== photo.id));
+ await refreshUser(); // keep the shell avatar in sync with the removal
  } catch {
  /* non-fatal */
  } finally {

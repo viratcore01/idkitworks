@@ -5,6 +5,7 @@ import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
 import ImageEditorModal from '@/components/common/ImageEditorModal';
 import { photoSrc, usePhotoVersion } from '@/utils/photo';
+import { useAuthStore } from '@/store/auth.store';
 import toast from 'react-hot-toast';
 
 const AVATAR_COLORS = [
@@ -52,6 +53,9 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  const [editing, setEditing] = useState<{ slot: number; file: File } | null>(null);
  const [isSaving, setIsSaving] = useState(false);
  const photoVersion = usePhotoVersion(); // token rotation → thumbnails reload
+ // Avatar changes must reach the whole shell (Topbar/Sidebar/MobileNav), not
+ // just this modal — so photo add/remove re-syncs the logged-in user.
+ const refreshUser = useAuthStore((s) => s.refreshUser);
 
  const { data: interests } = useQuery({
  queryKey: ['interests'],
@@ -75,6 +79,7 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  const refreshSlots = async () => {
  const { data } = await api.get('/auth/me');
  setSlots(data.photos || []);
+ refreshUser(); // new profile pic → Topbar/Sidebar/MobileNav update too
  };
 
  const handleUpload = async (slot: number, file: File | undefined) => {

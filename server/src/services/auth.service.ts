@@ -40,6 +40,7 @@ interface AuthTokens {
     username: string;
     displayName: string;
     avatarUrl: string | null;
+    avatarPhotoId: string | null;
     avatarColor: string | null;
     collegeId: string | null;
     isProfileSetup: boolean;
@@ -60,6 +61,7 @@ function createAuthResponse(user: any, accessToken: string, refreshToken: string
       username: user.username,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      avatarPhotoId: user.avatarPhotoId ?? null,
       avatarColor: user.avatarColor,
       // College gate key: the client needs it immediately after login
       collegeId: user.collegeId ?? null,
@@ -466,6 +468,7 @@ export class AuthService {
       username: user.username,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      avatarPhotoId: (user as any).avatarPhotoId ?? null,
       avatarColor: user.avatarColor,
       photos: user.photos.map((p) => ({ id: p.id, slot: p.slot })),
       bio: user.bio,
@@ -610,6 +613,7 @@ export class AuthService {
       username: user.username,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      avatarPhotoId: (user as any).avatarPhotoId ?? null,
       avatarColor: user.avatarColor,
       photos: user.photos.map((p) => ({ id: p.id, slot: p.slot })),
       bio: user.bio,
