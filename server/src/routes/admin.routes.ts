@@ -18,6 +18,7 @@ router.post('/reports', (req, res) => controller.createReport(req, res));
   router.get('/users', adminMiddleware, (req, res) => controller.listUsers(req, res));
   router.get('/users/:id', adminMiddleware, (req, res) => controller.userDetail(req, res));
   router.patch('/users/:id/role', adminMiddleware, (req, res) => controller.setRole(req, res));
+  router.patch('/users/:id', adminMiddleware, (req, res) => controller.updateUser(req, res));
   router.get('/content', adminMiddleware, (req, res) => controller.browseContent(req, res));
   router.get('/colleges', adminMiddleware, (req, res) => controller.listColleges(req, res));
   router.get('/colleges/duplicates', adminMiddleware, (req, res) => controller.duplicateColleges(req, res));

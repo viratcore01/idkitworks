@@ -659,6 +659,99 @@ export class AdminService {
    * (students, pending IDs). Super-admins see everything; college admins
    * see only their campus card.
    */
+  /**
+   * Admin/moderator update of locked profile fields.
+   * - super_admin: can update any user's locked fields
+   * - college admin: can update locked fields for users in their assigned college
+   * Fields: displayName, dateOfBirth, gender, collegeId (college change requires super_admin)
+   */
+  async updateUser(viewerId: string, role: string, targetId: string, data: {
+    displayName?: string;
+    dateOfBirth?: string | null;
+    gender?: string;
+    collegeId?: string | null;
+  }) {
+    const isSuper = role === 'super_admin';
+    const target = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: { id: true, role: true, collegeId: true, isFounder: true },
+    });
+    if (!target) {
+      const e: any = new Error('User not found'); e.status = 404; throw e;
+    }
+    if (target.isFounder) {
+      const e: any = new Error('The founder cannot be changed'); e.status = 403; throw e;
+    }
+    if (!isSuper) {
+      if (target.role !== 'user') {
+        const e: any = new Error('Only the supreme admin can moderate staff'); e.status = 403; throw e;
+      }
+      const me = await prisma.user.findUnique({
+        where: { id: viewerId },
+        select: { collegeId: true, moderatedCollegeId: true },
+      });
+      const scope = me?.moderatedCollegeId ?? me?.collegeId;
+      if (!scope || target.collegeId !== scope) {
+        const e: any = new Error('Not authorized'); e.status = 403; throw e;
+      }
+      // College admins cannot change collegeId
+      if (data.collegeId !== undefined && data.collegeId !== target.collegeId) {
+        const e: any = new Error('Cannot change college'); e.status = 403; throw e;
+      }
+    }
+
+    // Validate fields
+    const update: any = {};
+    if (data.displayName !== undefined) {
+      const name = data.displayName.trim();
+      if (name.length < 2 || name.length > 50) {
+        const e: any = new Error('Name must be 2-50 characters'); e.status = 400; throw e;
+      }
+      update.displayName = name;
+    }
+    if (data.dateOfBirth !== undefined && data.dateOfBirth !== null) {
+      const dob = new Date(data.dateOfBirth);
+      if (isNaN(dob.getTime())) {
+        const e: any = new Error('Invalid date of birth'); e.status = 400; throw e;
+      }
+      const age = (Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000);
+      if (age < 16) {
+        const e: any = new Error('User must be at least 16'); e.status = 400; throw e;
+      }
+      if (age > 100) {
+        const e: any = new Error('Invalid date of birth'); e.status = 400; throw e;
+      }
+      update.dateOfBirth = dob;
+    }
+    if (data.gender !== undefined) {
+      if (!['MALE', 'FEMALE', 'OTHER', 'UNKNOWN'].includes(data.gender)) {
+        const e: any = new Error('Invalid gender'); e.status = 400; throw e;
+      }
+      update.gender = data.gender;
+    }
+    if (isSuper && data.collegeId !== undefined) {
+      if (data.collegeId) {
+        const college = await prisma.college.findUnique({ where: { id: data.collegeId } });
+        if (!college) {
+          const e: any = new Error('College not found'); e.status = 404; throw e;
+        }
+      }
+      update.collegeId = data.collegeId || null;
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: targetId },
+      data: update,
+      select: {
+        id: true, displayName: true, dateOfBirth: true, gender: true, collegeId: true,
+        college: { select: { id: true, name: true, shortName: true } },
+      },
+    });
+    invalidateUser(targetId);
+    await this.log(viewerId, 'user:update', 'USER', targetId, updated.collegeId, undefined, { fields: Object.keys(update) });
+    return { user: updated };
+  }
+
   async listColleges(viewerId: string, role: string, q = '', limit = 20) {
     const { isSuper, collegeIds } = await this.scope(viewerId, role);
     const take = Math.min(Math.max(limit || 20, 1), 50);

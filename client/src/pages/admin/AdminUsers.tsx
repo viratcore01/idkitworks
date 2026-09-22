@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, Ban, Search, Download, X } from 'lucide-react';
+import { Check, Ban, Search, Download, X, Calendar, GraduationCap, User, Save, Loader2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import api from '@/services/api';
 import { ScopeSelect, InitialAvatar, downloadCsv, useOpsScope } from './_shared';
@@ -137,11 +137,50 @@ function InspectDrawer({ id, isSuper, onClose, onBan, onRole, busy }: {
   id: string; isSuper: boolean; onClose: () => void;
   onBan: (banned: boolean) => void; onRole: (role: string, collegeId?: string) => void; busy: boolean;
 }) {
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['ops-user-detail', id],
     queryFn: () => api.get(`/admin/users/${id}`).then((r) => r.data),
   });
   const u = data?.user;
+
+  // Edit locked fields state
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    displayName: '',
+    dateOfBirth: '',
+    gender: '',
+    collegeId: '',
+  });
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  const syncEditForm = () => {
+    if (u) {
+      setEditForm({
+        displayName: u.displayName || '',
+        dateOfBirth: u.dateOfBirth ? String(u.dateOfBirth).slice(0, 10) : '',
+        gender: u.gender || 'UNKNOWN',
+        collegeId: u.collegeId || '',
+      });
+    }
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditBusy(true);
+    setEditError('');
+    try {
+      await api.patch(`/admin/users/${id}`, editForm);
+      await queryClient.invalidateQueries({ queryKey: ['ops-user-detail', id] });
+      await queryClient.invalidateQueries({ queryKey: ['ops-users'] });
+      setEditOpen(false);
+    } catch (e: any) {
+      setEditError(e?.response?.data?.error || 'Failed to update');
+    } finally {
+      setEditBusy(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50" role="dialog" aria-label="User file">
@@ -181,6 +220,15 @@ function InspectDrawer({ id, isSuper, onClose, onBan, onRole, busy }: {
                   <button onClick={() => { if (window.confirm(`Remove @${u.username} as moderator? They lose all moderation access.`)) onRole('user'); }} disabled={busy} className="text-xs px-3 py-1.5 border border-white/25 text-slate-200 font-bold">Remove moderator</button>
                 </>
               )}
+              {(isSuper || u.role === 'user') && (
+                <button
+                  onClick={() => { syncEditForm(); setEditOpen(true); }}
+                  disabled={busy || editBusy}
+                  className="text-xs px-3 py-1.5 bg-[#6D28D9] text-white font-bold"
+                >
+                  <User size={13} className="inline mr-1" /> Edit profile
+                </button>
+              )}
             </div>
 
             <Section title={`Recent posts (${u._count?.posts || 0})`}>
@@ -190,6 +238,58 @@ function InspectDrawer({ id, isSuper, onClose, onBan, onRole, busy }: {
                 </p>
               ))}
             </Section>
+
+            <Section title="Verification trail">
+              {(data?.verifications || []).length === 0 ? <p className="text-slate-500 text-xs">Never submitted an ID.</p> : data.verifications.map((v: any) => (
+                <p key={v.id} className="text-xs text-slate-300 mb-1">{v.status} · {v.decidedBy || 'pending'} {v.decidedAt ? `· ${new Date(v.decidedAt).toLocaleDateString()}` : ''}</p>
+              ))}
+            </Section>
+
+            {/* Edit locked profile fields (admin/moderator only) */}
+            {editOpen && (
+              <div className="fixed inset-0 z-50" role="dialog" aria-label="Edit locked profile fields" onClick={() => setEditOpen(false)}>
+                <div className="absolute inset-0 bg-black/70" onClick={() => setEditOpen(false)} />
+                <div className="absolute right-0 top-0 bottom-0 w-full max-w-sm bg-[#0B1120] border-l-2 border-[#6D28D9] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-2 mb-4">
+                    <h3 className="font-display font-bold text-lg text-white">Edit locked fields</h3>
+                    <button onClick={() => setEditOpen(false)} className="ml-auto p-1.5 border border-white/20 text-slate-300 hover:border-white" aria-label="Close">
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <form onSubmit={handleEditSubmit} className="space-y-3 text-sm">
+                    {editError && <p className="text-xs text-[#F43F5E] bg-[#151D31] border border-[#F43F5E] p-2">{editError}</p>}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">Name</label>
+                      <input value={editForm.displayName} onChange={(e) => setEditForm(f => ({ ...f, displayName: e.target.value }))} className="w-full bg-[#151D31] border border-white/20 px-3 py-2 text-white outline-none focus:border-[#FBBF24] placeholder:text-slate-600" placeholder="Display name" required />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">Date of birth</label>
+                      <input type="date" value={editForm.dateOfBirth} onChange={(e) => setEditForm(f => ({ ...f, dateOfBirth: e.target.value }))} className="w-full bg-[#151D31] border border-white/20 px-3 py-2 text-white outline-none focus:border-[#FBBF24]" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">Gender</label>
+                      <select value={editForm.gender} onChange={(e) => setEditForm(f => ({ ...f, gender: e.target.value }))} className="w-full bg-[#151D31] border border-white/20 px-3 py-2 text-white outline-none focus:border-[#FBBF24]">
+                        <option value="MALE">Male</option>
+                        <option value="FEMALE">Female</option>
+                        <option value="OTHER">Other</option>
+                        <option value="UNKNOWN">Prefer not to say</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">College</label>
+                      <input value={editForm.collegeId} onChange={(e) => setEditForm(f => ({ ...f, collegeId: e.target.value }))} className="w-full bg-[#151D31] border border-white/20 px-3 py-2 text-white outline-none focus:border-[#FBBF24]" placeholder="College ID (super-admin only)" />
+                      <p className="text-[10px] text-slate-500 mt-0.5">Super-admin only. Leave blank to keep current.</p>
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <button type="button" onClick={() => setEditOpen(false)} disabled={editBusy} className="flex-1 text-xs px-3 py-1.5 border border-white/25 text-slate-300 font-bold disabled:opacity-50">Cancel</button>
+                      <button type="submit" disabled={editBusy} className="flex-1 text-xs px-3 py-1.5 bg-[#6D28D9] text-white font-bold disabled:opacity-50">
+                        {editBusy ? <><Loader2 size={13} className="inline mr-1 animate-spin" /> Saving...</> : <><Save size={13} className="inline mr-1" /> Save</>}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
 
             <Section title={`Reports against (${(data?.reportsAgainst || []).length})`}>
               {(data?.reportsAgainst || []).length === 0 ? <p className="text-slate-500 text-xs">None.</p> : data.reportsAgainst.map((r: any) => (

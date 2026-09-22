@@ -164,6 +164,18 @@ export class AdminController {
     }
   }
 
+  /** Admin/moderator update of locked profile fields. */
+  async updateUser(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.updateUser(
+        req.user!.id, req.user!.role, req.params.id as string,
+        req.body,
+      ));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
   /** Moderator console: college directory with live stats. */
   async listColleges(req: AuthRequest, res: Response) {
     try {
