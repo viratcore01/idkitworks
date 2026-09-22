@@ -74,6 +74,11 @@ export default function SettingsPage() {
   toast.success('Password set — please log in again');
   navigate('/login');
   } catch (e: any) {
+  // Fresh again, instantly: drop the spent token so the Google button comes
+  // straight back. Otherwise a wrong-account verification (server 403) would
+  // leave "Google verified" on screen with every retry doomed — stuck until
+  // a manual page reload. The typed password is kept; only proof re-runs.
+  setGoogleToken(null);
   toast.error(e?.response?.data?.error || 'Failed to set password');
   } finally {
   setIsChangingPw(false);
@@ -255,7 +260,12 @@ export default function SettingsPage() {
   }}
   />
   ) : (
+  <div className="flex items-center justify-between gap-2">
   <p className="text-sm font-semibold text-nb-violet">Google verified — now choose your password.</p>
+  <button onClick={() => setGoogleToken(null)} className="text-xs font-body text-gray-500 underline underline-offset-2 shrink-0">
+  Wrong account?
+  </button>
+  </div>
   )}
   <div>
   <label htmlFor="set-password" className="block font-display text-sm font-semibold mb-1.5">New password (min 8 characters)</label>

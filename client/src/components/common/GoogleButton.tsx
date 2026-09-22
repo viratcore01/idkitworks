@@ -30,6 +30,11 @@ declare global {
 export default function GoogleButton({ mode, onCredential }: { mode: 'login' | 'signup' | 'verify'; onCredential?: (idToken: string) => Promise<void> }) {
   const [enabled, setEnabled] = useState<{ clientId: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // True once the /health probe has exhausted its retries without confirming
+  // Google support — the button can never render, so callers (verify mode)
+  // must show a retry instead of an eternal blank.
+  const [probeFailed, setProbeFailed] = useState(false);
+  const [probeRound, setProbeRound] = useState(0);
   const btnRef = useRef<HTMLDivElement>(null);
   const loginWithGoogle = useAuthStore((s) => s.loginWithGoogle);
   const navigate = useNavigate();
@@ -42,26 +47,28 @@ export default function GoogleButton({ mode, onCredential }: { mode: 'login' | '
  // Render's free tier sleeps when idle — the first request can take 30-50s
  // to wake it, longer than the default axios timeout. Be patient and retry:
  // a cold server must never permanently hide the button.
- useEffect(() => {
- let cancelled = false;
- const probe = async (attempt: number): Promise<void> => {
- try {
- const { data } = await api.get('/health', { timeout: 45000 });
- if (!cancelled && data?.auth?.google && data?.auth?.googleClientId) {
- setEnabled({ clientId: data.auth.googleClientId });
- }
- } catch {
- if (!cancelled && attempt < 3) {
- await new Promise((r) => setTimeout(r, 1500));
- return probe(attempt + 1);
- }
- }
- };
- probe(1);
- return () => {
- cancelled = true;
- };
- }, []);
+  useEffect(() => {
+  let cancelled = false;
+  const probe = async (attempt: number): Promise<void> => {
+  try {
+  const { data } = await api.get('/health', { timeout: 45000 });
+  if (!cancelled && data?.auth?.google && data?.auth?.googleClientId) {
+  setEnabled({ clientId: data.auth.googleClientId });
+  setProbeFailed(false);
+  }
+  } catch {
+  if (!cancelled && attempt < 3) {
+  await new Promise((r) => setTimeout(r, 1500));
+  return probe(attempt + 1);
+  }
+  if (!cancelled) setProbeFailed(true);
+  }
+  };
+  probe(1);
+  return () => {
+  cancelled = true;
+  };
+  }, [probeRound]);
 
  // 2. Load Google's script, initialize, render the official button.
  useEffect(() => {
@@ -125,7 +132,27 @@ export default function GoogleButton({ mode, onCredential }: { mode: 'login' | '
  };
  }, [enabled, mode, busy, loginWithGoogle, navigate]);
 
- if (!enabled) return null;
+  if (!enabled) {
+  // Login/signup keep the legacy behavior (render nothing until confirmed).
+  // Verify mode must never leave a blank hole: show progress while probing
+  // and an explicit retry when the probe gives up — otherwise the caller
+  // shows text + a permanently disabled button, i.e. "stuck loading".
+  if (mode !== 'verify') return null;
+  if (probeFailed) {
+  return (
+  <button
+  onClick={() => {
+  setProbeFailed(false);
+  setProbeRound((r) => r + 1);
+  }}
+  className="nb-btn-ghost w-full text-sm"
+  >
+  Couldn't reach Google verification — tap to try again
+  </button>
+  );
+  }
+  return <p className="text-xs text-gray-500 font-body" role="status">Preparing Google verification…</p>;
+  }
 
   return (
   <div
