@@ -1,4 +1,4 @@
-import { prisma } from '../config/prisma';
+import { prisma, TX_OPTIONS } from '../config/prisma';
 import { hashPassword, comparePassword } from '../utils/password';
 import { checkEmail } from '../utils/email-validation';
 import {
@@ -317,6 +317,10 @@ export class AuthService {
       const e: any = new Error('The founder account cannot be deleted'); e.status = 403; throw e;
     }
 
+    // This transaction fans out into ~10 statements plus a per-conversation
+    // cleanup loop, so it needs TX_OPTIONS' budget rather than Prisma's 5s
+    // default — an account deletion that 500s halfway is the worst kind of
+    // failure to leave a user staring at.
     await prisma.$transaction(async (tx) => {
       // Notifications: received ones die; authored ones lose their actor link.
       await tx.notification.deleteMany({ where: { recipientId: userId } });
@@ -384,7 +388,7 @@ export class AuthService {
           moderatedCollegeId: null,
         },
       });
-    });
+    }, TX_OPTIONS);
 
     invalidateUser(userId);
   }

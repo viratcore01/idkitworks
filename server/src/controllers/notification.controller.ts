@@ -30,6 +30,15 @@ export class NotificationController {
     }
   }
 
+  async markRead(req: AuthRequest, res: Response) {
+    try {
+      const result = await service.markRead(req.user!.id, req.params.id as string);
+      res.json(result);
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
   async getUnreadCount(req: AuthRequest, res: Response) {
     try {
       const result = await service.getUnreadCount(req.user!.id, req.user!.collegeId);

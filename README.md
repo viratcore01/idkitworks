@@ -77,6 +77,11 @@ Drop PNGs with these names into a `screenshots/` folder and they render here.
 - Socket.IO push with REST fallback, 15-minute edit window (WhatsApp-style), unsend for everyone
 - Day separators, unread counts, block-aware at every step
 
+### 🔔 Notifications
+- **Every notification is a working link** — a like opens the post, a "you matched" opens the chat with that person, "sent you a message" opens the thread. (Match threads are created lazily and pair-idempotently, so opening one can never fork a second conversation.)
+- **Per-notification read state** — opening one clears just that badge, not the whole inbox; "Mark all read" is still there when you want it.
+- Unread counts that agree everywhere: topbar badge, sidebar badge, and the inbox header all read the same cache, and reading a DM thread clears its pings automatically.
+
 ### 🛡️ Safety & moderation
 - Student-ID verification gate before full access
 - Report posts, comments, users and messages
@@ -98,6 +103,7 @@ Zoclo is tuned against **measured production numbers**, not vibes:
 | **DB-level pagination** — keyset cursors, bounded id-lists, skip/take everywhere | The full table is never loaded into memory |
 | **Dual keep-alive pingers** (cron-job.org + GitHub Actions, [runbook](KEEP-ALIVE.md)) | The free-tier instance **never sleeps** — no 20–50s cold starts |
 | **Hardened connection pool** — pgbouncer-safe params, single source of truth | No duplicate pool settings, no Supavisor prepared-statement crashes |
+| **Explicit transaction budgets** — every `$transaction` gets `TX_OPTIONS` | Prisma's 5s default was reachable on the match path; its failure mode was a silent rollback + bare 500 |
 
 **Auth is cached, not trusted:** a 30s per-user auth cache eliminates a round-trip from *every* request, while bans, verification and college changes invalidate it instantly.
 
@@ -209,7 +215,7 @@ The API **refuses to boot** in production without strong JWT secrets and a datab
 | `/api/posts` | feed · CRUD · likes · threaded comments |
 | `/api/matches` | discover (paginated deck) · like/pass · matches · unmatch · stats · preferences · rewind |
 | `/api/messages` | conversations · threads · send · edit (15-min window) · delete |
-| `/api/notifications` | list · unread count · mark-all-read |
+| `/api/notifications` | list (cursor-paginated) · unread count · mark one read · mark-all-read |
 | `/api/search` | hyperlocal people + posts |
 | `/api/admin` | verification queue · reports · bans · takedowns · announcements · stats |
 | `/api/colleges` | directory search + curation |

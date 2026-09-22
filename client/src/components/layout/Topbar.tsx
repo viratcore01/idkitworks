@@ -203,8 +203,16 @@ export default function Topbar() {
  <span className="hidden sm:inline ml-1">{isIncognito ? 'ON' : 'Off'}</span>
  </button>
 
- <Link to="/notifications" className="nb-btn bg-nb-yellow text-ink text-sm px-3 py-1.5 relative">
- <Bell size={16} strokeWidth={2.5} />
+ {/* Icon-only control: without an explicit label the bell announced as a bare
+     "link" to screen readers. Announce the count too — it is the only reason
+     to press it. */}
+ <Link
+ to="/notifications"
+ aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+ title="Notifications"
+ className="nb-btn bg-nb-yellow text-ink text-sm px-3 py-1.5 relative"
+ >
+ <Bell size={16} strokeWidth={2.5} aria-hidden="true" />
  {unreadCount > 0 && (
  <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-nb-pink text-white text-xs font-bold border-2 border-ink flex items-center justify-center">
  {unreadCount > 9 ? '9+' : unreadCount}
@@ -212,7 +220,12 @@ export default function Topbar() {
  )}
  </Link>
 
- <Link to={`/profile/${user?.username}`}>
+ <Link
+ to={`/profile/${user?.username}`}
+ aria-label="Your profile"
+ title="Your profile"
+ className="block shrink-0"
+ >
  {bestAvatarSrc(user) ? (
  <img src={bestAvatarSrc(user)!} alt="" className="w-9 h-9 nb-avatar !border-white" />
  ) : (

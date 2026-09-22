@@ -33,6 +33,39 @@ if (process.env.DATABASE_URL) {
   process.env.DATABASE_URL = pooledDatabaseUrl(process.env.DATABASE_URL)!;
 }
 
+/**
+ * ── Interactive-transaction budgets (single source of truth) ──
+ *
+ * REPRODUCED FAILURE (not theoretical): Prisma's default interactive
+ * transaction budget is maxWait 2s / timeout 5s. The mutual-match transaction
+ * in match.service.ts runs ~6 sequential statements, and each one is a ~0.45 s
+ * DB round-trip (README) — ~2.7 s warm, over 5 s the moment the pooler is
+ * busy or a cold start lands. When the budget blows, Prisma throws
+ * `Transaction already closed: ... the timeout for this transaction was
+ * 5000 ms`, the whole transaction rolls back (the LIKE row is never written),
+ * and the error becomes `500 {"error":"Something went wrong"}`.
+ *
+ *
+ * Net user impact: tap LIKE on someone who already liked you and *nothing
+ * happens* — no match, no error message that means anything, no way to retry
+ * that helps. It is the app's single most valuable write path, and it was
+ * silently one slow round-trip away from failing.
+ *
+ * These budgets are deliberately generous and env-tunable. A long transaction
+ * is bounded work (a handful of indexed statements); a wrong 500 on a match is
+ * unbounded harm. Timeouts that are too tight are strictly worse than timeouts
+ * that are too loose — Postgres still holds row locks, so a stuck transaction
+ * self-terminates rather than hanging forever.
+ *
+ * Usage: `prisma.$transaction(fn, TX_OPTIONS)` — ALWAYS pass these. There are
+ * four interactive transactions in the codebase; all four pass it. §2d of
+ * scripts/test-matching.ts hammers the match path in a loop, because that is
+ * where the 5s default was demonstrably reachable.
+ */
+export const TX_TIMEOUT_MS = Number(process.env.DATABASE_TX_TIMEOUT_MS || 20_000);
+export const TX_MAX_WAIT_MS = Number(process.env.DATABASE_TX_MAX_WAIT_MS || 10_000);
+export const TX_OPTIONS = { maxWait: TX_MAX_WAIT_MS, timeout: TX_TIMEOUT_MS } as const;
+
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 export const prisma =

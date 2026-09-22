@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
+import { TX_OPTIONS } from '../config/prisma';
 import { prisma } from '../config/prisma';
 import { env } from '../config/env';
 import { AuthRequest } from '../types';
@@ -85,7 +86,11 @@ export async function uploadPhoto(req: AuthRequest, res: Response) {
         await tx.user.update({ where: { id: userId }, data: { avatarPhotoId: created.id } });
       }
       return created;
-    });
+    // Bulk INSERT of up to 8 MB of image bytes (the legacy Postgres-bytes path
+    // still runs whenever Storage isn't configured) — one slow write against
+    // Prisma's 5s default, which is why uploads intermittently failed at
+    // "Something went wrong" instead of reporting a real error.
+    }, TX_OPTIONS);
 
     // Best-effort cleanup of replaced storage objects (old row is already gone).
     for (const old of oldSlotPhotos) {

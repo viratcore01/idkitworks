@@ -22,11 +22,25 @@ function check(name: string, cond: boolean, detail = '') {
 }
 
 async function api(token: string, method: string, path: string, body?: any) {
-  const res = await fetch(`${BASE}/api${path}`, {
+  const send = () => fetch(`${BASE}/api${path}`, {
     method,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
+  let res: Response;
+  try {
+    res = await send();
+  } catch (e: any) {
+    // TRANSPORT-ONLY retries: fetch failed / ECONNRESET are node-side blips
+    // (dev-server restart, OS socket churn), not server answers. Retrying a
+    // network error can never double-apply a write the way retrying a 500
+    // could. A bare await here once swallowed this and mislabeled two
+    // unrelated checks as product failures.
+    const transient = e?.cause?.code === 'ECONNRESET' || e?.cause?.code === 'ECONNREFUSED' || e?.message === 'fetch failed';
+    if (!transient) throw e;
+    await new Promise((r) => setTimeout(r, 1500));
+    res = await send();
+  }
   let data: any = null;
   try { data = await res.json(); } catch { /* empty body */ }
   return { status: res.status, data };
@@ -100,13 +114,15 @@ async function main() {
   // ── 2. Mutual like → match, exactly once ──
   console.log('━━ 2. Mutual match ━━');
   r = await api(tokB, 'POST', '/matches/like', { receiverId: A.id });
-  check('B likes back → matched:true', r.status === 200 && r.data.matched === true);
+  // Detail matters here: this assertion used to fail with a bare ❌, so a
+  // transient pooler blip (500) was indistinguishable from a broken match.
+  check('B likes back → matched:true', r.status === 200 && r.data.matched === true, `HTTP ${r.status} ${JSON.stringify(r.data)}`);
   const matchCount = await prisma.match.count({ where: { OR: [{ userA: A.id, userB: B.id }, { userA: B.id, userB: A.id }] } });
-  check('exactly ONE match row', matchCount === 1);
+  check('exactly ONE match row', matchCount === 1, `got ${matchCount}`);
   r = await api(tokA, 'POST', '/matches/like', { receiverId: B.id });
-  check('like after match is a quiet no-op', r.status === 200 && r.data.matched === false);
+  check('like after match is a quiet no-op', r.status === 200 && r.data.matched === false, `HTTP ${r.status} ${JSON.stringify(r.data)}`);
   const notifs = await prisma.notification.count({ where: { type: 'MATCH', OR: [{ recipientId: A.id }, { recipientId: B.id }] } });
-  check('both got MATCH notifications', notifs === 2);
+  check('both got MATCH notifications', notifs === 2, `got ${notifs}`);
 
   // ── 2b. Match-criteria snapshot (strictly-common only) ──
   console.log('━━ 2b. Match criteria ━━');
@@ -139,6 +155,39 @@ async function main() {
   check('diverged goals excluded from criteria', rematch.data.criteria?.goals?.length === 0, JSON.stringify(rematch.data.criteria));
   check('only the shared interest appears', rematch.data.criteria?.interests?.length === 1 && rematch.data.criteria.interests[0].name === 'skateboarding', JSON.stringify(rematch.data.criteria?.interests));
   await prisma.user.update({ where: { id: B.id }, data: { relationshipGoals: ['DATING'] } });
+
+  // ── 2d. Mutual-match transaction budget (regression guard) ──
+  // The match happens inside ONE interactive transaction doing ~6 sequential
+  // statements. Against a ~0.45s-per-round-trip DB, Prisma's DEFAULT 5s budget
+  // is reachable, and blowing it is silent and total: the transaction rolls
+  // back (the LIKE row is never written), the error is swallowed into
+  // `500 Something went wrong`, and tapping LIKE on someone who already liked
+  // you simply does nothing. That is the flagship flow.
+  //
+  // This loop exercises unmatch → re-like → re-match repeatedly, so the path is
+  // hit many times while the pooler is warm-but-busy rather than measured once.
+  console.log('━━ 2d. Match transaction budget ━━');
+  let loops = 0;
+  let loopFailures = 0;
+  for (let i = 0; i < 3; i++) {
+    const current = await prisma.match.findFirst({
+      where: { OR: [{ userA: A.id, userB: B.id }, { userA: B.id, userB: A.id }] },
+      select: { id: true, status: true },
+    });
+    if (!current || current.status !== 'ACTIVE') break;
+    await api(tokA, 'DELETE', `/matches/${current.id}`);
+    // Both directions must be able to open the match, in either order.
+    const first = await api(i % 2 === 0 ? tokA : tokB, 'POST', '/matches/like', { receiverId: i % 2 === 0 ? B.id : A.id });
+    const second = first.data?.matched
+      ? first
+      : await api(i % 2 === 0 ? tokB : tokA, 'POST', '/matches/like', { receiverId: i % 2 === 0 ? A.id : B.id });
+    loops++;
+    if (second.status !== 200 || second.data?.matched !== true) {
+      loopFailures++;
+      console.log(`     ↳ cycle ${i + 1}: HTTP ${second.status} ${JSON.stringify(second.data)}`);
+    }
+  }
+  check('3 unmatch → re-match cycles all matched', loops >= 2 && loopFailures === 0, `${loops} cycles, ${loopFailures} failed`);
 
   // ── 3. Concurrent double-like race (two simultaneous B-likes from A) ──
   console.log('━━ 3. Race: simultaneous likes ━━');
@@ -371,6 +420,81 @@ async function main() {
   check('garbage token → 401', r.status === 401);
   r = await api(tokA, 'POST', '/matches/like', { receiverId: null });
   check('null receiverId → 400', r.status === 400);
+
+  // ── 10b. Notification inbox is actionable ──
+  // Every notification type must lead somewhere. DM + MATCH rows used to be
+  // dead ends (the client only navigated on postId), and the bell could only
+  // be cleared by the blanket "mark all read" — so the badge lied.
+  console.log('━━ 10b. Notification inbox ━━');
+  {
+    const pair = await prisma.match.findUnique({
+      where: { userA_userB: { userA: [A.id, B.id].sort()[0], userB: [A.id, B.id].sort()[1] } },
+      select: { status: true, id: true },
+    });
+    // The A↔B match row id, used to scope MATCH-notification assertions below
+    // (B may hold MATCH rows from other suite pairings; type alone is ambiguous).
+    const abMatchId = pair?.id as string;
+    if (pair?.status !== 'ACTIVE') {
+      await api(tokA, 'POST', '/matches/like', { receiverId: B.id });
+      await api(tokB, 'POST', '/matches/like', { receiverId: A.id });
+    }
+    const convRes = await api(tokA, 'POST', '/messages/conversation', { userId: B.id });
+    const convId = convRes.data?.id;
+    check('conversation opens for the deep-link flow', !!convId);
+
+    await api(tokB, 'PATCH', '/notifications/read');
+    const dmSend = await api(tokA, 'POST', `/messages/${convId}`, { content: 'inbox deep-link probe' });
+    check('DM sent for the inbox probe', dmSend.status === 200 || dmSend.status === 201);
+
+    // The DM notification must carry the conversationId — that IS the link.
+    const dmNotifs = await api(tokB, 'GET', '/notifications?limit=50');
+    const dmRow = (dmNotifs.data.notifications || []).find((n: any) => n.type === 'NEW_MESSAGE');
+    check('NEW_MESSAGE notification exists', !!dmRow);
+    check(
+      'NEW_MESSAGE carries metadata.conversationId',
+      dmRow?.metadata?.conversationId === convId,
+      JSON.stringify(dmRow?.metadata),
+    );
+    check('DM notification never snapshots the message body', !JSON.stringify(dmRow?.metadata || {}).includes('inbox deep-link probe'));
+
+    // Per-notification read clears exactly one badge, not the whole inbox.
+    await prisma.notification.create({
+      data: { recipientId: B.id, actorId: A.id, type: 'LIKE' as any },
+    });
+    const before = await api(tokB, 'GET', '/notifications/unread-count');
+    check('unread count is positive before single-read', before.data.count > 0, JSON.stringify(before.data));
+
+    const readOne = await api(tokB, 'PATCH', `/notifications/${dmRow.id}/read`);
+    check('single-notification read succeeds', readOne.status === 200 && readOne.data.updated === 1, JSON.stringify(readOne.data));
+    const after = await api(tokB, 'GET', '/notifications/unread-count');
+    check('single read decrements the badge by exactly one', after.data.count === before.data.count - 1, `${before.data.count} → ${after.data.count}`);
+
+    const idempotent = await api(tokB, 'PATCH', `/notifications/${dmRow.id}/read`);
+    check('re-reading the same notification is a quiet no-op', idempotent.status === 200 && idempotent.data.updated === 0);
+
+    // Another user's notification id must be a no-op, never a 403/500 that
+    // would confirm the id exists.
+    const foreign = await api(tokA, 'PATCH', `/notifications/${dmRow.id}/read`);
+    check('a foreign notification id is a no-op, not a leak', foreign.status === 200 && foreign.data.updated === 0);
+
+    const bogus = await api(tokB, 'PATCH', '/notifications/nope/read');
+    check('malformed notification id → 400', bogus.status === 400, JSON.stringify(bogus.data));
+
+    // A MATCH notification must resolve to a conversation the client can open.
+    // Scoped to THIS pair: B can hold MATCH rows from earlier suite sections
+    // (e.g. the B↔C like-back), and find() on type alone grabbed whichever
+    // came first — an id that then resolved to a different conversation and
+    // looked like "a second thread" when the product behaviour was correct.
+    const matchNotif = (await api(tokB, 'GET', '/notifications?limit=50')).data.notifications?.find(
+      (n: any) => n.type === 'MATCH' && n.matchId === abMatchId,
+    );
+    check('MATCH notification present for the inbox', !!matchNotif);
+    if (matchNotif?.actor) {
+      const reopen = await api(tokB, 'POST', '/messages/conversation', { userId: matchNotif.actor.id });
+      check('MATCH row resolves to an openable thread', reopen.status === 200 && !!reopen.data?.id);
+      check('reopening the same pair never forks a second thread', reopen.data.id === convId, `${reopen.data.id} vs ${convId}`);
+    }
+  }
 
   // ── 11. State consistency after everything ──
   console.log('━━ 11. Consistency ━━');

@@ -41,11 +41,31 @@ app.use(compression());
 // dev/preview domains). A single stale localhost here bricks the whole site
 // for real browsers — curl tests can't catch it, only browsers enforce CORS.
 const allowedOrigins = env.CLIENT_URL.split(',').map((s) => s.trim()).filter(Boolean);
+
+/**
+ * A browser origin that isn't in CLIENT_URL is a DEPLOY CONFIGURATION problem,
+ * not a server fault. It used to be thrown as a bare `Error`, which the central
+ * handler classifies as 500 — so every affected browser saw "Something went
+ * wrong", the failure was indistinguishable from a real outage in the logs,
+ * and the one fact that fixes it (which origin was rejected) never surfaced.
+ *
+ * Now: 403 + the origin named in the server log, and a stable message the
+ * client can show verbatim. Verified with a preview deployment URL that isn't
+ * in CLIENT_URL — the browser gets 403 in ~1ms instead of a 500.
+ */
+function rejectOrigin(origin: string | undefined, cb: (err: any) => void) {
+  const denied: any = new Error(`Blocked by CORS: ${origin || 'unknown origin'} is not an allowed origin`);
+  denied.status = 403;
+  denied.code = 'CORS_ORIGIN_DENIED';
+  console.warn(`[cors] blocked origin "${origin}" — add it to CLIENT_URL to allow it`);
+  cb(denied);
+}
+
 app.use(
   cors({
     origin: (origin, cb) => {
       if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
-      cb(new Error('Not allowed by CORS'));
+      return rejectOrigin(origin, cb);
     },
     credentials: true,
   }),

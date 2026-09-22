@@ -1,4 +1,4 @@
-import { prisma } from '../config/prisma';
+import { prisma, TX_OPTIONS } from '../config/prisma';
 import { publish } from '../config/bus';
 import { invalidateUser } from '../utils/user-cache';
 import { invalidateUnreadCount } from './notification.service';
@@ -746,13 +746,15 @@ export class AdminService {
     if (!from || !to) {
       const e: any = new Error('College not found'); e.status = 404; throw e;
     }
+    // A college merge can move thousands of user rows, so it is the longest
+    // transaction in the codebase — it must not run on the 5s default.
     const moved = await prisma.$transaction(async (tx) => {
       const users = await tx.user.updateMany({ where: { collegeId: fromId }, data: { collegeId: toId } });
       const mods = await tx.user.updateMany({ where: { moderatedCollegeId: fromId }, data: { moderatedCollegeId: toId } });
       await tx.moderationLog.updateMany({ where: { collegeId: fromId }, data: { collegeId: toId } });
       await tx.college.delete({ where: { id: fromId } });
       return { users: users.count, moderators: mods.count };
-    });
+    }, TX_OPTIONS);
     // Everyone who moved campus gets re-scoped on their next request.
     const movedUsers = await prisma.user.findMany({ where: { collegeId: toId }, select: { id: true }, take: 5000 });
     for (const u of movedUsers) invalidateUser(u.id);

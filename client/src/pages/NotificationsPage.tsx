@@ -1,13 +1,16 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Heart, MessageCircle, Reply, PartyPopper, Mail, Megaphone, AtSign } from 'lucide-react';
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Bell, Heart, MessageCircle, Reply, PartyPopper, Mail, Megaphone, AtSign, ChevronRight } from 'lucide-react';
+import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
 import { formatDistanceToNow } from '@/utils/date';
+import type { Notification, NotificationType } from '@/types';
 
-const typeIcons: Record<string, React.ReactNode> = {
+const TYPE_ICONS: Record<string, React.ReactNode> = {
   LIKE: <Heart size={20} strokeWidth={2.5} className="text-nb-pink" />,
   COMMENT: <MessageCircle size={20} strokeWidth={2.5} className="text-nb-peri" />,
   COMMENT_REPLY: <Reply size={20} strokeWidth={2.5} className="text-nb-peri" />,
@@ -17,116 +20,263 @@ const typeIcons: Record<string, React.ReactNode> = {
   ANNOUNCEMENT: <Megaphone size={20} strokeWidth={2.5} className="text-nb-violet" />,
 };
 
+const GOAL_LABELS: Record<string, string> = {
+  DATING: 'Dating',
+  RELATIONSHIP: 'Relationship',
+  HOOKUP: 'Hookup',
+  CASUAL: 'Casual',
+  NOT_SURE: 'Not sure',
+};
+
+function textFor(type: NotificationType, actorName: string): string {
+  switch (type) {
+    case 'LIKE': return `${actorName} liked your post`;
+    case 'COMMENT': return `${actorName} commented on your post`;
+    case 'COMMENT_REPLY': return `${actorName} replied to your comment`;
+    case 'MATCH': return `You matched with ${actorName}!`;
+    case 'NEW_MESSAGE': return `${actorName} sent you a message`;
+    case 'MENTION': return `${actorName} mentioned you`;
+    default: return `${actorName} interacted with you`;
+  }
+}
+
+/** Where a notification leads, and the verb the CTA uses. */
+type Target = { kind: 'post' | 'chat' | 'none'; cta?: string };
+
+/**
+ * Every notification type maps to a REAL destination.
+ *
+ * This used to be `notif.postId && navigate(...)` — so `MATCH` and
+ * `NEW_MESSAGE` (the two most important ones, and the whole point of the app)
+ * rendered as dead rows: "Priya sent you a message" and tapping it did
+ * nothing. The inbox is now a working inbox.
+ */
+function targetFor(n: Notification): Target {
+  if (n.type === 'NEW_MESSAGE') {
+    const conversationId = n.metadata?.conversationId;
+    return conversationId ? { kind: 'chat', cta: 'Open chat' } : { kind: 'none' };
+  }
+  if (n.type === 'MATCH') return { kind: 'chat', cta: 'Say hi' };
+  if (n.postId) return { kind: 'post', cta: 'View post' };
+  return { kind: 'none' };
+}
+
 export default function NotificationsPage() {
- const queryClient = useQueryClient();
- const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  // Guards double-taps while a MATCH row resolves its conversation over the wire.
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
- const { data, isLoading } = useQuery({
- queryKey: ['notifications'],
- queryFn: () => api.get('/notifications').then((r) => r.data),
- });
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+    queryKey: ['notifications'],
+    queryFn: ({ pageParam }) =>
+      api
+        .get('/notifications', { params: { limit: 20, ...(pageParam ? { cursor: pageParam } : {}) } })
+        .then((r) => r.data),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last: any) => last?.nextCursor ?? undefined,
+  });
 
- const markReadMutation = useMutation({
- mutationFn: () => api.patch('/notifications/read'),
- onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
- });
+  const markAllReadMutation = useMutation({
+    mutationFn: () => api.patch('/notifications/read'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unread-notifications'] });
+    },
+  });
 
- const notifications = data?.notifications || [];
+  const notifications: Notification[] = (data?.pages || []).flatMap((p: any) => p?.notifications || []);
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
 
- const getNotificationText = (type: string, actorName: string) => {
- switch (type) {
- case 'LIKE': return `${actorName} liked your post`;
- case 'COMMENT': return `${actorName} commented on your post`;
- case 'COMMENT_REPLY': return `${actorName} replied to your comment`;
- case 'MATCH': return `You matched with ${actorName}!`;
- case 'NEW_MESSAGE': return `${actorName} sent you a message`;
- default: return `${actorName} interacted with you`;
- }
- };
+  /** Patch the open row in the infinite cache so the badge + highlight react
+   *  instantly, then let the server catch up. A failed PATCH is silent: the
+   *  next list refetch restores the truth. */
+  const markOneRead = (id: string) => {
+    queryClient.setQueryData(['notifications'], (old: any) => {
+      if (!old?.pages) return old;
+      return {
+        ...old,
+        pages: old.pages.map((p: any) => ({
+          ...p,
+          notifications: (p?.notifications || []).map((n: Notification) =>
+            n.id === id ? { ...n, isRead: true } : n,
+          ),
+        })),
+      };
+    });
+    queryClient.invalidateQueries({ queryKey: ['unread-notifications'] });
+    api.patch(`/notifications/${id}/read`).catch(() => {});
+  };
 
- return (
- <div>
- <div className="flex items-center justify-between mb-4">
- <h1 className="font-display font-bold text-2xl text-ink flex items-center gap-2">
- <Bell size={22} strokeWidth={2.5} /> Notifications
- </h1>
-  <button
-  onClick={() => markReadMutation.mutate()}
-  disabled={markReadMutation.isPending || notifications.length === 0}
-  aria-busy={markReadMutation.isPending}
-  className="nb-btn bg-nb-peri text-ink text-xs px-3 py-1.5 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-  >
-  {markReadMutation.isPending ? 'Marking…' : 'Mark all read'}
-  </button>
- </div>
+  const open = async (n: Notification) => {
+    const target = targetFor(n);
+    if (target.kind === 'none') return;
+    if (openingId) return;
+    setOpeningId(n.id);
+    if (!n.isRead) markOneRead(n.id);
+    try {
+      if (target.kind === 'post') {
+        navigate(`/post/${n.postId}`);
+        return;
+      }
+      // MATCH notifications carry no conversation: threads are created lazily
+      // on first open. POST /messages/conversation is pair-idempotent (the id
+      // is derived from the sorted user pair), so this can never fork a thread.
+      const direct = n.metadata?.conversationId;
+      if (direct) {
+        navigate(`/messages/${direct}`);
+        return;
+      }
+      if (!n.actor?.id) return;
+      const { data: conv } = await api.post('/messages/conversation', { userId: n.actor.id });
+      navigate(`/messages/${conv.id}`);
+    } catch (e: any) {
+      // Blocked / unmatched / cross-college targets land here — say so instead
+      // of a button that silently does nothing.
+      toast.error(e?.response?.data?.error || 'That chat is no longer available');
+    } finally {
+      setOpeningId(null);
+    }
+  };
 
- {isLoading ? (
- <LoadingSpinner />
- ) : !notifications.length ? (
- <EmptyState
- icon={<Bell strokeWidth={2.5} />}
- title="Nothing yet"
- description="When someone likes your post, comments, or matches with you — it'll show up here."
- />
- ) : (
-  <div className="space-y-2"> {notifications.map((notif: any) => (
-  <div
-  key={notif.id}
-  onClick={() => notif.postId && navigate(`/post/${notif.postId}`)}
-  onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && notif.postId) { e.preventDefault(); navigate(`/post/${notif.postId}`); } }}
-  role={notif.postId ? 'link' : undefined}
-  tabIndex={notif.postId ? 0 : undefined}
-  aria-label={notif.postId ? `${getNotificationText(notif.type, notif.actor?.displayName || 'Someone')} — open post` : undefined}
-  className={`nb-card p-4 flex items-center gap-3 min-w-0 ${
-  !notif.isRead ? 'border-l-nb border-l-nb-yellow bg-yellow-50' : ''
-  } ${notif.postId ? 'cursor-pointer' : ''}`}
-  >
- <span className="shrink-0">{typeIcons[notif.type] || <Megaphone size={20} strokeWidth={2.5} className="text-gray-400" />}</span>
- {notif.actor && (
- <Avatar src={notif.actor.avatarUrl} photoId={notif.actor.avatarPhotoId} name={notif.actor.displayName} size="sm" />
- )}
-  <div className="flex-1 min-w-0">
-  {notif.type === 'ANNOUNCEMENT' && notif.metadata ? (
-  <>
-  <p className="font-display font-bold text-sm flex items-center gap-1.5">
-  <Megaphone size={14} strokeWidth={2.5} /> {notif.metadata.title}
-  <span className="text-xs font-body font-semibold text-gray-400">· from {notif.actor?.displayName || 'your moderators'}</span>
-  </p>
-  <p className="font-body text-sm mt-0.5 whitespace-pre-wrap">{notif.metadata.body}</p>
-  </>
-  ) : (
-  <p className="font-body text-sm">
-  {getNotificationText(notif.type, notif.actor?.displayName || 'Someone')}
-  </p>
-  )}
- {notif.type === 'MATCH' && notif.metadata && (
- (notif.metadata.goals?.length || notif.metadata.interests?.length) ? (
-  <div className="flex flex-wrap items-center gap-1 mt-1.5">
-  <span className="text-xs font-bold uppercase tracking-wide text-gray-400">Why you match:</span>
-  {notif.metadata.goals?.map((g: string) => (
-  <span key={g} className="nb-badge bg-nb-violet text-white text-xs px-1.5 py-0.5">
-  Looking for: {g === 'DATING' ? 'Dating' : g === 'RELATIONSHIP' ? 'Relationship' : g === 'HOOKUP' ? 'Hookup' : g === 'CASUAL' ? 'Casual' : 'Not sure'}
-  </span>
-  ))}
-  {notif.metadata.interests?.slice(0, 4).map((i: { id: string; name: string }) => (
-  <span key={i.id} className="nb-badge bg-nb-peri text-ink text-xs px-1.5 py-0.5">{i.name}</span>
-  ))}
-  {(notif.metadata.interests?.length ?? 0) > 4 && (
-  <span className="text-xs text-gray-400">+{notif.metadata.interests.length - 4} more</span>
-  )}
-  </div>
-  ) : (
-  <p className="text-xs text-gray-400 mt-0.5 italic">No listed criteria in common — matched on vibes.</p>
-  )
-  )}
-  <p className="text-xs text-gray-400 mt-0.5">
- {formatDistanceToNow(notif.createdAt)}
- </p>
- </div>
- </div>
- ))}
- </div>
- )}
- </div>
- );
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <h1 className="font-display font-bold text-2xl text-ink flex items-center gap-2">
+          <Bell size={22} strokeWidth={2.5} /> Notifications
+        </h1>
+        <div className="flex items-center gap-2">
+          {unreadCount > 0 && (
+            <span className="nb-badge bg-nb-yellow text-ink text-xs" aria-live="polite">
+              {unreadCount} new
+            </span>
+          )}
+          <button
+            onClick={() => markAllReadMutation.mutate()}
+            disabled={markAllReadMutation.isPending || notifications.length === 0}
+            aria-busy={markAllReadMutation.isPending}
+            className="nb-btn bg-nb-peri text-ink text-xs px-3 py-1.5 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {markAllReadMutation.isPending ? 'Marking…' : 'Mark all read'}
+          </button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <LoadingSpinner />
+      ) : !notifications.length ? (
+        <EmptyState
+          icon={<Bell strokeWidth={2.5} />}
+          title="Nothing yet"
+          description="When someone likes your post, comments, or matches with you — it'll show up here."
+        />
+      ) : (
+        <>
+          <ul className="space-y-2 list-none p-0 m-0">
+            {notifications.map((notif) => {
+              const target = targetFor(notif);
+              const actorName = notif.actor?.displayName || 'Someone';
+              const isAnnouncement = notif.type === 'ANNOUNCEMENT' && notif.metadata;
+              const meta = notif.metadata || {};
+              const hasCriteria = !!(meta.goals?.length || meta.interests?.length);
+
+              return (
+                <li key={notif.id}>
+                  <div
+                    role={target.kind !== 'none' ? 'button' : undefined}
+                    tabIndex={target.kind !== 'none' ? 0 : undefined}
+                    aria-label={target.kind !== 'none' ? `${textFor(notif.type, actorName)} — ${target.cta}` : undefined}
+                    onClick={() => open(notif)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        open(notif);
+                      }
+                    }}
+                    className={`nb-card p-4 flex items-start gap-3 min-w-0 transition-colors ${
+                      !notif.isRead ? 'border-l-nb border-l-nb-yellow bg-yellow-50' : ''
+                    } ${target.kind !== 'none' ? 'cursor-pointer hover:bg-nb-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nb-violet' : ''}`}
+                  >
+                    <span className="shrink-0 mt-0.5">
+                      {TYPE_ICONS[notif.type] || <Megaphone size={20} strokeWidth={2.5} className="text-gray-400" />}
+                    </span>
+                    {notif.actor && (
+                      <Avatar
+                        src={notif.actor.avatarUrl}
+                        photoId={notif.actor.avatarPhotoId}
+                        name={notif.actor.displayName}
+                        size="sm"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      {isAnnouncement ? (
+                        <>
+                          <p className="font-display font-bold text-sm flex items-center gap-1.5 flex-wrap">
+                            <Megaphone size={14} strokeWidth={2.5} /> {meta.title}
+                            <span className="text-xs font-body font-semibold text-gray-400">
+                              · from {notif.actor?.displayName || 'your moderators'}
+                            </span>
+                          </p>
+                          <p className="font-body text-sm mt-0.5 whitespace-pre-wrap">{meta.body}</p>
+                        </>
+                      ) : (
+                        <p className="font-body text-sm">{textFor(notif.type, actorName)}</p>
+                      )}
+
+                      {notif.type === 'MATCH' && (
+                        hasCriteria ? (
+                          <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-gray-400">Why you match:</span>
+                            {meta.goals?.map((g) => (
+                              <span key={g} className="nb-badge bg-nb-violet text-white text-xs px-1.5 py-0.5">
+                                Looking for: {GOAL_LABELS[g] || g}
+                              </span>
+                            ))}
+                            {meta.interests?.slice(0, 4).map((i) => (
+                              <span key={i.id} className="nb-badge bg-nb-peri text-ink text-xs px-1.5 py-0.5">{i.name}</span>
+                            ))}
+                            {(meta.interests?.length ?? 0) > 4 && (
+                              <span className="text-xs text-gray-400">+{meta.interests!.length - 4} more</span>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400 mt-0.5 italic">No listed criteria in common — matched on vibes.</p>
+                        )
+                      )}
+
+                      <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                        {formatDistanceToNow(notif.createdAt)}
+                        {!notif.isRead && (
+                          <span className="inline-flex items-center gap-1 text-nb-pink font-semibold">
+                            <span className="w-1.5 h-1.5 bg-nb-pink" aria-hidden="true" /> unread
+                          </span>
+                        )}
+                      </p>
+                    </div>
+
+                    {target.kind !== 'none' && (
+                      <span className="shrink-0 self-center text-gray-400 flex items-center gap-1 text-xs font-display font-semibold">
+                        <span className="hidden sm:inline">{openingId === notif.id ? 'Opening…' : target.cta}</span>
+                        <ChevronRight size={16} strokeWidth={2.5} aria-hidden="true" />
+                      </span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          {hasNextPage && (
+            <button
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+              className="nb-btn bg-white text-sm w-full mt-3 disabled:opacity-50"
+            >
+              {isFetchingNextPage ? 'Loading…' : 'Load older notifications'}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
 }

@@ -1,4 +1,4 @@
-import { prisma } from '../config/prisma';
+import { prisma, TX_OPTIONS } from '../config/prisma';
 import { publish } from '../config/bus';
 import { invalidateUnreadCount } from './notification.service';
 import {
@@ -458,6 +458,9 @@ export class MatchService {
       }
     }
 
+    // TX_OPTIONS is mandatory here: this is the app's most valuable write path
+    // and Prisma's 5s default budget is reachable on a slow pooler — see the
+    // reproduced-failure note in config/prisma.ts.
     const result = await prisma.$transaction(async (tx) => {
       const existing = await tx.matchLike.findUnique({
         where: { senderId_receiverId: { senderId, receiverId } },
@@ -495,16 +498,18 @@ export class MatchService {
         // included only if BOTH users have it identically (same goal, same
         // interest). Anything not shared by both is excluded — the notification
         // only ever says what genuinely brought these two together.
-        const [uMe, uThem] = await Promise.all([
-          tx.user.findUnique({
-            where: { id: senderId },
-            select: { relationshipGoals: true, interests: { select: { interestId: true, interest: { select: { id: true, name: true } } } } },
-          }),
-          tx.user.findUnique({
-            where: { id: receiverId },
-            select: { relationshipGoals: true, interests: { select: { interestId: true, interest: { select: { id: true, name: true } } } } },
-          }),
-        ]);
+        // ONE query, not two. Inside an interactive transaction a `Promise.all`
+        // does NOT parallelise — both reads share the transaction's single
+        // connection and run back-to-back, so two reads cost two round-trips
+        // against the transaction's budget. Fetching both profiles by id costs
+        // one, which is exactly the kind of round-trip that used to blow the
+        // default 5s timeout (see config/prisma.ts).
+        const bothUsers = await tx.user.findMany({
+          where: { id: { in: [senderId, receiverId] } },
+          select: { id: true, relationshipGoals: true, interests: { select: { interestId: true, interest: { select: { id: true, name: true } } } } },
+        });
+        const uMe = bothUsers.find((u) => u.id === senderId);
+        const uThem = bothUsers.find((u) => u.id === receiverId);
         // Multi-select: the match chip lists the INTERSECTION of both users'
         // goal selections ("you both listed Dating") — order follows the
         // sender's own preference order.
@@ -567,7 +572,7 @@ export class MatchService {
       // Same-action re-swipe that didn't (re)match: report it as a duplicate
       // so clients can show "already actioned" instead of counting it as new.
       return { matched: false, duplicate: existing?.action === action };
-    });
+    }, TX_OPTIONS);
 
     // CACHE: the exclusion set changed (new like/pass) without changing the
     // fingerprint — bust the actor's deck. On LIKE also bust the receiver's:

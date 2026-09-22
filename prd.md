@@ -233,6 +233,12 @@ Socket.IO (same process)   PostgreSQL (Supabase) — 19 tables
 - Realtime push via `notification:new`; mark-all-read.
 - MATCH notifications render the why-you-matched chips (§5.3).
 
+**Every notification is actionable.** Each row resolves to a real destination — like/comment/mention → the post; MATCH → the chat with that person (created lazily and pair-idempotently, so it can never fork a thread); NEW_MESSAGE → `metadata.conversationId` → the thread. Rows that lead somewhere announce it (`aria-label="… — View post"`) and show a CTA + chevron; rows that don't are plain text. *Before this, LIKE was the only type that navigated: "You matched with X!" and "X sent you a message" were dead rows — the inbox listed the app's most valuable events and then did nothing when tapped.*
+
+The notification body of a DM is **never** snapshotted into metadata — only the conversation id. Copying message text into a notification row would keep serving content that the sender had since "deleted for everyone".
+
+**Read state is per notification.** `PATCH /api/notifications/:id/read` marks exactly one row, scoped by `recipientId` so a foreign or guessed id is a silent no-op (its existence is never confirmable — the same wall philosophy as cross-college content). Opening a notification marks it read and the badge drops by one; "Mark all read" remains for inbox-zero in one tap. Reading a DM thread clears that thread's NEW_MESSAGE pings automatically.
+
 ### 5.7 Search
 
 - Hyperlocal: people + posts from your college only.

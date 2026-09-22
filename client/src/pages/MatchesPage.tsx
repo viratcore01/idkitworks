@@ -300,36 +300,57 @@ export default function MatchesPage() {
 
   return (
   <div>
-  <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
- <h1 className="font-display font-bold text-2xl text-ink flex items-center gap-2">
- <Heart size={22} strokeWidth={2.5} className="text-nb-pink fill-current" /> Find Match
- </h1>
- {/* Segmented switcher: single scrollable row — flex-wrap made ragged
- 2–3 row stacks on 360px screens */}
- <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+  <div className="mb-5 sm:mb-6">
+  <div className="flex items-center justify-between gap-3 mb-3 sm:mb-4">
+  <h1 className="font-display font-bold text-2xl text-ink flex items-center gap-2 min-w-0">
+  <Heart size={22} strokeWidth={2.5} className="text-nb-pink fill-current shrink-0" aria-hidden="true" />
+  <span className="truncate">Find Match</span>
+  </h1>
+  {/* Filters used to end the tab row, which at 390px pushed it 120px past the
+      right edge — a primary action reachable only by an invisible horizontal
+      swipe. It lives on the title line now, icon-only on phones. */}
+  {view === 'discover' && (
+  <button
+  onClick={openPrefs}
+  aria-label="Discovery preferences"
+  title="Discovery preferences"
+  className="nb-btn bg-white text-sm shrink-0 px-3 sm:px-5 min-h-[44px] min-w-[44px] inline-flex items-center justify-center gap-1.5"
+  >
+  <SlidersHorizontal size={15} strokeWidth={2.5} aria-hidden="true" />
+  <span className="hidden sm:inline">Filters</span>
+  </button>
+  )}
+  </div>
+
+  {/* Segmented switcher. Below sm this is a strict 3-column grid: every tab
+      gets exactly one third of the width, so nothing can overflow or hide.
+      Icons and count badges are sm+ only — at a 320px budget phone the labels
+      alone are what must fit. */}
+  <div className="grid grid-cols-3 gap-2 sm:flex sm:w-auto" role="tablist" aria-label="Match sections">
  <button
+ role="tab"
+ aria-selected={view === 'discover'}
  onClick={() => setView('discover')}
- className={`nb-btn text-sm shrink-0 ${view === 'discover' ? 'bg-nb-violet text-white' : ''}`}
+ className={`nb-btn text-[13px] sm:text-sm px-1.5 sm:px-5 min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center gap-1.5 whitespace-nowrap ${view === 'discover' ? 'bg-nb-violet text-white' : ''}`}
  >
- <Search size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Discover
+ <Search size={14} strokeWidth={2.5} className="hidden sm:inline" aria-hidden="true" /> Discover
  </button>
   <button
+  role="tab"
+  aria-selected={view === 'matches'}
   onClick={() => setView('matches')}
-  className={`nb-btn text-sm shrink-0 ${view === 'matches' ? 'bg-nb-pink text-white' : ''}`}
+  className={`nb-btn text-[13px] sm:text-sm px-1.5 sm:px-5 min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center gap-1.5 whitespace-nowrap ${view === 'matches' ? 'bg-nb-pink text-white' : ''}`}
   >
-  <Heart size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Matches{(matchStats?.totalMatches ?? matches.length) > 0 && (<span className="ml-1.5 px-1.5 py-0.5 text-xs font-display border-nb-2 border-ink bg-nb-yellow text-ink" title="Total matches">{matchStats?.totalMatches ?? matches.length}</span>)}
+  <Heart size={14} strokeWidth={2.5} className="hidden sm:inline" aria-hidden="true" /> Matches{(matchStats?.totalMatches ?? matches.length) > 0 && (<span className="hidden sm:inline-block ml-0.5 px-1.5 py-0.5 text-xs font-display border-nb-2 border-ink bg-nb-yellow text-ink" title="Total matches">{matchStats?.totalMatches ?? matches.length}</span>)}
  </button>
   <button
+  role="tab"
+  aria-selected={view === 'chat'}
   onClick={() => setView('chat')}
-  className={`nb-btn text-sm shrink-0 ${view === 'chat' ? 'bg-nb-peri text-ink' : ''}`}
+  className={`nb-btn text-[13px] sm:text-sm px-1.5 sm:px-5 min-h-[44px] w-full sm:w-auto inline-flex items-center justify-center gap-1.5 whitespace-nowrap ${view === 'chat' ? 'bg-nb-peri text-ink' : ''}`}
   >
-  <MessageSquare size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Chat{conversations && conversations.length > 0 && (<span className="ml-1.5 px-1.5 py-0.5 text-xs font-display border-nb-2 border-ink bg-nb-yellow text-ink">{conversations.length}</span>)}
+  <MessageSquare size={14} strokeWidth={2.5} className="hidden sm:inline" aria-hidden="true" /> Chat{conversations && conversations.length > 0 && (<span className="hidden sm:inline-block ml-0.5 px-1.5 py-0.5 text-xs font-display border-nb-2 border-ink bg-nb-yellow text-ink">{conversations.length}</span>)}
  </button>
- {view === 'discover' && (
- <button onClick={openPrefs} className="nb-btn bg-white text-sm shrink-0" title="Discovery preferences">
- <SlidersHorizontal size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Filters
- </button>
- )}
  </div>
  </div>
 

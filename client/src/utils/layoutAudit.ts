@@ -35,12 +35,36 @@ export function layoutAudit(): {
     },
   );
 
+  /**
+   * Trailing adornment: a control deliberately layered OVER the field it
+   * belongs to (the show/hide eye inside a password input). The wrapper is
+   * `relative`, the control is `absolute`, and the field reserves a gutter for
+   * it via its own padding-right — that is a design, not a collision.
+   *
+   * Without this rule the auditor flagged the same two benign pairs on every
+   * page containing a password field, and a noisy auditor is an ignored one:
+   * the Settings page reported 2 "overlaps" while a genuinely clipped Filters
+   * button on /matches looked like more of the same noise.
+   */
+  const isAdornment = (control: HTMLElement, host: HTMLElement): boolean => {
+    if (!control.parentElement || control.parentElement !== host.parentElement) return false;
+    if (getComputedStyle(control).position !== 'absolute') return false;
+    const wrapperPos = getComputedStyle(host.parentElement).position;
+    if (wrapperPos !== 'relative' && wrapperPos !== 'absolute') return false;
+    // The host must genuinely reserve the space the control sits in.
+    const hostRect = host.getBoundingClientRect();
+    const controlRect = control.getBoundingClientRect();
+    const reserved = parseFloat(getComputedStyle(host).paddingRight) || 0;
+    return reserved > 0 && hostRect.right - controlRect.left <= reserved + 2;
+  };
+
   const overlaps: { a: string; b: string }[] = [];
   for (let i = 0; i < interactive.length; i++) {
     for (let j = i + 1; j < interactive.length; j++) {
       const a = interactive[i];
       const b = interactive[j];
       if (a.contains(b) || b.contains(a)) continue;
+      if (isAdornment(a, b) || isAdornment(b, a)) continue;
       const ra = a.getBoundingClientRect();
       const rb = b.getBoundingClientRect();
       const x = Math.max(0, Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left));

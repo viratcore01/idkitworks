@@ -83,6 +83,33 @@ export class NotificationService {
     return { message: 'All notifications marked as read' };
   }
 
+  /**
+   * Mark ONE notification read — called when the reader actually opens it.
+   *
+   * Before this, the only way to clear the bell was the blanket "Mark all
+   * read" button, so the badge lied: you had read the match, but the count
+   * stayed up until you nuked every other notification too.
+   *
+   * SCOPED BY recipientId, not just id: someone else's notification is a
+   * silent no-op, and its existence is not confirmable — the same wall
+   * philosophy as cross-college content (never 403 on a foreign id, which
+   * would leak that it exists).
+   */
+  async markRead(userId: string, notificationId: string) {
+    if (typeof notificationId !== 'string' || notificationId.length < 8 || notificationId.length > 64) {
+      const e: any = new Error('Invalid notificationId');
+      e.status = 400;
+      throw e;
+    }
+    const result = await prisma.notification.updateMany({
+      where: { id: notificationId, recipientId: userId, isRead: false },
+      data: { isRead: true },
+    });
+    // count === 0 is the normal idempotent case (already read, or a repeat tap).
+    if (result.count > 0) invalidateUnreadCount(userId);
+    return { ok: true, updated: result.count };
+  }
+
   async getUnreadCount(userId: string, viewerCollegeId?: string | null) {
     // 60s TTL cache keyed by userId. The bell badge polls every minute, so a hit
     // costs ZERO round-trips to Mumbai (each one used to add ~1-2s on Render free

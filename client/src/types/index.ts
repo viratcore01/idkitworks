@@ -147,11 +147,32 @@ export interface Message {
   };
 }
 
+export type NotificationType =
+  | 'LIKE'
+  | 'COMMENT'
+  | 'COMMENT_REPLY'
+  | 'MATCH'
+  | 'NEW_MESSAGE'
+  | 'MENTION'
+  | 'ANNOUNCEMENT';
+
+/** Type-specific payload. MATCH carries the common-criteria snapshot;
+ *  NEW_MESSAGE carries the conversationId so the row can deep-link into
+ *  the thread (the body is never snapshotted — "delete for everyone"). */
+export interface NotificationMetadata {
+  goals?: string[];
+  interests?: { id: string; name: string }[];
+  conversationId?: string;
+  title?: string;
+  body?: string;
+}
+
 export interface Notification {
   id: string;
   recipientId: string;
   actorId: string | null;
-  type: string;
+  type: NotificationType;
+  metadata?: NotificationMetadata | null;
   postId: string | null;
   commentId: string | null;
   matchId: string | null;

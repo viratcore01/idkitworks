@@ -14,6 +14,9 @@ router.use(authMiddleware, collegeRequired);
 
 router.get('/', (req, res) => controller.getNotifications(req, res));
 router.get('/unread-count', (req, res) => controller.getUnreadCount(req, res));
+// Blanket clear. Declared before '/:id/read' so the literal segment wins.
 router.patch('/read', (req, res) => controller.markAllRead(req, res));
+// Per-notification read, fired when the reader actually opens one.
+router.patch('/:id/read', (req, res) => controller.markRead(req, res));
 
 export default router;

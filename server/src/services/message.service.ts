@@ -357,6 +357,12 @@ export class MessageService {
         recipientId: m.userId,
         actorId: senderId,
         type: 'NEW_MESSAGE' as const,
+        // Deep link target: without it the "X sent you a message" row was a
+        // DEAD END — the notifications page had nothing to navigate to and
+        // tapping it did nothing. The conversation id is the whole payload;
+        // we deliberately do NOT snapshot the message body here, or "delete
+        // for everyone" would keep serving the text from notification metadata.
+        metadata: { conversationId } as any,
       })),
     });
     invalidateUnreadCount(...otherMembers.map((m) => m.userId));
