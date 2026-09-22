@@ -272,7 +272,7 @@ model MatchPreference {
   openToGoals        String[] @default([]) @map("open_to_goals")
   // DEALBREAKERS — hard filters the viewer opts into:
   minYear            Int?     @map("min_year") // null = any year
-  sharedInterestMin  Int      @default(0) @map("shared_interest_min") // 0 = off, 1+ = require N common interests
+  sharedInterestMin  Int      @default(0) @map("shared_interest_min") // LEGACY: shared-interest dealbreaker removed — column kept for back-compat, never read as a deck filter
   locationPreference String?  @map("location_preference")
   collegePreference  String?  @map("college_preference")
   visibility         Boolean  @default(true)

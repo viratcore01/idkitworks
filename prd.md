@@ -184,9 +184,8 @@ Socket.IO (same process)   PostgreSQL (Supabase) — 19 tables
 | Age range | dual sliders 16–99 |
 | Looking for (intent matching) | multi-select of goals; deck shows profiles whose goal is in your selection (goal-less people always visible) |
 | Year dealbreaker | Any / **1+** / 2+ / 3+ / 4+ |
-| Shared interests | Off / 1+ / 2+ / 3+ (self-disables if you have no interests — never nukes the deck) |
 
-> *"Verified students only" was shipped as a dealbreaker and later removed end-to-end (UI, filter, API, DB column) — a stale client sending it is ignored gracefully.*
+> *"Verified students only" was shipped as a dealbreaker and later removed end-to-end (UI, filter, API, DB column) — a stale client sending it is ignored gracefully. The "Shared interests" dealbreaker was removed the same way (UI, deck filter, API field): shared interests are display-only now — the "N shared interests" chip on each card — because the deck already reflects the profile + discovery preferences. Stale `sharedInterestMin` values are ignored gracefully (DB column kept, never read as a filter).*
 
 **Likes-you priority (Hinge/Tinder-Gold pattern, free):**
 - People who already liked you **surface first within each deck window** with a **"likes you" badge** (newest first), plus a chip *"• N waiting to match with you"*; `stats.likesYou` feeds it. Liking back = instant match. Reorder-only by design: prepending admirers from outside the window duplicated/skipped cards across pages (trial-proven); the waiting strip covers instant action regardless of window.

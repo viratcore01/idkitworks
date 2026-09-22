@@ -49,10 +49,9 @@ export default function MatchesPage() {
  genderPreference: 'EVERYONE',
  ageRangeMin: 16,
  ageRangeMax: 60,
- openToGoals: [] as string[],
- minYear: null as number | null,
- sharedInterestMin: 0,
- });
+openToGoals: [] as string[],
+minYear: null as number | null,
+});
  const [photoIdx, setPhotoIdx] = useState(0);
  const queryClient = useQueryClient();
  const navigate = useNavigate();  const { data: deck, isLoading: loadingDiscover } = useQuery({
@@ -127,7 +126,6 @@ ageRangeMin: savedPrefs.ageRangeMin ?? 16,
 ageRangeMax: savedPrefs.ageRangeMax ?? 60,
 openToGoals: savedPrefs.openToGoals || [],
 minYear: savedPrefs.minYear ?? null,
-sharedInterestMin: savedPrefs.sharedInterestMin ?? 0,
 });
 }, [savedPrefs]);
 
@@ -327,7 +325,6 @@ ageRangeMin: savedPrefs.ageRangeMin ?? 16,
 ageRangeMax: savedPrefs.ageRangeMax ?? 60,
 openToGoals: savedPrefs.openToGoals || [],
 minYear: savedPrefs.minYear ?? null,
-sharedInterestMin: savedPrefs.sharedInterestMin ?? 0,
 });
 }
 setShowPrefs(true);
@@ -542,18 +539,8 @@ setShowPrefs(true);
  </button>
  ))}
  </div>
-  <div className="flex items-center gap-2 flex-wrap">
-  <span className="font-body text-xs text-gray-600 shrink-0">Shared interests</span>
- {[0, 1, 2, 3].map((n) => (
- <button
- key={n}
- onClick={() => setPrefs((p) => ({ ...p, sharedInterestMin: n }))}
- className={`nb-btn text-xs px-2.5 py-1 ${prefs.sharedInterestMin === n ? 'bg-nb-violet text-white' : 'bg-white'}`}
- >
- {n === 0 ? 'Off' : `${n}+`}
- </button>
- ))}
- </div>
+{/* Shared-interest dealbreaker removed: shared interests are display-only now
+(the chip on each card) — the deck already reflects profile + discovery prefs. */}
  </div>
 
   <div className="flex gap-2 justify-end">

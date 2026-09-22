@@ -173,7 +173,7 @@ async function phaseSetup() {
         userId: u.id, lookingFor: 'DATING',
         ageRangeMin: 18, ageRangeMax: 26,
         genderPreference: pick(['EVERYONE', 'MALE', 'FEMALE']),
-        openToGoals: [], minYear: pick([null, 2, 3]), sharedInterestMin: pick([0, 1, 2]),
+        openToGoals: [], minYear: pick([null, 2, 3]),
       },
       update: {},
     });
@@ -228,13 +228,8 @@ async function phaseDeck() {
       if (age < (pref?.ageRangeMin ?? 16) || age > (pref?.ageRangeMax ?? 60)) return false;
       const goals = (v.relationshipGoals?.length ? v.relationshipGoals : (pref?.openToGoals ?? [])) as string[];
       if (goals.length && u._goals.length && !u._goals.some((g: string) => goals.includes(g))) return false;
-      if ((pref?.sharedInterestMin ?? 0) > 0) {
-        if (!myInterests.size) { /* self-guard: filter skips itself */ }
-        else {
-          const shared = u._interests.filter((n: string) => [...myInterests].some((id) => interestIds.get(n) === id)).length;
-          if (shared < pref.sharedInterestMin!) return false;
-        }
-      }
+      // No shared-interest dealbreaker (removed): interests are display-only
+      // (the card chip, verified for exactness below) — never deck filters.
       return true;
     });
     const expectedFresh = new Set(pool.filter((u) => !passedIds.has(u.id)).map((u: any) => u.id));

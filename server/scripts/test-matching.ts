@@ -326,10 +326,10 @@ async function main() {
 
   // ── 8. Preference validation & filters ──
   console.log('━━ 8. Preferences ━━');
-  r = await api(tokC, 'PATCH', '/matches/preferences', { openToGoals: ['DATING', 'HACKED'], minYear: 9, sharedInterestMin: 99, ageRangeMin: 10 });
+  r = await api(tokC, 'PATCH', '/matches/preferences', { openToGoals: ['DATING', 'HACKED'], minYear: 9, ageRangeMin: 10 });
   const saved = r.data;
-  check('invalid goal stripped, clamps applied', r.status === 200 && saved.openToGoals?.length === 1 && saved.openToGoals[0] === 'DATING' && saved.minYear === null && saved.sharedInterestMin === 10 && saved.ageRangeMin >= 16);
-  r = await api(tokC, 'PATCH', '/matches/preferences', { openToGoals: [], minYear: null, sharedInterestMin: 0 });
+  check('invalid goal stripped, clamps applied', r.status === 200 && saved.openToGoals?.length === 1 && saved.openToGoals[0] === 'DATING' && saved.minYear === null && saved.ageRangeMin >= 16);
+  r = await api(tokC, 'PATCH', '/matches/preferences', { openToGoals: [], minYear: null });
   check('reset to defaults works', r.status === 200 && r.data.openToGoals.length === 0 && r.data.minYear === null);
 
   // Verified-only dealbreaker was removed by product decision — sending it must be ignored, not crash
@@ -400,14 +400,14 @@ async function main() {
   r = await api(tokD, 'GET', '/matches/stats');
   check('matched/answered likes leave the waiting count', r.status === 200 && r.data.likesYou === 0, JSON.stringify(r.data));
 
-  // Shared-interest N>1 is actually enforced (A shares skate+chess; D has 1, E has 2)
-  r = await api(tokA, 'PATCH', '/matches/preferences', { sharedInterestMin: 2 });
-  check('sharedInterestMin 2 saves', r.status === 200 && r.data.sharedInterestMin === 2);
+  // Shared-interest dealbreaker was removed by product decision (A shares skate+chess; D has 1, E has 2):
+  // sending it is ignored gracefully and the deck stays unfiltered — interests are display-only (card chip).
+  r = await api(tokA, 'PATCH', '/matches/preferences', { sharedInterestMin: 2 } as any);
+  check('removed sharedInterestMin is ignored gracefully', r.status === 200);
   r = await api(tokA, 'GET', '/matches/discover?page=0&limit=50');
-  const min2deck = r.data.users || [];
-  check('2+ filter keeps doubly-shared E', min2deck.some((u: any) => u.id === E.id), JSON.stringify(min2deck.map((u: any) => u.username)));
-  check('2+ filter hides singly-shared D', !min2deck.some((u: any) => u.id === D.id));
-  await api(tokA, 'PATCH', '/matches/preferences', { sharedInterestMin: 0 });
+  const unfilteredDeck = r.data.users || [];
+  check('no shared-interest filtering: singly-shared D still shows', unfilteredDeck.some((u: any) => u.id === D.id), JSON.stringify(unfilteredDeck.map((u: any) => u.username)));
+  check('no shared-interest filtering: doubly-shared E still shows', unfilteredDeck.some((u: any) => u.id === E.id));
 
   const dRows = await prisma.matchLike.findMany({ where: { senderId: D.id } });
   check('D has no duplicate action rows', new Set(dRows.map((x) => x.receiverId)).size === dRows.length);

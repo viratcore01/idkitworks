@@ -149,7 +149,6 @@ export class MatchService {
       pref?.ageRangeMax ?? 60,
       pref?.genderPreference || 'EVERYONE',
       pref?.minYear,
-      pref?.sharedInterestMin ?? 0,
       myGoalsFp.join(','),
       [...viewerInterestIds].sort().join(','),
       viewerPhotoCount,
@@ -240,14 +239,10 @@ export class MatchService {
         { relationshipGoals: { isEmpty: true } },
       ];
     }
-    // Shared-interest minimum: need N common interests with the viewer.
-    // SELF-GUARD: a viewer with zero interests can share none with anyone —
-    // the filter would permanently empty their own deck, so it skips itself.
-    if ((pref?.sharedInterestMin ?? 0) > 0 && viewerInterestIds.size > 0) {
-      where.interests = {
-        some: { interestId: { in: Array.from(viewerInterestIds) } },
-      };
-    }
+    // NOTE: there is deliberately NO shared-interest dealbreaker. Shared
+    // interests are display-only (the "N shared interests" chip on each card,
+    // still computed below) — the deck already reflects the profile + discovery
+    // preferences, so an extra interest gate only ever emptied decks.
 
     // ── The loop chain, DB-paginated ──
     // Chain positions [0, freshCount) are fresh profiles (createdAt desc);
@@ -273,14 +268,14 @@ export class MatchService {
     ]);
     const chainLength = freshCount + recycledCount;
 
-    // One chain window [off, off + size): fresh slice + recycled slice stitched.
-    const fetchWindow = async (off: number, size: number = take): Promise<any[]> => {
-      // Fresh window: overlaps [off, off + size) with [0, freshCount).
+    // One chain window [off, off + take): fresh slice + recycled slice stitched.
+    const fetchWindow = async (off: number): Promise<any[]> => {
+      // Fresh window: overlaps [off, off + take) with [0, freshCount).
       const freshSkip = Math.min(off, freshCount);
-      const freshTake = Math.max(Math.min(off + size, freshCount) - freshSkip, 0);
-      // Recycled window: overlaps [off, off + size) with [freshCount, chainLength).
+      const freshTake = Math.max(Math.min(off + take, freshCount) - freshSkip, 0);
+      // Recycled window: overlaps [off, off + take) with [freshCount, chainLength).
       const recStart = Math.max(off - freshCount, 0);
-      const recEnd = Math.max(Math.min(off + size - freshCount, recycledCount), 0);
+      const recEnd = Math.max(Math.min(off + take - freshCount, recycledCount), 0);
       const recSliceIds = recEnd > recStart ? passedIds.slice(recStart, recEnd) : [];
 
       const [freshPage, recycledRows] = await Promise.all([
@@ -309,40 +304,9 @@ export class MatchService {
       return [...(freshPage as any[]), ...recycledPage];
     };
 
-    // Shared-interest minimum N>1: the DB `some` prefilter above only proves
-    // ≥1 common interest (Prisma can't express "any N of a set" in one query),
-    // so enforce the exact threshold here. Default users (filter off) take the
-    // single-window fast path — zero behavior change for them. Strict-filter
-    // users scan forward in WIDE windows (3× page size, ≤3 round-trips) until
-    // the page is full of genuinely-eligible profiles or the chain ends.
-    // Wide windows beat take-sized stepping: same recall, ~3× fewer queries.
-    // (totalRemaining/hasMore stay chain-based estimates under a strict filter;
-    // WHO you see is always exact, which is what relevance requires.)
-    const minShared = pref?.sharedInterestMin ?? 0;
-    const needCountFilter = minShared > 1 && viewerInterestIds.size > 0;
-    const countShared = (u: any) =>
-      u.interests.filter((ui: any) => viewerInterestIds.has(ui.interestId)).length;
-
-    let pageSlice: any[] = [];
-    let consumed = offset + take;
-    if (!needCountFilter) {
-      pageSlice = await fetchWindow(offset);
-    } else {
-      const wide = take * 3;
-      let guard = 0;
-      let off = offset;
-      while (pageSlice.length < take && off < chainLength && guard < 3) {
-        const win = await fetchWindow(off, wide);
-        for (const u of win) {
-          if (pageSlice.length >= take) break;
-          if (countShared(u) >= minShared) pageSlice.push(u);
-        }
-        off += wide;
-        guard++;
-        if (win.length === 0) break;
-      }
-      consumed = off;
-    }
+    // Every page is one exact chain window — no post-filtering.
+    let pageSlice: any[] = await fetchWindow(offset);
+    const consumed = offset + take;
 
     // "LIKES YOU" priority (Hinge/Tinder Gold pattern, free for everyone):
     // people who already liked you surface at the FRONT of the current page —
@@ -797,7 +761,6 @@ export class MatchService {
     genderPreference?: string;
     openToGoals?: string[];
     minYear?: number | null;
-    sharedInterestMin?: number;
     collegePreference?: string;
   }) {
     // SYNC RULE: openToGoals IS the profile's "Looking for" (multi-select).
@@ -820,13 +783,12 @@ export class MatchService {
     if (openToGoals !== undefined) {
       await prisma.user.update({ where: { id: userId }, data: { relationshipGoals: openToGoals } });
     }
-    // Dealbreakers
+    // Dealbreaker (year only — the shared-interest gate was removed; a stale
+    // client sending sharedInterestMin is ignored gracefully, same as the
+    // removed onlyVerified/collegePreference fields).
     const minYear = data.minYear === null || data.minYear === undefined
       ? null
       : [1, 2, 3, 4, 5].includes(Number(data.minYear)) ? Number(data.minYear) : undefined;
-    const sharedInterestMin = data.sharedInterestMin != null
-      ? Math.min(Math.max(Math.round(Number(data.sharedInterestMin)), 0), 10)
-      : undefined;
 
     const finalMin = ageMin ?? undefined;
     const finalMax = ageMax ?? undefined;
@@ -845,7 +807,6 @@ export class MatchService {
         genderPreference: (genderPref as any) || 'EVERYONE',
         openToGoals: openToGoals || [],
         ...(minYear !== undefined && { minYear }),
-        ...(sharedInterestMin !== undefined && { sharedInterestMin }),
         collegePreference: collegePref, // always null — college scope is not optional
       },
       update: {
@@ -855,7 +816,6 @@ export class MatchService {
         ...(genderPref && { genderPreference: genderPref as any }),
         ...(openToGoals !== undefined && { openToGoals }),
         ...(minYear !== undefined && { minYear }),
-        ...(sharedInterestMin !== undefined && { sharedInterestMin }),
         // Force any legacy cross-college preference back to null
         collegePreference: null,
       },
@@ -883,7 +843,6 @@ export class MatchService {
       genderPreference: pref?.genderPreference ?? 'EVERYONE',
       openToGoals: openToGoals ?? (pref as any)?.openToGoals ?? [],
       minYear: (pref as any)?.minYear ?? null,
-      sharedInterestMin: (pref as any)?.sharedInterestMin ?? 0,
       collegePreference: null,
       visibility: (pref as any)?.visibility ?? true,
     };
@@ -903,7 +862,6 @@ export class MatchService {
       genderPreference: pref?.genderPreference ?? 'EVERYONE',
       openToGoals: goals,
       minYear: pref?.minYear ?? null,
-      sharedInterestMin: pref?.sharedInterestMin ?? 0,
       collegePreference: pref?.collegePreference ?? null,
       visibility: pref?.visibility ?? true,
     };
