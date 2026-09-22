@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Zap, MoreVertical, Pencil, Trash2, X, Check, ChevronLeft } from 'lucide-react';
+import { Send, MoreVertical, Pencil, Trash2, X, Check, ChevronLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { getSocket, joinConversation, onDebouncedEvent } from '@/services/realtime';
@@ -312,7 +312,7 @@ export default function ChatPage() {
   aria-label="Send message"
   className="nb-btn-orange disabled:opacity-50 shrink-0"
   >
- <Zap size={18} strokeWidth={2.5} fill="currentColor" />
+  <Send size={18} strokeWidth={2.5} />
  </button>
  </div>
  </div>

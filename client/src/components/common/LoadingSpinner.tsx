@@ -1,16 +1,15 @@
-export default function LoadingSpinner({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
-  const sizeClasses = {
-  sm: 'w-5 h-5',
-  md: 'w-8 h-8',
-  lg: 'w-12 h-12',
-  };
+import BrandLoader from '@/components/common/BrandLoader';
 
+/**
+ * Inline / tab-switch loader — same original Zoclo mark as the full-screen
+ * loader (wordmark + three brand-color dots + sliding bar). No lightning
+ * bolt, no generic ring spinner.
+ */
+export default function LoadingSpinner({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
+  const logoSize = size === 'sm' ? 40 : size === 'lg' ? 64 : 52;
   return (
-  <div className={`flex items-center justify-center ${size === 'sm' ? 'py-3' : 'py-8'}`} role="status" aria-label="Loading">
-  <div
-  className={`${sizeClasses[size]} border-nb-2 border-ink border-t-nb-violet animate-spin`}
-  aria-hidden="true"
-  />
-  </div>
+    <div className={`flex items-center justify-center ${size === 'sm' ? 'py-3' : 'py-8'}`}>
+      <BrandLoader logoSize={logoSize} label={null} />
+    </div>
   );
 }

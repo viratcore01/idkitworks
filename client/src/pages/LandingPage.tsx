@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
- Zap,
- Newspaper,
+  Newspaper,
  Flame,
  MessagesSquare,
  BadgeCheck,
@@ -442,9 +441,9 @@ function MatchMockCard() {
  <span className="w-9 h-9 bg-nb-pink border-2 border-ink grid place-items-center text-white">
  <Heart size={14} strokeWidth={2.5} fill="currentColor" />
  </span>
- <span className="w-9 h-9 bg-nb-peri border-2 border-ink grid place-items-center text-white">
- <Zap size={14} strokeWidth={2.5} fill="currentColor" />
- </span>
+  <span className="w-9 h-9 bg-nb-peri border-2 border-ink grid place-items-center text-white">
+  <Sparkles size={14} strokeWidth={2.5} />
+  </span>
  </div>
  <div className="min-w-0">
  <p className="font-display font-bold text-sm leading-tight">It's a match!</p>
@@ -754,10 +753,10 @@ export default function LandingPage() {
  <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-12 pb-14 sm:pt-20 sm:pb-24 grid lg:grid-cols-2 gap-12 lg:gap-10 items-center">
  {/* Left: pitch */}
  <div data-reveal>
- <span className="nb-badge bg-nb-yellow gap-1.5">
- <Zap size={12} strokeWidth={2.5} fill="currentColor" />
- LIVE ON CAMPUS · 100% FREE
- </span>
+  <span className="nb-badge bg-nb-yellow gap-1.5">
+  <Sparkles size={12} strokeWidth={2.5} />
+  LIVE ON CAMPUS · 100% FREE
+  </span>
 
  <h1 className="mt-5 font-display font-bold text-4xl sm:text-5xl lg:text-6xl leading-[1.06] tracking-tight">
  Your entire college.{' '}
@@ -799,7 +798,7 @@ export default function LandingPage() {
  <LayersGlyph /> 3 apps in 1
  </span>
  <span className="flex items-center gap-2">
- <Zap size={16} strokeWidth={2.5} className="text-nb-violet" fill="currentColor" /> ₹0 forever
+  <Gift size={16} strokeWidth={2.5} className="text-nb-violet" /> ₹0 forever
  </span>
  </div>
  </div>
@@ -1074,7 +1073,7 @@ export default function LandingPage() {
  ariaLabel="Start on Zoclo (opens in a new tab)"
  className="nb-btn-orange inline-flex items-center gap-2 text-base px-7 py-3"
  >
- Start now — it's free <Zap size={16} strokeWidth={2.75} fill="currentColor" />
+  Start now — it's free <ArrowRight size={16} strokeWidth={2.75} />
  </NewTabLink>
  </div>
  </div>
@@ -1298,7 +1297,7 @@ export default function LandingPage() {
  everything.
  </p>
  <p className="mt-4 text-xs font-display font-semibold tracking-widest text-nb-yellow uppercase flex items-center gap-1.5">
- Made with <Zap size={11} strokeWidth={2.5} fill="currentColor" className="text-nb-violet" /> for students, by students
+  Made with <Heart size={11} strokeWidth={2.5} fill="currentColor" className="text-nb-violet" /> for students, by students
  </p>
  </div>
 

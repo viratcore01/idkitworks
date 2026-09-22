@@ -1,6 +1,7 @@
 import { useEffect, Suspense, lazy, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Zap } from 'lucide-react';
+import BrandLoader from '@/components/common/BrandLoader';
+import Logo from '@/components/common/Logo';
 import { useAuthStore } from '@/store/auth.store';
 import AuthLayout from '@/layouts/AuthLayout';
 import AppLayout from '@/layouts/AppLayout';
@@ -94,8 +95,7 @@ function LoadingScreen() {
   return (
   <div className="min-h-screen nb-canvas-surface flex items-center justify-center p-6">
   <div className="text-center max-w-xs">
-  <Zap size={56} strokeWidth={2.5} className="text-ink animate-bounce mx-auto" fill="currentColor" />
-  <p className="mt-4 font-display font-semibold text-lg">Loading...</p>
+  <BrandLoader logoSize={72} label="Loading..." />
   {slow && (
   <p className="mt-2 font-body text-sm text-gray-500">
   Waking up the server — it sleeps when idle, first visit takes ~30 seconds.
@@ -115,7 +115,7 @@ function BootStuckScreen() {
   return (
   <div className="min-h-screen nb-canvas-surface flex items-center justify-center p-6">
   <div className="text-center max-w-xs">
-  <Zap size={56} strokeWidth={2.5} className="text-ink mx-auto" fill="currentColor" />
+  <Logo size={64} className="mx-auto" />
   <p className="mt-4 font-display font-bold text-lg">Couldn't reach Zoclo</p>
   <p className="mt-2 font-body text-sm text-gray-500">
   The server didn't answer. Your login is safe — just try again.

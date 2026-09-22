@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Zap, Hourglass } from 'lucide-react';
+import { LogIn, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import PasswordInput from '@/components/common/PasswordInput';
 import GoogleButton from '@/components/common/GoogleButton';
@@ -90,7 +90,7 @@ export default function LoginPage() {
   {isLoading ? (
   <><Hourglass size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Signing in...</>
   ) : (
-  <><Zap size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Sign In</>
+  <><LogIn size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Sign In</>
   )}
   </button>
   {isLoading && slow && (

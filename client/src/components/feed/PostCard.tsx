@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Ghost, MessageCircle, Heart, ChevronRight, Bookmark, Share2, Flag, FileText, Zap } from 'lucide-react';
+import { Ghost, MessageCircle, Heart, ChevronRight, Bookmark, Share2, Flag, FileText, Megaphone } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
@@ -129,7 +129,7 @@ export default function PostCard({ post, detailView = false, activeTab = 'all' }
   )}
   {activeTab !== 'all' && post.type === 'NORMAL' && (
   <span className="nb-badge bg-white text-gray-500 text-xs inline-flex items-center gap-1 shrink-0">
-  <Zap size={12} strokeWidth={2.5} /> POST
+  <Megaphone size={12} strokeWidth={2.5} /> POST
   </span>
   )}
   </div>

@@ -1,4 +1,4 @@
-import { Ghost, Zap, FileText, HelpCircle } from 'lucide-react';
+import { Ghost, Megaphone, FileText, HelpCircle, type LucideIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth.store';
@@ -12,8 +12,8 @@ interface Props {
   type?: PostType;
 }
 
-const TYPE_META: Record<PostType, { label: string; icon: typeof Zap; toast: string }> = {
-  NORMAL: { label: 'Post', icon: Zap, toast: 'Posted!' },
+const TYPE_META: Record<PostType, { label: string; icon: LucideIcon; toast: string }> = {
+  NORMAL: { label: 'Post', icon: Megaphone, toast: 'Posted!' },
   CONFESSION: { label: 'Confession', icon: Ghost, toast: 'Confession posted!' },
   QUESTION: { label: 'Question', icon: FileText, toast: 'Question posted!' },
 };
