@@ -19,6 +19,9 @@ export interface User {
   interests: Interest[];
   postCount?: number;
   createdAt?: string;
+  /** Auth-method flags (from /me): Google-only accounts have no password to change — only to set. */
+  hasGoogle?: boolean;
+  hasPassword?: boolean;
 }
 
 export interface College {

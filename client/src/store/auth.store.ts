@@ -21,6 +21,7 @@ interface AuthState {
   signup: (data: any) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  setPasswordViaGoogle: (idToken: string, newPassword: string) => Promise<void>;
   deleteAccount: () => Promise<void>;
   fetchMe: () => Promise<void>;
   retryBoot: () => Promise<void>;
@@ -85,6 +86,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   changePassword: async (currentPassword: string, newPassword: string) => {
     await api.patch('/auth/password', { currentPassword, newPassword });
+    // Server kills ALL sessions — behave like a logout everywhere.
+    disconnectSocket();
+    queryClient.clear();
+    localStorage.clear();
+    set({ user: null, isAuthenticated: false, isIncognito: false });
+  },
+
+  /** Google-only accounts have no current password: a FRESH Google ID token
+   *  authorizes minting their first password (backup login method). */
+  setPasswordViaGoogle: async (idToken: string, newPassword: string) => {
+    await api.post('/auth/password/set-via-google', { credential: idToken, newPassword });
     // Server kills ALL sessions — behave like a logout everywhere.
     disconnectSocket();
     queryClient.clear();

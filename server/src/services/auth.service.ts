@@ -1,5 +1,5 @@
 import { prisma, TX_OPTIONS } from '../config/prisma';
-import { hashPassword, comparePassword } from '../utils/password';
+import { hashPassword, comparePassword, isPasswordSet } from '../utils/password';
 import { checkEmail } from '../utils/email-validation';
 import {
   generateAccessToken,
@@ -9,6 +9,7 @@ import {
 import { env } from '../config/env';
 import { JwtPayload } from '../types';
 import { invalidateUser } from '../utils/user-cache';
+import { verifyGoogleIdToken } from './google-auth.service';
 
 /**
  * Constant dummy hash for the login timing-oracle fix: when the email does
@@ -293,6 +294,40 @@ export class AuthService {
   }
 
   /**
+   * SET a password for a Google-created account that never had one.
+   * Unlike changePassword this does NOT ask for the current password (there
+   * isn't one — passwordHash is a random placeholder). Authorization is a
+   * FRESH Google ID token for the LINKED Google account instead: session auth
+   * alone must never mint a password, or a stolen session would become
+   * permanent account ownership. Same session-kill as changePassword.
+   */
+  async setPasswordViaGoogle(userId: string, idToken: string, newPassword: string): Promise<void> {
+    if (typeof newPassword !== 'string' || newPassword.length < 6 || newPassword.length > 128) {
+      const e: any = new Error('New password must be 6-128 characters'); e.status = 400; throw e;
+    }
+    if (typeof idToken !== 'string' || !idToken) {
+      const e: any = new Error('Missing Google credential'); e.status = 400; throw e;
+    }
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive) {
+      const e: any = new Error('Account unavailable'); e.status = 401; throw e;
+    }
+    if (!user.googleId) {
+      const e: any = new Error('Google is not linked to this account'); e.status = 400; throw e;
+    }
+    if (isPasswordSet(user.passwordHash)) {
+      const e: any = new Error('This account already has a password — change it instead'); e.status = 400; throw e;
+    }
+    const g = await verifyGoogleIdToken(idToken);
+    if (g.googleId !== user.googleId) {
+      const e: any = new Error('Google account does not match this profile'); e.status = 403; throw e;
+    }
+    await prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(newPassword) } });
+    await prisma.refreshToken.deleteMany({ where: { userId } });
+    invalidateUser(userId);
+  }
+
+  /**
    * PERMANENT account deletion (user-invoked "delete my account").
    *
    * This is the ONLY account exit besides logout. Everything the user owned
@@ -428,6 +463,11 @@ export class AuthService {
       postCount: user._count.posts,
       isProfileSetup: !!(user.collegeId && user.course),
       createdAt: user.createdAt,
+      // Auth-method flags: the Settings screen shows "Change password" only
+      // when a real password exists, and "Set a password" for Google-only
+      // accounts (whose passwordHash is an unguessable placeholder).
+      hasGoogle: !!user.googleId,
+      hasPassword: isPasswordSet(user.passwordHash),
     };
   }
 

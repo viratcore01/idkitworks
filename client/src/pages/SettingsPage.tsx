@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { Settings, Save, Hourglass, LogOut, BadgeCheck, ShieldCheck, KeyRound } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import PasswordInput from '@/components/common/PasswordInput';
+import GoogleButton from '@/components/common/GoogleButton';
 import toast from 'react-hot-toast';
 
 export default function SettingsPage() {
-  const { user, logout, updateProfile, changePassword, deleteAccount } = useAuthStore();
+  const { user, logout, updateProfile, changePassword, setPasswordViaGoogle, deleteAccount } = useAuthStore();
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [bio, setBio] = useState(user?.bio || '');
@@ -14,6 +15,12 @@ export default function SettingsPage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isChangingPw, setIsChangingPw] = useState(false);
+  // Google-only accounts have no password to change — they SET their first
+  // one, authorized by a fresh Google verification (not the current-password
+  // field, which they could never fill).
+  const isGoogleOnly = user?.hasGoogle === true && user?.hasPassword === false;
+  const [googleToken, setGoogleToken] = useState<string | null>(null);
+  const [setPw, setSetPw] = useState('');
   const [showDelete, setShowDelete] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
@@ -47,6 +54,27 @@ export default function SettingsPage() {
   navigate('/login');
   } catch (e: any) {
   toast.error(e?.response?.data?.error || 'Failed to change password');
+  } finally {
+  setIsChangingPw(false);
+  }
+  };
+
+  const handleSetPassword = async () => {
+  if (!googleToken) {
+  toast.error('Verify with Google first');
+  return;
+  }
+  if (setPw.length < 8) {
+  toast.error('New password must be at least 8 characters');
+  return;
+  }
+  setIsChangingPw(true);
+  try {
+  await setPasswordViaGoogle(googleToken, setPw);
+  toast.success('Password set — please log in again');
+  navigate('/login');
+  } catch (e: any) {
+  toast.error(e?.response?.data?.error || 'Failed to set password');
   } finally {
   setIsChangingPw(false);
   }
@@ -207,7 +235,51 @@ export default function SettingsPage() {
   )}
   </div>
 
-  {/* Change Password */}
+  {/* Password: Google-only accounts SET their first password (verified by
+  fresh Google ownership) instead of changing one they never had. */}
+  {isGoogleOnly ? (
+  <div className="nb-card p-4 sm:p-6 mb-4 min-w-0">
+  <h2 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
+  <KeyRound size={18} strokeWidth={2.5} /> Set a password
+  </h2>
+  <p className="text-sm text-gray-600 mb-4">
+  You signed up with Google, so there's no password on this account yet. Verify with Google, then choose one — it becomes a backup way to log in.
+  </p>
+  <div className="space-y-4">
+  {!googleToken ? (
+  <GoogleButton
+  mode="verify"
+  onCredential={async (token) => {
+  setGoogleToken(token);
+  toast.success('Google verified — now choose your password');
+  }}
+  />
+  ) : (
+  <p className="text-sm font-semibold text-nb-violet">Google verified — now choose your password.</p>
+  )}
+  <div>
+  <label htmlFor="set-password" className="block font-display text-sm font-semibold mb-1.5">New password (min 8 characters)</label>
+  <PasswordInput
+  id="set-password"
+  value={setPw}
+  onChange={setSetPw}
+  autoComplete="new-password"
+  required
+  minLength={8}
+  placeholder="Min 8 characters"
+  />
+  </div>
+  <button
+  onClick={handleSetPassword}
+  disabled={isChangingPw || !googleToken || !setPw}
+  aria-busy={isChangingPw}
+  className="nb-btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+  {isChangingPw ? 'Setting...' : 'Set password (logs out all devices)'}
+  </button>
+  </div>
+  </div>
+  ) : (
   <div className="nb-card p-4 sm:p-6 mb-4 min-w-0">
   <h2 className="font-display font-bold text-lg mb-4 flex items-center gap-2">
   <KeyRound size={18} strokeWidth={2.5} /> Change Password
@@ -246,6 +318,7 @@ export default function SettingsPage() {
   </button>
   </form>
   </div>
+  )}
   </div>
   );
 }

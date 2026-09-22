@@ -84,6 +84,16 @@ export class AuthController {
     }
   }
 
+  async setPasswordViaGoogle(req: AuthRequest, res: Response) {
+    try {
+      const { credential, newPassword } = req.body;
+      await authService.setPasswordViaGoogle(req.user!.id, String(credential || ''), newPassword);
+      res.json({ message: 'Password set. Please log in again on all devices.' });
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
   async deleteAccount(req: AuthRequest, res: Response) {
     try {
       await authService.deleteAccount(req.user!.id);

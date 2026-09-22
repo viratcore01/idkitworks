@@ -22,13 +22,21 @@ declare global {
  * - The same flow serves login AND signup: existing email → linked (old
  * password keeps working); new email → account inside the normal funnel
  * (no college yet, unverified → the college wall and ID gate apply).
+ * - Verify mode (`mode="verify"` + `onCredential`): renders the same official
+ * button but hands the fresh ID token to the caller instead of logging in —
+ * used by Settings to prove Google-account ownership before setting a first
+ * password. No navigation happens in this mode.
  */
-export default function GoogleButton({ mode }: { mode: 'login' | 'signup' }) {
- const [enabled, setEnabled] = useState<{ clientId: string } | null>(null);
- const [busy, setBusy] = useState(false);
- const btnRef = useRef<HTMLDivElement>(null);
- const loginWithGoogle = useAuthStore((s) => s.loginWithGoogle);
- const navigate = useNavigate();
+export default function GoogleButton({ mode, onCredential }: { mode: 'login' | 'signup' | 'verify'; onCredential?: (idToken: string) => Promise<void> }) {
+  const [enabled, setEnabled] = useState<{ clientId: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const btnRef = useRef<HTMLDivElement>(null);
+  const loginWithGoogle = useAuthStore((s) => s.loginWithGoogle);
+  const navigate = useNavigate();
+  // Ref-stable callback: the GIS effect must not re-initialize (and stack a
+  // second Google button) on every parent re-render while typing.
+  const onCredentialRef = useRef(onCredential);
+  onCredentialRef.current = onCredential;
 
  // 1. Ask the server whether Google sign-in is configured.
  // Render's free tier sleeps when idle — the first request can take 30-50s
@@ -63,30 +71,37 @@ export default function GoogleButton({ mode }: { mode: 'login' | 'signup' }) {
 
  const init = () => {
  if (cancelled || !window.google?.accounts?.id || !btnRef.current) return;
- window.google.accounts.id.initialize({
- client_id: clientId,
- callback: async (response: { credential?: string }) => {
- if (!response?.credential || busy) return;
- setBusy(true);
+  window.google.accounts.id.initialize({
+  client_id: clientId,
+  callback: async (response: { credential?: string }) => {
+  if (!response?.credential || busy) return;
+  setBusy(true);
   try {
+  // Verify mode: hand the fresh ID token to the caller (e.g. Settings
+  // proving Google-account ownership to set a first password) — no
+  // login, no navigation.
+  if (onCredentialRef.current) {
+  await onCredentialRef.current(response.credential);
+  return;
+  }
   const created = await loginWithGoogle(response.credential);
   toast.success(created ? 'Account created — welcome to Zoclo!' : 'Welcome back!');
- // The App gate routes correctly from here: no college → setup,
- // unverified → /verify, everyone else → the feed.
- navigate('/home');
- } catch (err: any) {
- toast.error(err.response?.data?.error || 'Google sign-in failed');
- } finally {
- setBusy(false);
- }
- },
- });
+  // The App gate routes correctly from here: no college → setup,
+  // unverified → /verify, everyone else → the feed.
+  navigate('/home');
+  } catch (err: any) {
+  toast.error(err.response?.data?.error || err?.message || 'Google sign-in failed');
+  } finally {
+  setBusy(false);
+  }
+  },
+  });
   window.google.accounts.id.renderButton(btnRef.current, {
   type: 'standard',
   theme: 'outline',
   size: 'large',
   shape: 'rectangular',
-  text: mode === 'signup' ? 'signup_with' : 'signin_with',
+  text: mode === 'signup' ? 'signup_with' : mode === 'verify' ? 'continue_with' : 'signin_with',
   width: Math.min(320, Math.floor(window.innerWidth - 64)),
   });
  };
