@@ -26,6 +26,11 @@ export default function VerificationPage() {
   const [cameraOpen, setCameraOpen] = useState(false);
   // Upload progress line on the checking card (uploading → retrying → done).
   const [submitNote, setSubmitNote] = useState('');
+  // Guards overlapping submissions: only the latest submit's retry may fire.
+  // Retaking bumps the sequence so a stale in-flight retry can never land an
+  // old photo over the newer one (server is latest-wins, this just avoids
+  // the pointless extra write + status flicker).
+  const submitSeqRef = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
  const fetchMe = useAuthStore((s) => s.fetchMe);
@@ -78,15 +83,30 @@ export default function VerificationPage() {
   checkStartRef.current = Date.now();
   setPhase('checking');
   setSubmitNote('Uploading your ID…');
+  const seq = ++submitSeqRef.current;
   try {
-  await submitWithRetry(file);
+  await submitWithRetry(file, seq);
+  if (seq !== submitSeqRef.current) return; // superseded by a retake — leave the new flow alone
   setSubmitNote('');
   refetch();
   } catch (e: any) {
+  if (seq !== submitSeqRef.current) return; // same: a retake owns the screen now
   setSubmitNote('');
   setError(e?.response?.data?.error || 'Upload failed — try again');
   setPhase('capture');
   }
+  };
+
+  // Back to the camera/gallery from any waiting state — the moderator hasn't
+  // decided yet, so the user may replace the photo freely (server keeps only
+  // the latest pending attempt). Bumping the sequence invalidates a stale
+  // in-flight retry from the abandoned attempt.
+  const retake = () => {
+  submitSeqRef.current++;
+  setSubmitNote('');
+  setPreview(null);
+  setError('');
+  setPhase('capture');
   };
 
   // The server replaces any prior PENDING attempt (latest photo wins), so a
@@ -97,16 +117,18 @@ export default function VerificationPage() {
   // This kills the classic first-try bounce: cold server / mobile-data blip
   // fails the upload at 45s, and without a retry the user is dumped back on
   // the upload screen and has to do the whole photo flow a second time.
-  const submitWithRetry = async (file: File, attemptsLeft = 2): Promise<void> => {
+  const submitWithRetry = async (file: File, seq: number, attemptsLeft = 2): Promise<void> => {
   try {
   await verificationApi.submit(file);
   } catch (e: any) {
+  if (seq !== submitSeqRef.current) return; // superseded by a retake — stay quiet
   const status = e?.response?.status;
   const transient = !e?.response || status === 429 || (typeof status === 'number' && status >= 500);
   if (transient && attemptsLeft > 1) {
   setSubmitNote('Connection hiccup — trying again…');
   await new Promise((r) => setTimeout(r, 1500));
-  return submitWithRetry(file, attemptsLeft - 1);
+  if (seq !== submitSeqRef.current) return; // user retook during the pause
+  return submitWithRetry(file, seq, attemptsLeft - 1);
   }
   throw e;
   }
@@ -150,6 +172,9 @@ export default function VerificationPage() {
   </p>
   )}
   <p className="text-xs opacity-50 mt-6">You can leave this page — Zoclo opens by itself once you're approved.</p>
+  <button onClick={retake} className="nb-btn-ghost w-full mt-4 text-sm">
+  <Camera size={14} strokeWidth={2.5} className="inline mr-1.5 -mt-0.5" /> Changed your mind? Retake photo
+  </button>
  {status?.pending?.note && (
  <p className="mt-4 text-xs opacity-60 italic">“{status.pending.note}”</p>
  )}
@@ -202,9 +227,14 @@ export default function VerificationPage() {
  </button>
  )}
   {!verified && status.status === 'PENDING' && (
+  <>
   <p className="text-xs opacity-50 mt-6 flex items-center justify-center gap-1.5">
   <Clock3 size={13} /> You'll be let in automatically the moment it's approved
   </p>
+  <button onClick={retake} className="nb-btn-ghost w-full mt-3 text-sm">
+  <Camera size={14} strokeWidth={2.5} className="inline mr-1.5 -mt-0.5" /> Retake with a clearer photo
+  </button>
+  </>
   )}
  {!verified && status.status === 'REJECTED' && (
  <button onClick={() => { setPreview(null); setPhase('capture'); }} className="nb-btn-primary w-full mt-6">
