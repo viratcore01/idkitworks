@@ -16,7 +16,7 @@ interface AuthState {
   isIncognito: boolean;
   setUser: (user: User | null) => void;
   toggleIncognito: () => void;
-  login: (email: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<boolean>;
   signup: (data: any) => Promise<void>;
   logout: () => Promise<void>;
@@ -40,8 +40,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   toggleIncognito: () => set((s) => ({ isIncognito: !s.isIncognito })),
 
-  login: async (email, password) => {
-    const { data } = await api.post('/auth/login', { email, password });
+  login: async (identifier, password) => {
+    const { data } = await api.post('/auth/login', { identifier, password });
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
     set({ user: data.user, isAuthenticated: true });

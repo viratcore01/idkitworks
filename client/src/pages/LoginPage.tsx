@@ -7,7 +7,7 @@ import GoogleButton from '@/components/common/GoogleButton';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,7 +31,7 @@ export default function LoginPage() {
   setIsLoading(true);
   setFormError(null);
   try {
-  await login(email, password);
+  await login(identifier, password);
   toast.success('Welcome back!');
   navigate('/home');
   } catch (err: any) {
@@ -55,16 +55,16 @@ export default function LoginPage() {
 
   <form onSubmit={handleSubmit} className="space-y-4" noValidate={false}>
   <div>
-  <label htmlFor="login-email" className="block font-display text-sm font-semibold mb-1.5">Email</label>
+  <label htmlFor="login-identifier" className="block font-display text-sm font-semibold mb-1.5">Email or username</label>
   <input
-  id="login-email"
-  type="email"
+  id="login-identifier"
+  type="text"
   className="nb-input"
-  placeholder="your@email.com"
-  value={email}
-  onChange={(e) => setEmail(e.target.value)}
+  placeholder="your@email.com or username"
+  value={identifier}
+  onChange={(e) => setIdentifier(e.target.value)}
   required
-  autoComplete="email"
+  autoComplete="username"
   aria-invalid={formError ? true : undefined}
   aria-describedby={formError ? 'login-error' : undefined}
   />

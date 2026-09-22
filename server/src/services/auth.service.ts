@@ -171,28 +171,43 @@ export class AuthService {
     return createAuthResponse(user, accessToken, refreshToken);
   }
 
-  async login(email: string, password: string): Promise<AuthTokens> {
-    if (typeof email !== 'string' || typeof password !== 'string') {
-      const e: any = new Error('Invalid email or password'); e.status = 401; throw e;
+  /**
+   * Login with EITHER email or username (both case-insensitive — usernames
+   * are case-insensitively unique by product rule, emails case-insensitive
+   * by convention). One generic error for every failure path so the response
+   * never becomes an account-existence oracle (timing + message).
+   */
+  async login(identifier: string, password: string): Promise<AuthTokens> {
+    if (typeof identifier !== 'string' || typeof password !== 'string' || !identifier.trim()) {
+      const e: any = new Error('Invalid email/username or password'); e.status = 401; throw e;
     }
     // Overlong passwords can never be valid (signup caps at 128) — reject
     // before bcrypt burns CPU on a 100kb payload.
     if (password.length > 128) {
       await comparePassword(password.slice(0, 128), DUMMY_HASH);
-      throw new Error('Invalid email or password');
+      throw new Error('Invalid email/username or password');
     }
-    const user = await prisma.user.findUnique({ where: { email } });
+    const id = identifier.trim();
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: { equals: id, mode: 'insensitive' } },
+          { username: { equals: id, mode: 'insensitive' } },
+        ],
+      },
+    });
 
     if (!user) {
-      // Always run one bcrypt compare, even for unknown emails — otherwise
-      // response timing reveals which emails have accounts (enumeration).
+      // Always run one bcrypt compare, even for unknown identifiers —
+      // otherwise response timing reveals which emails/usernames have
+      // accounts (enumeration).
       await comparePassword(password, DUMMY_HASH);
-      throw new Error('Invalid email or password');
+      throw new Error('Invalid email/username or password');
     }
 
     const isValid = await comparePassword(password, user.passwordHash);
     if (!isValid) {
-      throw new Error('Invalid email or password');
+      throw new Error('Invalid email/username or password');
     }
 
     if (!user.isActive) {

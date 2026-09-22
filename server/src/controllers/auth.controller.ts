@@ -46,8 +46,10 @@ export class AuthController {
 
   async login(req: Request, res: Response) {
     try {
-      const { email, password } = req.body;
-      const result = await authService.login(email, password);
+      // `identifier` is email-or-username; legacy `email` still accepted so
+      // older clients and scripts keep working unchanged.
+      const { identifier, email, password } = req.body;
+      const result = await authService.login(identifier ?? email, password);
       res.json(result);
     } catch (error: any) {
       sendError(res, error, 401);
