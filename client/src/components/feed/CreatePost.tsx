@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
+import Avatar from '@/components/common/Avatar';
 import toast from 'react-hot-toast';
 
 type PostType = 'NORMAL' | 'CONFESSION' | 'QUESTION';
@@ -80,9 +81,13 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
 
         <div className="flex gap-2.5 sm:gap-3 min-w-0">
           {!effectiveAnonymous && (
-            <div className="w-10 h-10 bg-nb-violet border-nb-2 border-ink flex items-center justify-center text-white font-bold text-sm shrink-0">
-              {user?.displayName?.[0]?.toUpperCase() || '?'}
-            </div>
+            <Avatar
+              src={user?.avatarUrl}
+              photoId={user?.avatarPhotoId}
+              color={user?.avatarColor}
+              name={user?.displayName || '?'}
+              size="sm"
+            />
           )}
           {effectiveAnonymous && (
             <div className="w-10 h-10 bg-nb-lilac border-nb-2 border-ink flex items-center justify-center text-white shrink-0">
