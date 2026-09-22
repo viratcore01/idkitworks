@@ -8,11 +8,11 @@ import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
 
 interface QueueItem {
- id: string;
- user: { id: string; username: string; displayName: string; avatarUrl: string | null; avatarPhotoId?: string | null; college?: { name: string; shortName?: string } | null };
- submittedAt: string;
- autoNote?: string | null;
- imageUrl: string;
+  id: string;
+  user: { id: string; username: string; displayName: string; avatarUrl: string | null; avatarPhotoId?: string | null; avatarColor?: string | null; college?: { name: string; shortName?: string } | null };
+  submittedAt: string;
+  autoNote?: string | null;
+  imageUrl: string;
 }
 
 /** College-scoped review queue: moderators confirm or reject student IDs. */
@@ -98,13 +98,13 @@ export default function AdminVerifyPage() {
  </div>
  <div className="flex-1 min-w-0">
  <div className="flex items-center gap-2.5">
- <Avatar
- name={item.user.displayName}
- photoId={item.user.avatarPhotoId || undefined}
- src={item.user.avatarUrl}
- color={null}
- size="sm"
- />
+<Avatar
+  name={item.user.displayName}
+  photoId={item.user.avatarPhotoId || undefined}
+  src={item.user.avatarUrl}
+  color={item.user.avatarColor}
+  size="sm"
+/>
  <div className="min-w-0">
  <p className="font-semibold text-sm truncate">{item.user.displayName}</p>
  <p className="text-xs opacity-60 truncate">@{item.user.username} · {item.user.college?.shortName || item.user.college?.name}</p>

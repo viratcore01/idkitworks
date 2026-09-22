@@ -45,7 +45,7 @@ export default function CommentRow({
  className="shrink-0"
  onClick={(e) => e.stopPropagation()}
  >
- <Avatar src={comment.author!.avatarUrl} photoId={comment.author!.avatarPhotoId} name={comment.author!.displayName} size="sm" className="!w-6 !h-6 !text-[10px]" />
+ <Avatar src={comment.author!.avatarUrl} photoId={comment.author!.avatarPhotoId} color={comment.author!.avatarColor} name={comment.author!.displayName} size="sm" className="!w-6 !h-6 !text-[10px]" />
  </Link>
  )}
   <p className="text-xs leading-relaxed min-w-0 flex-1 pt-0.5 break-words overflow-wrap-anywhere">

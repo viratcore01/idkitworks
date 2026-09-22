@@ -196,6 +196,7 @@ export default function NotificationsPage() {
                       <Avatar
                         src={notif.actor.avatarUrl}
                         photoId={notif.actor.avatarPhotoId}
+                        color={notif.actor.avatarColor}
                         name={notif.actor.displayName}
                         size="sm"
                       />
