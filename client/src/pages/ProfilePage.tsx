@@ -230,23 +230,25 @@ export default function ProfilePage() {
  </div>
  )}
 
- {/* Stats row — real apps show Posts/Likes (+ Matches for yourself) */}
- {/* flex-wrap: 5 stats overflow a 360px row without it */}
- <div className="mt-4 flex flex-wrap gap-x-5 gap-y-3 sm:gap-6 text-center">
- <div>
- <p className="font-display font-bold text-lg">{profile.stats?.posts ?? 0}</p>
- <p className="text-xs text-gray-500 font-body">Posts</p>
- </div>
- <div>
- <p className="font-display font-bold text-lg">{profile.stats?.likesReceived ?? 0}</p>
- <p className="text-xs text-gray-500 font-body">Likes</p>
- </div>
- {isOwnProfile && (
- <div>
- <p className="font-display font-bold text-lg">{profile.stats?.matches ?? 0}</p>
- <p className="text-xs text-gray-500 font-body">Matches</p>
- </div>
- )}
+{/* Stats row — real apps show Posts/Likes (+ Matches for yourself) */}
+  {/* flex-wrap: 5 stats overflow a 360px row without it */}
+  <div className="mt-4 flex flex-wrap gap-x-5 gap-y-3 sm:gap-6 text-center">
+  <div>
+  <p className="font-display font-bold text-lg">{profile.stats?.posts ?? 0}</p>
+  <p className="text-xs text-gray-500 font-body">Posts</p>
+  </div>
+  {isOwnProfile && (
+  <>
+  <div>
+  <p className="font-display font-bold text-lg">{profile.stats?.likesReceived ?? 0}</p>
+  <p className="text-xs text-gray-500 font-body">Likes</p>
+  </div>
+  <div>
+  <p className="font-display font-bold text-lg">{profile.stats?.matches ?? 0}</p>
+  <p className="text-xs text-gray-500 font-body">Matches</p>
+  </div>
+  </>
+  )}
  {/* Owner-only: your anonymous posts are your private data, the stat is
  too — strangers see just the attributed Posts number. */}
  {isOwnProfile && (
