@@ -138,6 +138,13 @@ export default function AdminLayout() {
             </div>
           </div>
           <div className="flex gap-1 overflow-x-auto overscroll-x-contain p-2">
+            <button
+              onClick={() => navigate('/home')}
+              aria-label="Back to student app"
+              className="flex items-center gap-1.5 px-3 py-2.5 min-h-[44px] text-xs font-bold shrink-0 bg-[#FBBF24] text-[#0F172A]"
+            >
+              <Home size={15} strokeWidth={2.5} /> Home
+            </button>
             {NAV.map((n) => (
               <NavLink
                 key={n.to}

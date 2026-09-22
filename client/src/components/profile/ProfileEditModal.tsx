@@ -115,23 +115,24 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  }
  };
 
- const handleSave = async () => {
- const problem = validate();
- if (problem) return toast.error(problem);
- setIsSaving(true);
- try {
- await api.patch('/auth/me', {
- ...form,
- dateOfBirth: form.dateOfBirth || null,
- });
- toast.success('Profile updated');
- onSaved();
- } catch (e: any) {
- toast.error(e.response?.data?.error || 'Could not save');
- } finally {
- setIsSaving(false);
- }
- };
+const handleSave = async () => {
+  const problem = validate();
+  if (problem) return toast.error(problem);
+  setIsSaving(true);
+  try {
+  await api.patch('/auth/me', {
+  ...form,
+  dateOfBirth: form.dateOfBirth || null,
+  });
+  toast.success('Profile updated');
+  refreshUser(); // sync avatar/color everywhere (Topbar, Sidebar, MobileNav, profile)
+  onSaved();
+  } catch (e: any) {
+  toast.error(e.response?.data?.error || 'Could not save');
+  } finally {
+  setIsSaving(false);
+  }
+  };
 
  // Modal layout: the FIXED element is the scroll container; the inner wrapper
  // is min-h-full so `items-center` centers within the FULL content height.
