@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { GraduationCap, Camera, ScanLine, ShieldCheck, RefreshCw, Clock3, AlertTriangle, Check } from 'lucide-react';
+import { GraduationCap, Camera, ScanLine, ShieldCheck, Clock3, AlertTriangle, Check } from 'lucide-react';
 import Logo from '@/components/common/Logo';
 import ImageEditorModal from '@/components/common/ImageEditorModal';
 import { useAuthStore } from '@/store/auth.store';
@@ -22,7 +22,8 @@ export default function VerificationPage() {
  const [error, setError] = useState('');
  const [preview, setPreview] = useState<string | null>(null);
  const [editing, setEditing] = useState<File | null>(null);
- const fileRef = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
  const fetchMe = useAuthStore((s) => s.fetchMe);
  const checkStartRef = useRef(0);
 
@@ -87,13 +88,14 @@ export default function VerificationPage() {
  if (file) setEditing(file);
  };
 
- const openCamera = () => {
- // The file input is the single entry point: on mobile it offers the native
- // camera AND gallery; on desktop it opens the file dialog. (The old
- // capture="environment" attribute forced camera-only and greyed out
- // gallery files — that's why picking an image appeared broken.)
- fileRef.current?.click();
- };
+  const openCamera = () => {
+  // Dedicated camera input (capture="environment" = rear camera): on mobile
+  // this opens the camera directly instead of the file picker. It stays
+  // SEPARATE from the gallery input — merging them meant "Open camera" just
+  // opened files, and putting capture on the shared input greyed out gallery
+  // picks. (Desktop browsers ignore capture and show the file dialog.)
+  cameraRef.current?.click();
+  };
 
  // ── CHECKING ──────────────────────────────────────────────
  if (phase === 'checking') {
@@ -106,12 +108,9 @@ export default function VerificationPage() {
  <ScanLine size={112} className="absolute inset-0 m-auto text-nb-violet animate-pulse" strokeWidth={1.2} />
  </div>
  )}
- <h1 className="font-display text-2xl font-bold">Checking your student ID…</h1>
- <p className="text-sm opacity-70 mt-2">A moderator from your college is reviewing it. The moment they approve, you're in.</p>
- <div className="mt-6 flex items-center justify-center gap-2 text-sm">
- <RefreshCw size={16} className="animate-spin" /> waiting for review
- </div>
- <p className="text-xs opacity-50 mt-3">You can leave this page — the second it's approved, Zoclo opens by itself.</p>
+  <h1 className="font-display text-2xl font-bold">ID submitted for review</h1>
+  <p className="text-sm opacity-70 mt-2">Your ID card is submitted to a moderator from your college — they'll review it as soon as possible. The moment they approve, you're in.</p>
+  <p className="text-xs opacity-50 mt-6">You can leave this page — Zoclo opens by itself once you're approved.</p>
  {status?.pending?.note && (
  <p className="mt-4 text-xs opacity-60 italic">“{status.pending.note}”</p>
  )}
@@ -163,11 +162,11 @@ export default function VerificationPage() {
  Enter Zoclo
  </button>
  )}
- {!verified && status.status === 'PENDING' && (
- <p className="text-xs opacity-50 mt-6 flex items-center justify-center gap-1.5">
- <RefreshCw size={13} className="animate-spin" /> You'll be let in automatically the moment it's approved
- </p>
- )}
+  {!verified && status.status === 'PENDING' && (
+  <p className="text-xs opacity-50 mt-6 flex items-center justify-center gap-1.5">
+  <Clock3 size={13} /> You'll be let in automatically the moment it's approved
+  </p>
+  )}
  {!verified && status.status === 'REJECTED' && (
  <button onClick={() => { setPreview(null); setPhase('capture'); }} className="nb-btn-primary w-full mt-6">
  <Camera size={16} className="inline mr-1" /> Retake photo
@@ -197,10 +196,12 @@ export default function VerificationPage() {
   <AlertTriangle size={14} /> {error}
   </p>
   )}
- <button onClick={openCamera} className="nb-btn-primary w-full mt-6">
- <Camera size={18} className="inline mr-2" /> Open camera
- </button>
- <label className="nb-btn-ghost w-full mt-2 cursor-pointer text-center block">
+  <button onClick={openCamera} className="nb-btn-primary w-full mt-6">
+  <Camera size={18} className="inline mr-2" /> Open camera
+  </button>
+  {/* Hidden rear-camera input — capture opens the camera app on mobile. */}
+  <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={pickFile} className="hidden" aria-hidden="true" tabIndex={-1} />
+  <label className="nb-btn-ghost w-full mt-2 cursor-pointer text-center block">
  Upload from gallery
  <input ref={fileRef} type="file" accept="image/*,.heic,.heif" onChange={pickFile} className="hidden" />
  </label>
