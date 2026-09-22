@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GraduationCap, Camera, ScanLine, ShieldCheck, Clock3, AlertTriangle, Check } from 'lucide-react';
 import Logo from '@/components/common/Logo';
 import ImageEditorModal from '@/components/common/ImageEditorModal';
+import CameraCaptureModal from '@/components/common/CameraCaptureModal';
 import { useAuthStore } from '@/store/auth.store';
 import { useVerificationUnlock } from '@/hooks/useVerificationUnlock';
 import { verificationApi, VerificationStatus } from '@/services/verification';
@@ -20,8 +21,9 @@ export default function VerificationPage() {
  const queryClient = useQueryClient();
  const [phase, setPhase] = useState<Phase>('intro');
  const [error, setError] = useState('');
- const [preview, setPreview] = useState<string | null>(null);
- const [editing, setEditing] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [editing, setEditing] = useState<File | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
  const fetchMe = useAuthStore((s) => s.fetchMe);
@@ -89,12 +91,16 @@ export default function VerificationPage() {
  };
 
   const openCamera = () => {
-  // Dedicated camera input (capture="environment" = rear camera): on mobile
-  // this opens the camera directly instead of the file picker. It stays
-  // SEPARATE from the gallery input — merging them meant "Open camera" just
-  // opened files, and putting capture on the shared input greyed out gallery
-  // picks. (Desktop browsers ignore capture and show the file dialog.)
+  // Real camera first (live viewfinder modal via getUserMedia — works on any
+  // device with a camera, unlike the capture attribute which desktops ignore
+  // and some mobile browsers honor inconsistently). No camera API (old
+  // browser, insecure context) → fall back to the hidden capture input, then
+  // the gallery. Every path lands in the same editor → submit flow.
+  if (typeof navigator.mediaDevices?.getUserMedia === 'function') {
+  setCameraOpen(true);
+  } else {
   cameraRef.current?.click();
+  }
   };
 
  // ── CHECKING ──────────────────────────────────────────────
@@ -205,23 +211,32 @@ export default function VerificationPage() {
  Upload from gallery
  <input ref={fileRef} type="file" accept="image/*,.heic,.heif" onChange={pickFile} className="hidden" />
  </label>
- {editing && (
- <ImageEditorModal
- file={editing}
- title="Position your ID"
- aspects={[
- { label: 'Original', value: null },
- { label: 'Card 3:2', value: 3 / 2 },
- { label: 'Card 4:3', value: 4 / 3 },
- ]}
- maxOutputPx={2000}
- onCancel={() => setEditing(null)}
- onDone={(f) => {
- setEditing(null);
- submit(f);
- }}
- />
- )}
+  {editing && (
+  <ImageEditorModal
+  file={editing}
+  title="Position your ID"
+  aspects={[
+  { label: 'Original', value: null },
+  { label: 'Card 3:2', value: 3 / 2 },
+  { label: 'Card 4:3', value: 4 / 3 },
+  ]}
+  maxOutputPx={2000}
+  onCancel={() => setEditing(null)}
+  onDone={(f) => {
+  setEditing(null);
+  submit(f);
+  }}
+  />
+  )}
+  {cameraOpen && (
+  <CameraCaptureModal
+  onCapture={(f) => {
+  setCameraOpen(false);
+  setEditing(f);
+  }}
+  onClose={() => setCameraOpen(false)}
+  />
+  )}
  </div>
  </Shell>
  );
