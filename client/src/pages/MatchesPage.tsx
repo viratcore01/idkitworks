@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/auth.store';
 import Avatar from '@/components/common/Avatar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
+import MatchReasons from '@/components/match/MatchReasons';
 import { formatDistanceToNow } from '@/utils/date';
 import { photoSrc, usePhotoVersion } from '@/utils/photo';
 import toast from 'react-hot-toast';
@@ -404,27 +405,12 @@ setShowPrefs(true);
   <div className="nb-card bg-nb-yellow p-6 sm:p-8 max-w-sm w-full min-w-0 text-center" role="dialog" aria-modal="true" aria-label="It's a match" onClick={(e) => e.stopPropagation()}>
  <PartyPopper size={48} strokeWidth={2.5} className="mx-auto mb-3 text-ink" />
  <h2 className="font-display font-bold text-2xl mb-1">It's a Match!</h2>
- <p className="font-body text-sm">
- You and {matchBanner.name} liked each other.
- </p>
- {matchBanner.criteria && (matchBanner.criteria.goals?.length || matchBanner.criteria.interests?.length) ? (
- <div className="flex flex-wrap justify-center gap-1.5 mt-3 mb-1">
- {matchBanner.criteria.goals.map((g) => (
- <span key={g} className="nb-badge bg-nb-violet text-white text-[11px] px-2 py-1">
- Looking for: {g === 'DATING' ? 'Dating' : g === 'RELATIONSHIP' ? 'Relationship' : g === 'HOOKUP' ? 'Hookup' : g === 'CASUAL' ? 'Casual' : 'Not sure'}
- </span>
- ))}
- {matchBanner.criteria.interests.slice(0, 4).map((i) => (
- <span key={i.id} className="nb-badge bg-white text-ink text-[11px] px-2 py-1">{i.name}</span>
- ))}
- {matchBanner.criteria.interests.length > 4 && (
- <span className="nb-badge bg-white text-ink text-[11px] px-2 py-1">+{matchBanner.criteria.interests.length - 4} more</span>
- )}
- </div>
- ) : (
- <p className="text-[11px] text-gray-500 mt-1 mb-1 italic">You two don't have any listed criteria in common — the rest is chemistry.</p>
- )
- }
+  <p className="font-body text-sm">
+  You and {matchBanner.name} liked each other.
+  </p>
+  <div className="flex justify-center text-left mt-2 mb-1">
+  <MatchReasons criteria={matchBanner.criteria} compact />
+  </div>
  <div className="h-3" />
  <div className="flex gap-2 justify-center">
  <Link
@@ -791,12 +777,15 @@ setShowPrefs(true);
  {matches.map((match: any) => {
  const conv = (conversations || []).find((c: any) => c.otherUser?.id === match.partner.id);
  return (
-  <div key={match.id} className="nb-card-hover p-4 flex items-center gap-3">
-  <Avatar src={match.partner.avatarUrl} photoId={match.partner.avatarPhotoId} color={match.partner.avatarColor} name={match.partner.displayName} />
-  <div className="flex-1 min-w-0">
-  <p className="font-display font-semibold text-sm">{match.partner.displayName}</p>
-  <p className="text-xs text-gray-500 truncate">{match.partner.bio || 'No bio yet'}</p>
-  </div>
+   <div key={match.id} className="nb-card-hover p-4 flex items-start gap-3">
+   <Avatar src={match.partner.avatarUrl} photoId={match.partner.avatarPhotoId} color={match.partner.avatarColor} name={match.partner.displayName} />
+   <div className="flex-1 min-w-0">
+   <p className="font-display font-semibold text-sm">{match.partner.displayName}</p>
+   <p className="text-xs text-gray-500 truncate">{match.partner.bio || 'No bio yet'}</p>
+   {match.criteria && (match.criteria.goals?.length || match.criteria.interests?.length) ? (
+   <MatchReasons criteria={match.criteria} compact />
+   ) : null}
+   </div>
   {conv && (
   <Link
   to={`/messages/${conv.id}`}

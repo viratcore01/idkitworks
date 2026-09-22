@@ -7,6 +7,7 @@ import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
+import MatchReasons from '@/components/match/MatchReasons';
 import { formatDistanceToNow } from '@/utils/date';
 import type { Notification, NotificationType } from '@/types';
 
@@ -18,14 +19,6 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   NEW_MESSAGE: <Mail size={20} strokeWidth={2.5} className="text-nb-peri" />,
   MENTION: <AtSign size={20} strokeWidth={2.5} className="text-nb-violet" />,
   ANNOUNCEMENT: <Megaphone size={20} strokeWidth={2.5} className="text-nb-violet" />,
-};
-
-const GOAL_LABELS: Record<string, string> = {
-  DATING: 'Dating',
-  RELATIONSHIP: 'Relationship',
-  HOOKUP: 'Hookup',
-  CASUAL: 'Casual',
-  NOT_SURE: 'Not sure',
 };
 
 function textFor(type: NotificationType, actorName: string): string {
@@ -178,7 +171,6 @@ export default function NotificationsPage() {
               const actorName = notif.actor?.displayName || 'Someone';
               const isAnnouncement = notif.type === 'ANNOUNCEMENT' && notif.metadata;
               const meta = notif.metadata || {};
-              const hasCriteria = !!(meta.goals?.length || meta.interests?.length);
 
               return (
                 <li key={notif.id}>
@@ -224,24 +216,7 @@ export default function NotificationsPage() {
                       )}
 
                       {notif.type === 'MATCH' && (
-                        hasCriteria ? (
-                          <div className="flex flex-wrap items-center gap-1 mt-1.5">
-                            <span className="text-xs font-bold uppercase tracking-wide text-gray-400">Why you match:</span>
-                            {meta.goals?.map((g) => (
-                              <span key={g} className="nb-badge bg-nb-violet text-white text-xs px-1.5 py-0.5">
-                                Looking for: {GOAL_LABELS[g] || g}
-                              </span>
-                            ))}
-                            {meta.interests?.slice(0, 4).map((i) => (
-                              <span key={i.id} className="nb-badge bg-nb-peri text-ink text-xs px-1.5 py-0.5">{i.name}</span>
-                            ))}
-                            {(meta.interests?.length ?? 0) > 4 && (
-                              <span className="text-xs text-gray-400">+{meta.interests!.length - 4} more</span>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-xs text-gray-400 mt-0.5 italic">No listed criteria in common — matched on vibes.</p>
-                        )
+                        <MatchReasons criteria={{ goals: meta.goals ?? [], interests: meta.interests ?? [] }} />
                       )}
 
                       <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">

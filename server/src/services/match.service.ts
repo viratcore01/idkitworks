@@ -616,6 +616,9 @@ export class MatchService {
         id: m.id,
         partner: m.userA === userId ? m.userBObj : m.userAObj,
         createdAt: m.createdAt,
+        // Why-you-matched snapshot (strictly-common goals + interests) so the
+        // Matches tab can explain each match, not just the notification.
+        criteria: (m as any).criteria ?? null,
       })),
       hasMore,
     };

@@ -68,6 +68,35 @@ export class NotificationService {
     const hasMore = notifications.length > take;
     const data = hasMore ? notifications.slice(0, take) : notifications;
 
+    // Backfill WHY-YOU-MATCHED for old MATCH rows whose metadata predates the
+    // criteria snapshot (or was stored empty): the Match row is the source of
+    // truth, so merge its criteria into the response. New matches already
+    // carry metadata — this only touches rows that need it, in one query.
+    const needsCriteria = data.filter(
+      (n: any) =>
+        n.type === 'MATCH' &&
+        n.matchId &&
+        (!n.metadata || (!((n.metadata as any)?.goals?.length) && !((n.metadata as any)?.interests?.length))),
+    );
+    if (needsCriteria.length) {
+      const matchIds = [...new Set(needsCriteria.map((n: any) => n.matchId as string))];
+      try {
+        const matches = await prisma.match.findMany({
+          where: { id: { in: matchIds } },
+          select: { id: true, criteria: true },
+        });
+        const byId = new Map(matches.map((m) => [m.id, (m as any).criteria]));
+        for (const n of data as any[]) {
+          if (n.type === 'MATCH' && n.matchId && byId.get(n.matchId)) {
+            const c: any = byId.get(n.matchId);
+            if (c && (c.goals?.length || c.interests?.length)) n.metadata = c;
+          }
+        }
+      } catch {
+        // Criteria enrichment is best-effort — never fail the inbox for it.
+      }
+    }
+
     return {
       notifications: data,
       nextCursor: hasMore ? data[data.length - 1].id : null,

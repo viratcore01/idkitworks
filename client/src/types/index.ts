@@ -111,6 +111,8 @@ export interface Match {
   };
   type: string;
   createdAt: string;
+  /** Why-you-matched snapshot (strictly-common goals + interests). */
+  criteria?: { goals: string[]; interests: { id: string; name: string }[] } | null;
 }
 
 export interface Conversation {
