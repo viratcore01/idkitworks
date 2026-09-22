@@ -134,14 +134,16 @@ function baseHandle(fullName: string | undefined, email: string): string {
 }
 
 async function availableHandle(stem: string): Promise<string> {
+  // Case-insensitive claims: a stem colliding with an existing username in
+  // ANY case (e.g. stem "virat" vs account "Virat") must not be handed out.
   if (!RESERVED.has(stem) && /^[a-z0-9_]{3,20}$/.test(stem)) {
-    const taken = await prisma.user.findUnique({ where: { username: stem }, select: { id: true } });
+    const taken = await prisma.user.findFirst({ where: { username: { equals: stem, mode: 'insensitive' } }, select: { id: true } });
     if (!taken) return stem;
   }
   for (let i = 0; i < 30; i++) {
     const candidate = `${stem}${Math.floor(100 + Math.random() * 900)}`;
     if (RESERVED.has(candidate)) continue;
-    const taken = await prisma.user.findUnique({ where: { username: candidate }, select: { id: true } });
+    const taken = await prisma.user.findFirst({ where: { username: { equals: candidate, mode: 'insensitive' } }, select: { id: true } });
     if (!taken) return candidate;
   }
   // Practically unreachable; final fallback

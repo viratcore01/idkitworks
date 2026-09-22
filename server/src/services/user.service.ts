@@ -59,8 +59,10 @@ export class UserService {
    * Blocked profiles (either direction) return { blocked: true } — same as before.
    */
   async getPublicProfile(username: string, viewerId: string, viewerCollegeId?: string | null) {
-    const user = await prisma.user.findUnique({
-      where: { username },
+    // Usernames resolve case-insensitively (/profile/Virat finds virat) —
+    // matches the case-insensitive uniqueness rule, so links never 404 on case.
+    const user = await prisma.user.findFirst({
+      where: { username: { equals: username, mode: 'insensitive' } },
       include: {
         college: true,
         interests: { include: { interest: true } },
@@ -209,7 +211,7 @@ export class UserService {
     viewerCollegeId?: string | null,
     anonymousOnly = false,
   ) {
-    const user = await prisma.user.findUnique({ where: { username } });
+    const user = await prisma.user.findFirst({ where: { username: { equals: username, mode: 'insensitive' } } });
     if (!user) throw new Error('User not found');
 
     // PRODUCT RULE: college-only grids

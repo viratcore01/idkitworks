@@ -31,6 +31,10 @@ model User {
   email         String   @unique
   passwordHash  String   @map("password_hash")
   googleId      String?  @unique @map("google_id") // set when the account was created via — or linked to — Google Sign-In
+  // Uniqueness is CASE-INSENSITIVE by product rule (Virat == virat): the
+  // exact @unique covers identical strings; migration 0003 adds
+  // UNIQUE (LOWER(username)) as the race-proof backstop. Every app-layer
+  // username check/compare must use mode: 'insensitive' to match.
   username      String   @unique
   displayName   String   @map("display_name")
   avatarUrl     String?  @map("avatar_url")

@@ -95,8 +95,11 @@ export class AuthService {
       e.suggestion = emailCheck.suggestion;
       throw e;
     }
+    // USERNAME UNIQUENESS IS CASE-INSENSITIVE (Virat == virat == VIRAT):
+    // the DB has UNIQUE (LOWER(username)) as the race-proof backstop, and this
+    // pre-check gives the friendly 409 instead of a raw P2002.
     const existingUser = await prisma.user.findFirst({
-      where: { OR: [{ email: input.email }, { username: input.username }] },
+      where: { OR: [{ email: input.email }, { username: { equals: input.username, mode: 'insensitive' } }] },
     });
 
     if (existingUser) {
@@ -140,7 +143,8 @@ export class AuthService {
         },
       });
     } catch (err: any) {
-      // Two people submitting the same email/username in the same second:
+      // Two people submitting the same email/username in the same second
+      // (including case variants — UNIQUE (LOWER(username)) catches those):
       // the DB unique index is the truth — answer 409, never 500.
       if (err?.code === 'P2002') {
         const e: any = new Error('Email or username already in use'); e.status = 409; throw e;
