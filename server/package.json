@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "node -e \"try{require('fs').rmSync('node_modules/.prisma',{recursive:true,force:true})}catch{}\" && prisma generate --schema=../prisma/schema.prisma && tsc",
-    "start": "prisma migrate deploy --schema=../prisma/schema.prisma && node dist/server.js",
+    "start": "export DIRECT_URL=${DIRECT_URL:-$DATABASE_URL}; prisma migrate deploy --schema=../prisma/schema.prisma && node dist/server.js",
     "db:generate": "prisma generate --schema=../prisma/schema.prisma",
     "db:push": "prisma db push --schema=../prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema=../prisma/schema.prisma",
