@@ -32,6 +32,7 @@ import {
  Sparkles,
 } from 'lucide-react';
 import Logo from '@/components/common/Logo';
+import InstallButton from '@/components/common/InstallButton';
 import toast from 'react-hot-toast';
 
 /* ── Company constants — the single source of truth for every link ─────── */
@@ -773,18 +774,19 @@ export default function LandingPage() {
  college at the database level. If they're not on your campus, they don't exist.
  </p>
 
- <div className="mt-7 flex flex-wrap items-center gap-3.5">
- <NewTabLink
- href={LOGIN_URL}
- ariaLabel="Open Zoclo (opens in a new tab)"
- className="nb-btn-orange text-base px-6 py-3 inline-flex items-center gap-2"
- >
- Join your campus <ArrowRight size={17} strokeWidth={2.75} />
- </NewTabLink>
- <a href="#features" className="nb-btn bg-white text-base px-6 py-3">
- See what's inside
- </a>
- </div>
+<div className="mt-7 flex flex-wrap items-center gap-3.5">
+  <NewTabLink
+  href={LOGIN_URL}
+  ariaLabel="Open Zoclo (opens in a new tab)"
+  className="nb-btn-orange text-base px-6 py-3 inline-flex items-center gap-2"
+  >
+  Join your campus <ArrowRight size={17} strokeWidth={2.75} />
+  </NewTabLink>
+  <a href="#features" className="nb-btn bg-white text-base px-6 py-3">
+  See what's inside
+  </a>
+  <InstallButton variant="secondary" />
+  </div>
 
  <p className="mt-3 text-xs font-display font-semibold tracking-wide text-ink/55">
  Opens the app in a new tab · No credit card · Verified students only

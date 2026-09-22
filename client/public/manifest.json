@@ -1,0 +1,37 @@
+{
+  "name": "Zoclo — Hyperlocal Dating & College Community Chat",
+  "short_name": "Zoclo",
+  "description": "Feed · Dating · Chat — one hyperlocal app locked to your college at the database level. Verified students only, free forever.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF7F2",
+  "theme_color": "#0F172A",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/zoclo-favicon.png",
+      "sizes": "64x64",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["social", "lifestyle", "education"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Home Feed",
+      "short_name": "Feed",
+      "description": "Your college community feed",
+      "url": "/home",
+      "icons": [{ "src": "/zoclo-favicon.png", "sizes": "64x64" }]
+    },
+    {
+      "name": "Find Matches",
+      "short_name": "Matches",
+      "description": "Discover people on your campus",
+      "url": "/matches",
+      "icons": [{ "src": "/zoclo-favicon.png", "sizes": "64x64" }]
+    }
+  ]
+}
