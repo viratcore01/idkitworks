@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Save, Hourglass, Camera, Plus, Calendar, Lock } from 'lucide-react';
+import { X, Save, Hourglass, Camera, Plus, Calendar, Lock, Mail, Shield } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
@@ -33,26 +33,23 @@ const MAX_PHOTOS = 4;
 const MAX_MB = 5;
 
 export default function ProfileEditModal({ profile, onClose, onSaved }: {
- profile: any;
- onClose: () => void;
- onSaved: () => void;
+  profile: any;
+  onClose: () => void;
+  onSaved: () => void;
 }) {
- const [form, setForm] = useState({
- displayName: profile.displayName || '',
- bio: profile.bio || '',
- avatarColor: profile.avatarColor || AVATAR_COLORS[0],
- gender: profile.gender || 'UNKNOWN',
- dateOfBirth: profile.dateOfBirth ? String(profile.dateOfBirth).slice(0, 10) : '',
- course: profile.course || '',
- year: profile.year || 1,
- relationshipGoals: (profile.relationshipGoals || []) as string[],
- interestIds: (profile.interests || []).map((i: any) => i.id),
- });
- const [slots, setSlots] = useState<{ id: string; slot: number }[]>(profile.photos || []);
- const [busySlot, setBusySlot] = useState<number | null>(null);
- const [editing, setEditing] = useState<{ slot: number; file: File } | null>(null);
- const [isSaving, setIsSaving] = useState(false);
- const photoVersion = usePhotoVersion(); // token rotation → thumbnails reload
+  const [form, setForm] = useState({
+  bio: profile.bio || '',
+  avatarColor: profile.avatarColor || AVATAR_COLORS[0],
+  course: profile.course || '',
+  year: profile.year || 1,
+  relationshipGoals: (profile.relationshipGoals || []) as string[],
+  interestIds: (profile.interests || []).map((i: any) => i.id),
+  });
+  const [slots, setSlots] = useState<{ id: string; slot: number }[]>(profile.photos || []);
+  const [busySlot, setBusySlot] = useState<number | null>(null);
+  const [editing, setEditing] = useState<{ slot: number; file: File } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const photoVersion = usePhotoVersion(); // token rotation → thumbnails reload
  // Avatar changes must reach the whole shell (Topbar/Sidebar/MobileNav), not
  // just this modal — so photo add/remove re-syncs the logged-in user.
  const refreshUser = useAuthStore((s) => s.refreshUser);
@@ -65,16 +62,10 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  const profilePic = slots.find((s) => s.slot === 0) || null;
 
  // Client mirrors of server rules — instant feedback, server still enforces
- const validate = (): string | null => {
- if (form.displayName.trim().length < 2 || form.displayName.trim().length > 50) return 'Name must be 2-50 characters';
- if (form.bio.length > 300) return 'Bio must be under 300 characters';
- if (form.dateOfBirth) {
- const age = (Date.now() - new Date(form.dateOfBirth).getTime()) / (365.25 * 24 * 3600 * 1000);
- if (age < 16) return 'You must be at least 16';
- if (age > 100) return 'Invalid birth date';
- }
- return null;
- };
+const validate = (): string | null => {
+  if (form.bio.length > 300) return 'Bio must be under 300 characters';
+  return null;
+  };
 
  const refreshSlots = async () => {
  const { data } = await api.get('/auth/me');
@@ -122,7 +113,6 @@ const handleSave = async () => {
   try {
   await api.patch('/auth/me', {
   ...form,
-  dateOfBirth: form.dateOfBirth || null,
   });
   toast.success('Profile updated');
   refreshUser(); // sync avatar/color everywhere (Topbar, Sidebar, MobileNav, profile)
@@ -207,8 +197,8 @@ const handleSave = async () => {
   People in Match see all your photos. JPG / PNG / WebP · max {MAX_MB} MB.
   </p>
 
- <div className="flex items-center gap-4 mb-5">
- <Avatar photoId={profilePic?.id} name={form.displayName} size="lg" color={form.avatarColor} />
+<div className="flex items-center gap-4 mb-5">
+  <Avatar photoId={profilePic?.id} name={profile.displayName} size="lg" color={form.avatarColor} />
  <div className="flex-1 min-w-0">
  <label className="block font-display text-xs font-semibold mb-1">Avatar color</label>
  <div className="flex gap-1.5 flex-wrap">
@@ -245,52 +235,44 @@ const handleSave = async () => {
  />
  )}
 
- <label className="block font-display text-sm font-semibold mb-1.5">Name</label>
- <input
- className="nb-input mb-3"
- value={form.displayName}
- onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
- />
+<div className="mb-3 p-3 bg-nb-cream border border-nb border-ink rounded">
+    <label className="block font-display text-xs font-semibold text-gray-500 mb-1">Name (locked)</label>
+    <p className="font-display text-sm text-ink">{profile.displayName}</p>
+  </div>
 
- <label className="block font-display text-sm font-semibold mb-1.5">
- Bio <span className="font-normal text-gray-500">({form.bio.length}/300)</span>
- </label>
- <textarea
- className="nb-input min-h-[70px] resize-none mb-3"
- value={form.bio}
- onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
- />
+  <label className="block font-display text-sm font-semibold mb-1.5">
+  Bio <span className="font-normal text-gray-500">({form.bio.length}/300)</span>
+  </label>
+  <textarea
+  className="nb-input min-h-[70px] resize-none mb-3"
+  value={form.bio}
+  onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
+  />
 
-  <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3 mb-3 min-w-0">
- <div>
- <label className="block font-display text-sm font-semibold mb-1.5">
- <Calendar size={12} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Birth date
- </label>
- <input
- type="date"
- className="nb-input text-sm"
- max={new Date(Date.now() - 16 * 365.25 * 24 * 3600 * 1000).toISOString().slice(0, 10)}
- value={form.dateOfBirth}
- onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
- />
- </div>
- <div>
- <label className="block font-display text-sm font-semibold mb-1.5">Gender</label>
- <select
- className="nb-input text-sm"
- value={form.gender}
- onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}
- >
- {GENDERS.map((g) => (
- <option key={g.value} value={g.value}>{g.label}</option>
- ))}
- </select>
- </div>
- </div>
+  <div className="grid grid-cols-1 min-[420px]:grid-cols-3 gap-3 mb-3 min-w-0">
+  <div>
+  <label className="block font-display text-xs font-semibold text-gray-500 mb-1">Birth date (locked)</label>
+  <p className="font-display text-sm text-ink bg-white px-3 py-2 border border-nb border-ink rounded">
+    {profile.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString('en-GB') : '—'}
+  </p>
+  </div>
+  <div>
+  <label className="block font-display text-xs font-semibold text-gray-500 mb-1">Gender (locked)</label>
+  <p className="font-display text-sm text-ink bg-white px-3 py-2 border border-nb border-ink rounded">
+    {GENDERS.find(g => g.value === profile.gender)?.label || '—'}
+  </p>
+  </div>
+  <div>
+  <label className="block font-display text-xs font-semibold text-gray-500 mb-1">College (locked)</label>
+  <p className="font-display text-sm text-ink bg-white px-3 py-2 border border-nb border-ink rounded">
+    {profile.college ? (profile.college.shortName || profile.college.name) : '—'}
+  </p>
+  </div>
+  </div>
 
- {/* What I'm here for — MULTI-SELECT. Powers intent matching on other
- people's decks: a viewer's "Looking for" filter matches anyone whose
- selections overlap theirs. Empty = rather not say. */}
+  {/* What I'm here for — MULTI-SELECT. Powers intent matching on other
+  people's decks: a viewer's "Looking for" filter matches anyone whose
+  selections overlap theirs. Empty = rather not say. */}
  <label className="block font-display text-sm font-semibold mb-1.5">
  Looking for <span className="font-normal text-gray-500">(select any that apply)</span>
  </label>
@@ -386,6 +368,15 @@ const handleSave = async () => {
  </button>
  ))}
  </div>
+
+  {/* Locked information notice */}
+  <div className="mb-4 p-3 bg-nb-yellow/10 border border-nb-yellow border-ink rounded flex items-start gap-2">
+    <Shield size={16} strokeWidth={2.5} className="text-nb-yellow mt-0.5 shrink-0" />
+    <div className="text-xs font-body text-gray-600">
+      <p className="font-display font-semibold">Name, date of birth, gender and college are locked.</p>
+      <p className="mt-1">If you need to update these, require reverification, or have any doubts, please contact us at <a href="mailto:idkitworks01@gmail.com" className="text-nb-violet underline hover:text-nb-pink">idkitworks01@gmail.com</a>.</p>
+    </div>
+  </div>
 
   <div className="flex gap-2 justify-end sticky bottom-0 bg-white pt-3 pb-1 -mb-1 flex-wrap">
  <button onClick={onClose} className="nb-btn bg-white text-sm">Cancel</button>
