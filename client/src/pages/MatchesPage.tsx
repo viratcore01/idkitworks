@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Heart, MessageSquare, X, HeartCrack, SearchX, MessageSquareOff, SlidersHorizontal, PartyPopper, UserMinus, RotateCcw, Camera, ImageOff, ChevronLeft, ChevronRight, Undo2, BadgeCheck, Sparkles, Lock } from 'lucide-react';
+import { Search, Heart, MessageSquare, X, HeartCrack, SearchX, MessageSquareOff, SlidersHorizontal, PartyPopper, UserMinus, RotateCcw, Camera, ImageOff, ChevronLeft, ChevronRight, Undo2, BadgeCheck, Sparkles, Lock, UserPlus } from 'lucide-react';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
 import Avatar from '@/components/common/Avatar';
@@ -67,15 +67,30 @@ refetchOnWindowFocus: false,
  placeholderData: (prev: any) => prev,
  });
 
- // LOOP CHAIN: when the server reports this page has drained (hasMore=false
- // but the pool isn't empty), wrap to page 0 — the passed tail cycles back
- // around automatically. Fetching page 0 while page N is still mounted
- // gives a seamless loop instead of a dead "no more people" screen.
- useEffect(() => {
- if (deck && !deck.hasMore && deck.totalRemaining > 0 && deck.users.length <= 1 && deckPage > 0) {
- setDeckPage(0);
- }
- }, [deck, deckPage]);
+// LOOP CHAIN: when the server reports this page has drained (hasMore=false
+  // but the pool isn't empty), wrap to page 0 — the passed tail cycles back
+  // around automatically. Fetching page 0 while page N is still mounted
+  // gives a seamless loop instead of a dead "no more people" screen.
+  useEffect(() => {
+  if (deck && !deck.hasMore && deck.totalRemaining > 0 && deck.users.length <= 1 && deckPage > 0) {
+  setDeckPage(0);
+  }
+  }, [deck, deckPage]);
+
+  // PREFETCH NEXT PAGE: when user reaches the last 2 cards of current page,
+  // silently fetch the next page in background so the next swipe is instant.
+  useEffect(() => {
+  if (!deck || !deck.hasMore || view !== 'discover') return;
+  const users = deck.users || [];
+  if (users.length <= 2) {
+    const nextPage = deckPage + 1;
+    queryClient.prefetchQuery({
+      queryKey: ['match-discover', nextPage],
+      queryFn: () => api.get('/matches/discover', { params: { page: nextPage } }).then((r) => r.data),
+      staleTime: 20_000,
+    });
+  }
+  }, [deck, deckPage, view, queryClient]);
 
   // Matches list is paginated (server default 50/page): power users with
   // 100+ matches page through instead of one giant fetch. Pages append;
@@ -542,43 +557,46 @@ setShowPrefs(true);
 
  {view === 'discover' && (
  <>
- {deck?.gated ? (
- /* PHOTO GATE — real apps (Tinder/Bumble/Hinge) all require a photo first */
- <div className="nb-card p-8 max-w-md mx-auto text-center">
- <div className="w-16 h-16 mx-auto mb-4 bg-nb-yellow border-nb-3 border-ink flex items-center justify-center">
- <Camera size={28} strokeWidth={2.5} />
- </div>
- <h2 className="font-display font-bold text-xl mb-2">Add a photo to start matching</h2>
- <p className="text-sm font-body text-gray-600 mb-5">
- Matching is for real people — every profile shows at least one photo.
- Add yours and your deck unlocks instantly.
- </p>
+{deck?.gated ? (
+  /* PHOTO GATE — real apps (Tinder/Bumble/Hinge) all require a photo first */
+  <div className="nb-card p-8 max-w-md mx-auto text-center">
+  <div className="w-16 h-16 mx-auto mb-4 bg-nb-yellow border-nb-3 border-ink flex items-center justify-center">
+  <Camera size={28} strokeWidth={2.5} />
+  </div>
+  <h2 className="font-display font-bold text-xl mb-2">Add a photo to start matching</h2>
+  <p className="text-sm font-body text-gray-600 mb-5">
+  Matching is for real people — every profile shows at least one photo.
+  Add yours and your deck unlocks instantly.
+  </p>
   <button
-  onClick={() => {
-  const username = useAuthStore.getState().user?.username;
-  navigate(username ? `/profile/${username}` : '/home');
-  }}
+  onClick={() => navigate(deck?.actionUrl || '/settings')}
   className="nb-btn-orange text-sm inline-flex items-center gap-1.5"
   >
   <Camera size={14} strokeWidth={2.5} /> Add your photos
   </button>
- </div>
- ) : loadingDiscover ? (
+  </div>
+) : loadingDiscover ? (
  <LoadingSpinner />
- ) : !currentUser ? (
- <EmptyState
- icon={<SearchX strokeWidth={2.5} />}
- title="No more people to discover"
- description="You've seen everyone here. Check back later, or widen your filters."
- action={
- deckPage > 0 ? (
- <button onClick={() => setDeckPage(0)} className="nb-btn bg-white text-sm inline-flex items-center gap-1.5">
- <RotateCcw size={14} strokeWidth={2.5} /> Start over
- </button>
- ) : undefined
- }
- />
- ) : (
+) : !currentUser ? (
+  <EmptyState
+  icon={<SearchX strokeWidth={2.5} />}
+  title="No one else to discover right now"
+  description={
+    deck?.totalFresh === 0
+      ? "Your college doesn't have other active students with photos yet. Invite friends or check back soon!"
+      : deckPage > 0
+        ? "You've seen everyone matching your filters. Widen them or start over to loop passed profiles."
+        : "You've seen everyone here. Check back later — new students join daily."
+  }
+  action={
+    deckPage > 0
+      ? <button onClick={() => setDeckPage(0)} className="nb-btn bg-white text-sm inline-flex items-center gap-1.5"><RotateCcw size={14} strokeWidth={2.5} /> Start over</button>
+      : deck?.totalFresh === 0
+        ? <button onClick={() => navigate('/settings')} className="nb-btn-orange text-sm inline-flex items-center gap-1.5"><UserPlus size={14} strokeWidth={2.5} /> Invite friends</button>
+        : undefined
+  }
+  />
+) : (
   <div className="nb-card p-4 sm:p-6 max-w-md mx-auto relative overflow-hidden min-w-0">
   {/* Pass — top corner, like every real swipe app */}
   <button

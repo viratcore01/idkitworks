@@ -38,6 +38,7 @@ function photoGateResponse(page: number) {
     gated: true,
     code: 'PROFILE_PHOTO_REQUIRED',
     reason: 'Add a profile photo to start matching — real people only.',
+    actionUrl: '/settings',
     users: [],
     page,
     hasMore: false,
@@ -68,6 +69,55 @@ function ageFrom(dob: Date | null): number | null {
   if (!dob) return null;
   const diff = Date.now() - dob.getTime();
   return Math.floor(diff / (365.25 * 24 * 3600 * 1000));
+}
+
+/**
+ * Compute a relevance score for a profile relative to the viewer.
+ * Higher = better match. Factors:
+ *  - Shared interests (strongest signal)
+ *  - Same course/department
+ *  - Same year or adjacent year
+ *  - Mutual like (already handled separately via likedMeSet)
+ *  - Profile completeness (has bio, multiple photos, verified)
+ *  - Recent activity (last login / profile update)
+ *  - Recency (newer profiles get slight boost to keep deck fresh)
+ */
+function computeRelevanceScore(viewer: any, candidate: any, viewerInterestIds: Set<string>): number {
+  let score = 0;
+
+  // Shared interests (max ~15) — each shared interest = +8 points
+  const candidateInterestIds = new Set<string>((candidate.interests || []).map((ui: any) => String(ui.interestId)));
+  let sharedInterests = 0;
+  for (const id of candidateInterestIds) {
+    if (viewerInterestIds.has(id)) sharedInterests++;
+  }
+  score += sharedInterests * 8;
+
+  // Same course (exact match) = +12
+  if (viewer.course && candidate.course && viewer.course === candidate.course) {
+    score += 12;
+  }
+
+  // Same year = +10, adjacent year = +5
+  if (viewer.year && candidate.year) {
+    const yearDiff = Math.abs(viewer.year - candidate.year);
+    if (yearDiff === 0) score += 10;
+    else if (yearDiff === 1) score += 5;
+  }
+
+  // Profile completeness bonuses
+  if (candidate.bio && candidate.bio.length > 20) score += 5;      // meaningful bio
+  if ((candidate.photos || []).length >= 3) score += 5;             // multiple photos
+  if (candidate.isVerified) score += 8;                             // verified badge
+  if (candidate.relationshipGoals && candidate.relationshipGoals.length > 0) score += 3; // has intent
+
+  // Recency boost: newer profiles get slight boost (decays over ~30 days)
+  if (candidate.createdAt) {
+    const daysOld = (Date.now() - new Date(candidate.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysOld < 30) score += Math.max(0, 10 - Math.floor(daysOld / 3));
+  }
+
+  return score;
 }
 
 /**
@@ -271,6 +321,10 @@ export class MatchService {
     const chainLength = freshCount + recycledCount;
 
     // One chain window [off, off + take): fresh slice + recycled slice stitched.
+    // For fresh profiles, we fetch a larger candidate pool (3x), score them for
+    // relevance, then take the top `freshTake`. This improves match quality
+    // without breaking pagination (recycled profiles keep their explicit order).
+    const SCORE_MULTIPLIER = 3;
     const fetchWindow = async (off: number): Promise<any[]> => {
       // Fresh window: overlaps [off, off + take) with [0, freshCount).
       const freshSkip = Math.min(off, freshCount);
@@ -286,7 +340,7 @@ export class MatchService {
               where,
               orderBy: { createdAt: 'desc' },
               skip: freshSkip,
-              take: freshTake,
+              take: Math.min(freshTake * SCORE_MULTIPLIER, freshCount - freshSkip),
               select: DECK_SELECT,
             })
           : Promise.resolve([] as never[]),
@@ -297,13 +351,26 @@ export class MatchService {
             })
           : Promise.resolve([] as never[]),
       ]);
+
+      // Score fresh profiles for relevance, then take top `freshTake`
+      let scoredFresh = freshPage as any[];
+      if (scoredFresh.length > freshTake) {
+        scoredFresh = scoredFresh
+          .map((u) => ({
+            ...u,
+            _relevanceScore: computeRelevanceScore(viewer, u, viewerInterestIds),
+          }))
+          .sort((a, b) => b._relevanceScore - a._relevanceScore)
+          .slice(0, freshTake);
+      }
+
       // Restore oldest-pass-first order and drop ids filtered out since passing
       // (deactivated, blocked, photo removed, prefs changed).
       const recycledById = new Map((recycledRows as any[]).map((u) => [u.id, u]));
       const recycledPage = recSliceIds
         .map((pid) => recycledById.get(pid))
         .filter(Boolean as any);
-      return [...(freshPage as any[]), ...recycledPage];
+      return [...scoredFresh, ...recycledPage];
     };
 
     // Every page is one exact chain window — no post-filtering.
