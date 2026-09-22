@@ -38,8 +38,28 @@ export function useVerificationUnlock(onVerified: () => void) {
       }
     };
     socket.on('notification-new', handler);
+
+    // FALLBACK: also poll verification status directly as a safety net
+    // in case the socket notification is missed or delayed
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    const poll = async () => {
+      if (busy) return;
+      try {
+        const { data } = await import('@/services/verification').then(m => m.verificationApi.status());
+        if (data.status === 'VERIFIED') {
+          await fetchMe().catch(() => {});
+          queryClient.invalidateQueries({ queryKey: ['me'] });
+          queryClient.invalidateQueries({ queryKey: ['verification-status'] });
+          cbRef.current();
+          if (pollTimer) clearInterval(pollTimer);
+        }
+      } catch {}
+    };
+    pollTimer = setInterval(poll, 3000);
+
     return () => {
       socket.off('notification-new', handler);
+      if (pollTimer) clearInterval(pollTimer);
     };
   }, [user?.id, user?.verificationStatus, fetchMe, queryClient]);
 }

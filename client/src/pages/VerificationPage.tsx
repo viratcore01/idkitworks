@@ -62,12 +62,21 @@ export default function VerificationPage() {
  return () => clearInterval(t);
  }, [phase]);
 
- // DONE: refresh the auth store so the route gates see the fresh status —
- // otherwise "Continue to Zoclo" bounces straight back to /verify.
- // (Hooks stay ABOVE every early return — a hook after one crashes React.)
- useEffect(() => {
- if (phase === 'done') fetchMe().catch(() => {});
- }, [phase, fetchMe]);
+// DONE: refresh the auth store so the route gates see the fresh status —
+  // otherwise "Continue to Zoclo" bounces straight back to /verify.
+  // (Hooks stay ABOVE every early return — a hook after one crashes React.)
+  useEffect(() => {
+  if (phase === 'done') fetchMe().catch(() => {});
+  }, [phase, fetchMe]);
+
+  // SAFETY NET: if status becomes VERIFIED at any point, navigate immediately.
+  // This catches cases where the socket/hook doesn't fire or is delayed.
+  useEffect(() => {
+  if (status && status.status === 'VERIFIED') {
+    queryClient.invalidateQueries({ queryKey: ['me'] });
+    navigate('/home', { replace: true });
+  }
+  }, [status, queryClient, navigate]);
 
  // THE DEAD-SIMPLE RULE: when the moderator approves, the user is IN —
  // instantly, no reload, no button. The socket fires, the session refreshes,

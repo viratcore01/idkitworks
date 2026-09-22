@@ -1,5 +1,5 @@
 import { useEffect, Suspense, lazy, useState } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import BrandLoader from '@/components/common/BrandLoader';
 import Logo from '@/components/common/Logo';
 import { useAuthStore } from '@/store/auth.store';
@@ -61,11 +61,15 @@ function CollegeRoute({ children }: { children: React.ReactNode }) {
  * PRODUCT RULE: main app requires student verification (staff exempt).
  */
 function VerifiedRoute({ children }: { children: React.ReactNode }) {
- const { user, isLoading } = useAuthStore();
- if (isLoading) return <LoadingScreen />;
- const isStaff = user?.role === 'admin' || user?.role === 'super_admin';
- if (user && !isStaff && user.verificationStatus !== 'VERIFIED') return <Navigate to="/verify" replace />;
- return <>{children}</>;
+  const { user, isLoading } = useAuthStore();
+  const location = useLocation();
+  if (isLoading) return <LoadingScreen />;
+  const isStaff = user?.role === 'admin' || user?.role === 'super_admin';
+  // If user is on the verification page, don't redirect — they're already where they need to be
+  if (user && !isStaff && user.verificationStatus !== 'VERIFIED' && location.pathname !== '/verify') {
+    return <Navigate to="/verify" replace />;
+  }
+  return <>{children}</>;
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
