@@ -107,10 +107,18 @@ export class MatchService {
   async discover(userId: string, page = 0, limit = DECK_PAGE_SIZE) {
     const take = Math.min(Math.max(limit, 1), 50);
 
-    const viewer = await prisma.user.findUnique({
-      where: { id: userId },
-      include: { matchPreference: true },
-    });
+    // PHASE 1 (fingerprint inputs only): viewer + photo count + interests.
+    // These three decide the cache KEY, so they run BEFORE the cache lookup —
+    // a cache hit then returns with zero further queries. The heavier
+    // exclusion sets (likes/passes/blocks/likes-you) only run on a miss.
+    const [viewer, viewerPhotoCount, viewerInterestRows] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        include: { matchPreference: true },
+      }),
+      prisma.userPhoto.count({ where: { userId } }),
+      prisma.userInterest.findMany({ where: { userId }, select: { interestId: true } }),
+    ]);
     if (!viewer) throw new Error('User not found');
 
     // PRODUCT RULE: hyperlocal, college-only. No college → empty deck, no exceptions.
@@ -120,26 +128,6 @@ export class MatchService {
 
     // PHOTO GATE: without at least one photo the deck stays locked —
     // matching is for real people, not empty circles.
-    // PERF: photoCount, interests, actioned likes/passes, blocks and likedMe
-    // are independent — ONE parallel wave instead of five sequential
-    // round-trips (at ~30ms each that alone halves deck latency).
-    const [viewerPhotoCount, viewerInterestRows, actioned, blocks, likedMeRows] = await Promise.all([
-      prisma.userPhoto.count({ where: { userId } }),
-      prisma.userInterest.findMany({ where: { userId }, select: { interestId: true } }),
-      prisma.matchLike.findMany({
-        where: { senderId: userId },
-        select: { receiverId: true, action: true, createdAt: true },
-      }),
-      prisma.block.findMany({
-        where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
-        select: { blockerId: true, blockedId: true },
-      }),
-      prisma.matchLike.findMany({
-        where: { receiverId: userId, action: 'LIKE' },
-        select: { senderId: true },
-        orderBy: { createdAt: 'desc' },
-      }),
-    ]);
     if (viewerPhotoCount === 0) {
       return photoGateResponse(page);
     }
@@ -170,19 +158,35 @@ export class MatchService {
     const cached = cacheGet(deckKey);
     if (cached) return cached;
 
+    // PHASE 2 (cache miss only): exclusion sets.
+    // Two bounded queries instead of one unbounded "all my actions" fetch:
+    // likes never expire (need them all, but they're just ids), passes are
+    // cut to the 90-day recycle window IN THE DB so stale passes never cross
+    // the wire. Both hit the [senderId, action, createdAt] index.
+    const passCutoffDate = new Date(Date.now() - PASS_RECYCLE_DAYS * 24 * 3600 * 1000);
+    const [likedRows, passRows, blocks] = await Promise.all([
+      prisma.matchLike.findMany({
+        where: { senderId: userId, action: 'LIKE' },
+        select: { receiverId: true },
+      }),
+      prisma.matchLike.findMany({
+        where: { senderId: userId, action: 'PASS', createdAt: { gt: passCutoffDate } },
+        select: { receiverId: true, createdAt: true },
+        orderBy: { createdAt: 'asc' }, // oldest pass first — the back of the loop chain
+      }),
+      prisma.block.findMany({
+        where: { OR: [{ blockerId: userId }, { blockedId: userId }] },
+        select: { blockerId: true, blockedId: true },
+      }),
+    ]);
+
     // LIKEd ids leave the deck permanently (pending the other person's answer);
     // passes only shape ORDER (they re-enter at the back), never visibility.
-    // PASS EXPIRY (90 days): pass memory can't grow unbounded — a power
-    // swiper would otherwise drag 10k+ stale ids through every deck read
-    // (param bloat + slower plans). Expired passes simply become fresh again
-    // ("fresh start" UX beats a permanently haunted deck); likes never expire.
-    const likedIds = actioned.filter((a) => a.action === 'LIKE').map((a) => a.receiverId);
-    const passCutoff = Date.now() - PASS_RECYCLE_DAYS * 24 * 3600 * 1000;
-    // oldest pass first — the back of the loop chain
-    const passedIds = actioned
-      .filter((a) => a.action === 'PASS' && a.createdAt.getTime() > passCutoff)
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      .map((a) => a.receiverId);
+    // PASS EXPIRY (90 days) is enforced IN THE QUERY above, so pass memory
+    // can't grow unbounded — expired passes simply become fresh again.
+    // Rows already arrive oldest-pass-first from the DB (no JS sort).
+    const likedIds = likedRows.map((a) => a.receiverId);
+    const passedIds = passRows.map((a) => a.receiverId);
 
     const excludeIds = new Set<string>([userId, ...likedIds, ...passedIds]);
     for (const b of blocks) {
@@ -269,14 +273,14 @@ export class MatchService {
     ]);
     const chainLength = freshCount + recycledCount;
 
-    // One chain window [off, off + take): fresh slice + recycled slice stitched.
-    const fetchWindow = async (off: number): Promise<any[]> => {
-      // Fresh window: overlaps [off, off + take) with [0, freshCount).
+    // One chain window [off, off + size): fresh slice + recycled slice stitched.
+    const fetchWindow = async (off: number, size: number = take): Promise<any[]> => {
+      // Fresh window: overlaps [off, off + size) with [0, freshCount).
       const freshSkip = Math.min(off, freshCount);
-      const freshTake = Math.max(Math.min(off + take, freshCount) - freshSkip, 0);
-      // Recycled window: overlaps [off, off + take) with [freshCount, chainLength).
+      const freshTake = Math.max(Math.min(off + size, freshCount) - freshSkip, 0);
+      // Recycled window: overlaps [off, off + size) with [freshCount, chainLength).
       const recStart = Math.max(off - freshCount, 0);
-      const recEnd = Math.max(Math.min(off + take - freshCount, recycledCount), 0);
+      const recEnd = Math.max(Math.min(off + size - freshCount, recycledCount), 0);
       const recSliceIds = recEnd > recStart ? passedIds.slice(recStart, recEnd) : [];
 
       const [freshPage, recycledRows] = await Promise.all([
@@ -309,8 +313,9 @@ export class MatchService {
     // ≥1 common interest (Prisma can't express "any N of a set" in one query),
     // so enforce the exact threshold here. Default users (filter off) take the
     // single-window fast path — zero behavior change for them. Strict-filter
-    // users skip forward across consecutive windows (bounded: ≤6 windows) until
+    // users scan forward in WIDE windows (3× page size, ≤3 round-trips) until
     // the page is full of genuinely-eligible profiles or the chain ends.
+    // Wide windows beat take-sized stepping: same recall, ~3× fewer queries.
     // (totalRemaining/hasMore stay chain-based estimates under a strict filter;
     // WHO you see is always exact, which is what relevance requires.)
     const minShared = pref?.sharedInterestMin ?? 0;
@@ -323,15 +328,16 @@ export class MatchService {
     if (!needCountFilter) {
       pageSlice = await fetchWindow(offset);
     } else {
+      const wide = take * 3;
       let guard = 0;
       let off = offset;
-      while (pageSlice.length < take && off < chainLength && guard < 6) {
-        const win = await fetchWindow(off);
+      while (pageSlice.length < take && off < chainLength && guard < 3) {
+        const win = await fetchWindow(off, wide);
         for (const u of win) {
           if (pageSlice.length >= take) break;
           if (countShared(u) >= minShared) pageSlice.push(u);
         }
-        off += take;
+        off += wide;
         guard++;
         if (win.length === 0) break;
       }
@@ -340,16 +346,22 @@ export class MatchService {
 
     // "LIKES YOU" priority (Hinge/Tinder Gold pattern, free for everyone):
     // people who already liked you surface at the FRONT of the current page —
-    // like back = instant match. REORDER-ONLY, deliberately: the old code
-    // fetched boosted rows and PREPENDED them (displacing chain cards), which
-    // broke pagination two ways — a boosted card sitting in a LATER window
-    // appeared TWICE (page 0 via boost + its natural page), and displaced
-    // chain cards ([take-k, take)) were SKIPPED forever (page 1 starts at the
-    // raw chain offset). Reordering within the window keeps every page an
-    // exact chain slice: no dupes, no skips, no extra query. Likers outside
-    // the current window still surface with the badge on their natural page,
-    // plus the waiting strip + chip cover instant action (trial-proven).
-    // (likedMeSet was fetched in the first parallel wave; no extra round trip.)
+    // like back = instant match. REORDER-ONLY, deliberately: fetching boosted
+    // rows and PREPENDING them (displacing chain cards) broke pagination two
+    // ways — a boosted card in a LATER window appeared TWICE, and displaced
+    // chain cards were SKIPPED forever. Reordering within the window keeps
+    // every page an exact chain slice: no dupes, no skips.
+    // PERF: membership is checked ONLY for ids on this page (one small
+    // indexed query) instead of loading the viewer's entire inbound-like
+    // history on every deck read — popular users paid the worst price before.
+    const pageIds = pageSlice.map((u: any) => u.id as string);
+    const likedMeRows: Array<{ senderId: string }> = pageIds.length
+      ? await prisma.matchLike.findMany({
+          where: { receiverId: userId, action: 'LIKE', senderId: { in: pageIds } },
+          select: { senderId: true },
+          orderBy: { createdAt: 'desc' },
+        })
+      : [];
     const likedMeSet = new Set(likedMeRows.map((r) => r.senderId));
     {
       // Newest like first within the front (likedMeRows arrived newest-first).
@@ -819,7 +831,11 @@ export class MatchService {
     const finalMin = ageMin ?? undefined;
     const finalMax = ageMax ?? undefined;
 
-    return prisma.matchPreference.upsert({
+    // PERF: the profile-goals write and the preference upsert touch different
+    // tables — run them in ONE parallel wave instead of two sequential
+    // round-trips. This endpoint felt laggy because save = 2× DB latency back
+    // to back before the client could even refetch the deck.
+    const upsertInput = {
       where: { userId },
       create: {
         userId,
@@ -843,7 +859,34 @@ export class MatchService {
         // Force any legacy cross-college preference back to null
         collegePreference: null,
       },
-    });
+    };
+    const [pref] = await Promise.all([
+      prisma.matchPreference.upsert(upsertInput),
+      ...(openToGoals !== undefined
+        ? [prisma.user.update({ where: { id: userId }, data: { relationshipGoals: openToGoals } })]
+        : []),
+    ]);
+
+    // Deck keys embed prefs+goals in the fingerprint, so the next deck read
+    // naturally misses — but drop the user's old deck keys NOW so stale pages
+    // can't linger for the TTL and memory is freed immediately. Without this
+    // the client refetched into a cache full of pre-save pages.
+    invalidateDeckForUser(userId);
+
+    // Return the SAME merged shape as getPreference (goals from the profile —
+    // the single source of truth), so the client can update instantly without
+    // a second GET round-trip.
+    return {
+      lookingFor: pref?.lookingFor ?? 'DATING',
+      ageRangeMin: pref?.ageRangeMin ?? null,
+      ageRangeMax: pref?.ageRangeMax ?? null,
+      genderPreference: pref?.genderPreference ?? 'EVERYONE',
+      openToGoals: openToGoals ?? (pref as any)?.openToGoals ?? [],
+      minYear: (pref as any)?.minYear ?? null,
+      sharedInterestMin: (pref as any)?.sharedInterestMin ?? 0,
+      collegePreference: null,
+      visibility: (pref as any)?.visibility ?? true,
+    };
   }
 
   async getPreference(userId: string) {

@@ -76,9 +76,14 @@ export class MatchController {
 
   async getStats(req: AuthRequest, res: Response) {
     try {
-      const stats = await service.getStats(req.user!.id);
+      // PERF: the deck chip needs both halves — fetch in ONE parallel wave,
+      // not two sequential awaits (each is 1-2 indexed queries).
+      const [stats, likesYou] = await Promise.all([
+        service.getStats(req.user!.id),
+        service.likesYouCount(req.user!.id),
+      ]);
       // Merge the "likes you" count so the deck chip is one request.
-      res.json({ ...stats, ...(await service.likesYouCount(req.user!.id)) });
+      res.json({ ...stats, ...likesYou });
     } catch (error: any) {
       sendError(res, error, 400);
     }

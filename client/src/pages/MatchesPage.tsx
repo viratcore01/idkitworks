@@ -59,6 +59,9 @@ export default function MatchesPage() {
  queryKey: ['match-discover', deckPage],
  queryFn: () => api.get('/matches/discover', { params: { page: deckPage } }).then((r) => r.data),
  enabled: view === 'discover',
+staleTime: 20_000,
+gcTime: 5 * 60_000,
+refetchOnWindowFocus: false,
  // Keep the previous page's card visible while the next page loads —
  // swiping feels instant even across page boundaries.
  placeholderData: (prev: any) => prev,
@@ -103,13 +106,30 @@ export default function MatchesPage() {
  queryFn: () => api.get('/messages/conversations').then((r) => r.data),
  });
 
- // PERF: preferences are only needed when the filters modal opens — don't
- // fetch them (and pay the round-trip) on every page mount.
- const { data: savedPrefs } = useQuery({
- queryKey: ['match-preferences'],
- queryFn: () => api.get('/matches/preferences').then((r) => r.data),
- enabled: showPrefs,
- });
+// Prefetch preferences on mount (stale-while-revalidate): opening the
+// filters modal used to pay a full round-trip + show "Loading your saved
+// filters…" with Save disabled — the perceived lag. Now the data is warm
+// before the user taps Filters, and local edits sync via the effect below.
+const { data: savedPrefs } = useQuery({
+queryKey: ['match-preferences'],
+queryFn: () => api.get('/matches/preferences').then((r) => r.data),
+staleTime: 5 * 60_000,
+gcTime: 10 * 60_000,
+refetchOnWindowFocus: false,
+});
+// Sync the modal's local draft the moment saved filters arrive (first mount
+// or background refetch) — opening Filters is then instant, never defaults.
+useEffect(() => {
+if (!savedPrefs) return;
+setPrefs({
+genderPreference: savedPrefs.genderPreference || 'EVERYONE',
+ageRangeMin: savedPrefs.ageRangeMin ?? 16,
+ageRangeMax: savedPrefs.ageRangeMax ?? 60,
+openToGoals: savedPrefs.openToGoals || [],
+minYear: savedPrefs.minYear ?? null,
+sharedInterestMin: savedPrefs.sharedInterestMin ?? 0,
+});
+}, [savedPrefs]);
 
   // Waiting likes — powers the "N waiting" chip on the deck header AND the
   // honest total on the Matches tab badge (matches pages are capped at 50,
@@ -141,12 +161,12 @@ export default function MatchesPage() {
   toast('Like sent');
   }
   // Remove the answered row optimistically; server state follows.
-  queryClient.setQueryData(['likes-you'], (old: any) =>
-  old ? { ...old, users: (old.users || []).filter((x: any) => x.id !== receiverId) } : old,
-  );
-  refreshAll();
-  },
-  onError: (e: any) => toast.error(e.response?.data?.error || 'Could not like back'),
+queryClient.setQueryData(['likes-you'], (old: any) =>
+old ? { ...old, users: (old.users || []).filter((x: any) => x.id !== receiverId) } : old,
+);
+refreshAfterSwipe(!!data?.matched, true);
+},
+onError: (e: any) => toast.error(e.response?.data?.error || 'Could not like back'),
   onSettled: () => setLikeBackId(null),
   });
 
@@ -184,9 +204,26 @@ export default function MatchesPage() {
   queryClient.invalidateQueries({ queryKey: ['likes-you'] });
   // Paginated matches list: restart from page 0 so appended pages can't go
   // stale underneath a mutation (unmatch/like-back change list membership).
-  setMatchPages([]);
-  setMatchesPage(0);
-  };
+setMatchPages([]);
+setMatchesPage(0);
+};
+// LIGHTWEIGHT refresh paths (the lag fix): the old code called refreshAll()
+// (4 query invalidations + matches-page reset) after EVERY swipe and every
+// filter save, so one tap refetched the deck, matches, stats and likes-you
+// at once. Swipes already update the deck optimistically — they only need
+// the counters; filter saves only need a fresh deck.
+const refreshAfterSwipe = (matched: boolean, liked: boolean) => {
+queryClient.invalidateQueries({ queryKey: ['match-stats'] });
+if (liked) queryClient.invalidateQueries({ queryKey: ['likes-you'] });
+if (matched) {
+queryClient.invalidateQueries({ queryKey: ['matches'] });
+setMatchPages([]);
+setMatchesPage(0);
+}
+};
+const refreshAfterPrefsSave = () => {
+queryClient.invalidateQueries({ queryKey: ['match-discover'] });
+};
 
   // Which swipe is in flight (like vs pass tracked separately so a pending
   // pass never freezes the Like button and vice versa).
@@ -216,13 +253,15 @@ export default function MatchesPage() {
   queryClient.setQueryData(['match-discover', deckPage], (old: any) =>
   old ? { ...old, users: (old.users || []).filter((u: any) => u.id !== variables.receiverId), totalRemaining: Math.max((old.totalRemaining ?? 1) - 1, 0) } : old,
   );
-  // Refetch the deck when the page runs dry
-  if (users.length <= 1) {
-  setDeckPage((p) => p + 1);
-  }
-  refreshAll();
-  },
-  onError: (e: any, variables) => {
+// Refetch the deck when the page runs dry
+if (users.length <= 1) {
+setDeckPage((p) => p + 1);
+}
+// Optimistic deck removal above already moved past the card — only the
+// counters (and the matches list on a real match) need refetching.
+refreshAfterSwipe(!!data?.matched, variables.action === 'like');
+},
+onError: (e: any, variables) => {
   const msg = e.response?.data?.error || 'Something went wrong';
   toast.error(msg);
   // Rate-limited or blocked — still advance past the stuck card so the
@@ -258,34 +297,41 @@ export default function MatchesPage() {
  },
  });
 
- const savePrefsMutation = useMutation({
- mutationFn: () => api.patch('/matches/preferences', {
- ...prefs,
- // empty selection = open to every goal — send [] not undefined
- openToGoals: prefs.openToGoals,
- }),
- onSuccess: () => {
- toast.success('Preferences saved');
- setShowPrefs(false);
- setDeckPage(0);
- refreshAll();
- },
+const savePrefsMutation = useMutation({
+mutationFn: () => api.patch('/matches/preferences', {
+...prefs,
+// empty selection = open to every goal — send [] not undefined
+openToGoals: prefs.openToGoals,
+}),
+onSuccess: (saved) => {
+toast.success('Preferences saved');
+// Server returns the merged preference shape — seed the cache instantly
+// so reopening Filters never flashes stale values, then refetch the deck
+// from page 0. Matches / likes-you / stats are untouched by filters.
+if (saved) queryClient.setQueryData(['match-preferences'], saved);
+setShowPrefs(false);
+setDeckPage(0);
+refreshAfterPrefsSave();
+},
  onError: (e: any) => toast.error(e.response?.data?.error || 'Could not save'),
  });
 
- const openPrefs = () => {
- if (savedPrefs) {
- setPrefs({
- genderPreference: savedPrefs.genderPreference || 'EVERYONE',
- ageRangeMin: savedPrefs.ageRangeMin || 16,
- ageRangeMax: savedPrefs.ageRangeMax || 60,
- openToGoals: savedPrefs.openToGoals || [],
- minYear: savedPrefs.minYear ?? null,
- sharedInterestMin: savedPrefs.sharedInterestMin ?? 0,
- });
- }
- setShowPrefs(true);
- };
+const openPrefs = () => {
+// Local draft already mirrors savedPrefs via the sync effect (prefetched on
+// mount), so opening is instant. Re-apply here as a belt-and-braces for a
+// background refetch that landed while the modal was closed.
+if (savedPrefs) {
+setPrefs({
+genderPreference: savedPrefs.genderPreference || 'EVERYONE',
+ageRangeMin: savedPrefs.ageRangeMin ?? 16,
+ageRangeMax: savedPrefs.ageRangeMax ?? 60,
+openToGoals: savedPrefs.openToGoals || [],
+minYear: savedPrefs.minYear ?? null,
+sharedInterestMin: savedPrefs.sharedInterestMin ?? 0,
+});
+}
+setShowPrefs(true);
+};
 
   // Escape closes the match banner / prefs modal (focus-lite: no trap, but
   // keyboard users are never stuck).
@@ -512,7 +558,7 @@ export default function MatchesPage() {
 
   <div className="flex gap-2 justify-end">
   <button onClick={() => setShowPrefs(false)} className="nb-btn bg-white text-sm">Cancel</button>
-  <button onClick={() => savePrefsMutation.mutate()} disabled={savePrefsMutation.isPending || !savedPrefs} aria-busy={savePrefsMutation.isPending} title={!savedPrefs ? 'Wait for your saved filters to load' : undefined} className="nb-btn-orange text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+  <button onClick={() => savePrefsMutation.mutate()} disabled={savePrefsMutation.isPending} aria-busy={savePrefsMutation.isPending} className="nb-btn-orange text-sm disabled:opacity-50 disabled:cursor-not-allowed">
   {savePrefsMutation.isPending ? 'Saving...' : 'Save'}
   </button>
   </div>
