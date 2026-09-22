@@ -3,6 +3,16 @@ import { prisma } from '../config/prisma';
 const SEARCH_MAX = 100;
 
 /**
+ * Determine if a user is a minor (under 18) based on dateOfBirth.
+ * Missing DOB = treated as adult (conservative default for safety).
+ */
+function isMinor(dob: Date | null): boolean {
+  if (!dob) return false;
+  const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000));
+  return age < 18;
+}
+
+/**
  * Rank a user against the query the way real search bars do:
  *   0 — exact match (username or display name, case-insensitive)
  *   1 — starts with the query
@@ -39,6 +49,17 @@ export class SearchService {
     // PRODUCT RULE: hyperlocal search — only your college exists.
     if (!viewerCollegeId) return { users: [], posts: [], colleges: [] };
 
+    // ═══════════════════════════════════════════════════════════════
+    // STRICT AGE SEGREGATION — minors only search minors, adults only search adults
+    // ═══════════════════════════════════════════════════════════════
+    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { dateOfBirth: true } });
+    const viewerMinor = isMinor(viewer?.dateOfBirth ?? null);
+    const today = new Date();
+    const eighteenCutoff = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+    const ageFilter = viewerMinor
+      ? { dateOfBirth: { gt: eighteenCutoff } } // minor: only search minors
+      : { dateOfBirth: { lte: eighteenCutoff } }; // adult: only search adults
+
     // Sanitize for Prisma `contains` (which is regex-powered): neutralize the
     // special characters instead of throwing, so "c++" or "(wifi)" just search.
     const q = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').toLowerCase();
@@ -56,6 +77,7 @@ export class SearchService {
     const userWhere: any = {
       isActive: true,
       collegeId: viewerCollegeId, // PRODUCT RULE: your college only
+      ...ageFilter, // STRICT AGE SEGREGATION
       ...(blockedIds.length && { id: { notIn: blockedIds } }),
     };
 

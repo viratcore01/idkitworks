@@ -72,6 +72,23 @@ function ageFrom(dob: Date | null): number | null {
 }
 
 /**
+ * STRICT AGE SEGREGATION: Hard boundary at age 18.
+ * - Users under 18 (minors) ONLY see/connect with other minors.
+ * - Users 18+ (adults) ONLY see/connect with other adults.
+ * - No exceptions, no preferences, no overrides.
+ * - Missing DOB = treated as adult (conservative default for safety).
+ */
+function isMinor(dob: Date | null): boolean {
+  const age = ageFrom(dob);
+  return age !== null && age < 18;
+}
+
+function isAdult(dob: Date | null): boolean {
+  const age = ageFrom(dob);
+  return age === null || age >= 18;
+}
+
+/**
  * Compute a relevance score for a profile relative to the viewer.
  * Higher = better match. Factors:
  *  - Shared interests (strongest signal)
@@ -124,12 +141,22 @@ function computeRelevanceScore(viewer: any, candidate: any, viewerInterestIds: S
  * The waiting-list sender filter, shared by likesYou() and likesYouCount():
  * same-college, active, unblocked in both directions, no ACTIVE match with the
  * viewer, and no answer from the viewer yet (no LIKE *or* PASS row back).
+ * STRICT AGE SEGREGATION: minors only see minors, adults only see adults.
  * Enforced in the DB so the count and the list can never disagree.
  */
-function waitingSenderFilter(userId: string, collegeId: string) {
+function waitingSenderFilter(userId: string, collegeId: string, viewerDOB: Date | null) {
+  const viewerMinor = isMinor(viewerDOB);
+  // Minors only see minors (dob > 18 years ago), adults only see adults (dob <= 18 years ago)
+  const today = new Date();
+  const eighteenCutoff = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+  const ageFilter = viewerMinor
+    ? { dateOfBirth: { gt: eighteenCutoff } } // minor: only show people born AFTER cutoff (< 18)
+    : { dateOfBirth: { lte: eighteenCutoff } }; // adult: only show people born ON OR BEFORE cutoff (>= 18)
+
   return {
     isActive: true,
     collegeId,
+    ...ageFilter,
     // Viewer hasn't answered this sender either way.
     receivedLikes: { none: { senderId: userId } },
     // No ACTIVE match between viewer and sender.
@@ -253,6 +280,29 @@ export class MatchService {
     const dobUpper = new Date(today.getFullYear() - ageMin, today.getMonth(), today.getDate());
     const dobLower = new Date(today.getFullYear() - ageMax - 1, today.getMonth(), today.getDate());
 
+    // ═══════════════════════════════════════════════════════════════
+    // STRICT AGE SEGREGATION — HARDCODED, NON-NEGOTIABLE
+    // Minors (< 18) ONLY see minors. Adults (>= 18) ONLY see adults.
+    // This overrides ALL preferences. Missing DOB = treated as adult (safety).
+    // ═══════════════════════════════════════════════════════════════
+    const viewerIsMinor = isMinor(viewer.dateOfBirth);
+    let ageFilter: any;
+    if (viewerIsMinor) {
+      // Viewer is a minor: only show other minors (age < 18)
+      // 18th birthday = today - 18 years. Must be BORN AFTER this date to be < 18.
+      const eighteenCutoff = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+      // Merge with existing age range: effective upper bound is min(dobUpper, eighteenCutoff)
+      const effectiveUpper = dobUpper < eighteenCutoff ? dobUpper : eighteenCutoff;
+      ageFilter = { gte: dobLower, lte: effectiveUpper };
+    } else {
+      // Viewer is an adult (>= 18 or no DOB): only show adults (age >= 18)
+      // Must be born ON OR BEFORE the 18th-birthday cutoff.
+      const eighteenCutoff = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+      // Merge with existing age range: effective lower bound is max(dobLower, eighteenCutoff)
+      const effectiveLower = dobLower > eighteenCutoff ? dobLower : eighteenCutoff;
+      ageFilter = { gte: effectiveLower, lte: dobUpper };
+    }
+
     const where: any = {
       isActive: true,
       id: { notIn: Array.from(excludeIds) },
@@ -260,7 +310,7 @@ export class MatchService {
       // collegePreference cross-college loophole is removed — it can never widen
       // the pool beyond the viewer's own college.
       collegeId: viewer.collegeId,
-      dateOfBirth: { gte: dobLower, lte: dobUpper },
+      dateOfBirth: ageFilter,
       // Only show people who have at least one photo — a photo-less card is
       // useless in a swipe deck (and every real app hides them).
       photos: { some: {} },
@@ -477,6 +527,24 @@ export class MatchService {
       const e: any = new Error('User not available'); e.status = 404; throw e;
     }
 
+    // ═══════════════════════════════════════════════════════════════
+    // STRICT AGE SEGREGATION — HARDCODED, NON-NEGOTIABLE
+    // Minors (< 18) can ONLY interact with minors. Adults (>= 18) ONLY with adults.
+    // This check runs at the API level to prevent ANY cross-age-group interaction.
+    // ══════════════════════════════════════════════════════════════
+    const [senderDOB, receiverDOB] = await Promise.all([
+      prisma.user.findUnique({ where: { id: senderId }, select: { dateOfBirth: true } }),
+      prisma.user.findUnique({ where: { id: receiverId }, select: { dateOfBirth: true } }),
+    ]);
+    const senderMinor = isMinor(senderDOB?.dateOfBirth ?? null);
+    const receiverMinor = isMinor(receiverDOB?.dateOfBirth ?? null);
+    if (senderMinor !== receiverMinor) {
+      const e: any = new Error('User not available');
+      e.status = 404;
+      e.code = 'AGE_SEGREGATION';
+      throw e;
+    }
+
     // Blocks are a hard wall in both directions
     const blocked = await prisma.block.findFirst({
       where: {
@@ -645,8 +713,19 @@ export class MatchService {
   async getMatches(userId: string, page = 0, limit = 50) {
     const take = Math.min(Math.max(limit, 1), 100);
 
-    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
+    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true, dateOfBirth: true } });
     if (!viewer?.collegeId) return { matches: [], hasMore: false };
+
+    // ═══════════════════════════════════════════════════════════════
+    // STRICT AGE SEGREGATION — filter out any cross-age-group matches
+    // (safety net for any legacy matches created before segregation enforcement)
+    // ═══════════════════════════════════════════════════════════════
+    const viewerMinor = isMinor(viewer.dateOfBirth);
+    const today = new Date();
+    const eighteenCutoff = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+    const ageFilter = viewerMinor
+      ? { dateOfBirth: { gt: eighteenCutoff } } // minor: partner must be minor
+      : { dateOfBirth: { lte: eighteenCutoff } }; // adult: partner must be adult
 
     const matches = await prisma.match.findMany({
       where: {
@@ -654,8 +733,8 @@ export class MatchService {
         OR: [{ userA: userId }, { userB: userId }],
         // PRODUCT RULE: matches can only ever be same-college pairs (enforced at
         // creation); this filter also hides any legacy cross-college rows.
-        userAObj: { collegeId: viewer.collegeId },
-        userBObj: { collegeId: viewer.collegeId },
+        userAObj: { collegeId: viewer.collegeId, ...ageFilter },
+        userBObj: { collegeId: viewer.collegeId, ...ageFilter },
         // BLOCK WALL: a blocked ex (either direction, either side) leaves the
         // matches list. Messaging + conversation creation already refuse
         // blocked pairs — without this the list showed a Chat door into a
@@ -740,10 +819,10 @@ export class MatchService {
    * the moment anyone matched, answered, or got blocked.)
    * Single indexed COUNT — one round-trip, no row fetching. */
   async likesYouCount(userId: string) {
-    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
+    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true, dateOfBirth: true } });
     if (!viewer?.collegeId) return { likesYou: 0 };
     const likesYou = await prisma.matchLike.count({
-      where: { receiverId: userId, action: 'LIKE', sender: waitingSenderFilter(userId, viewer.collegeId) },
+      where: { receiverId: userId, action: 'LIKE', sender: waitingSenderFilter(userId, viewer.collegeId, viewer.dateOfBirth) },
     });
     return { likesYou };
   }
@@ -756,13 +835,13 @@ export class MatchService {
    */
   async likesYou(userId: string, limit = 50) {
     const take = Math.min(Math.max(limit, 1), 50);
-    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
+    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true, dateOfBirth: true } });
     if (!viewer?.collegeId) return { users: [] };
 
     // Waiting-list rules enforced in the DB (one indexed query, exact page —
     // no over-fetch + in-JS filtering). Same filter as likesYouCount().
     const rows = await prisma.matchLike.findMany({
-      where: { receiverId: userId, action: 'LIKE', sender: waitingSenderFilter(userId, viewer.collegeId) },
+      where: { receiverId: userId, action: 'LIKE', sender: waitingSenderFilter(userId, viewer.collegeId, viewer.dateOfBirth) },
       orderBy: { createdAt: 'desc' },
       take,
       include: {
