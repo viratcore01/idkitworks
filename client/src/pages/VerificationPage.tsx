@@ -24,6 +24,8 @@ export default function VerificationPage() {
   const [preview, setPreview] = useState<string | null>(null);
   const [editing, setEditing] = useState<File | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  // Upload progress line on the checking card (uploading → retrying → done).
+  const [submitNote, setSubmitNote] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
  const fetchMe = useAuthStore((s) => s.fetchMe);
@@ -70,19 +72,45 @@ export default function VerificationPage() {
  navigate('/home', { replace: true });
  });
 
- const submit = async (file: File) => {
- setError('');
- setPreview(URL.createObjectURL(file));
- checkStartRef.current = Date.now();
- setPhase('checking');
- try {
- await verificationApi.submit(file);
- refetch();
- } catch (e: any) {
- setError(e?.response?.data?.error || 'Upload failed — try again');
- setPhase('capture');
- }
- };
+  const submit = async (file: File) => {
+  setError('');
+  setPreview(URL.createObjectURL(file));
+  checkStartRef.current = Date.now();
+  setPhase('checking');
+  setSubmitNote('Uploading your ID…');
+  try {
+  await submitWithRetry(file);
+  setSubmitNote('');
+  refetch();
+  } catch (e: any) {
+  setSubmitNote('');
+  setError(e?.response?.data?.error || 'Upload failed — try again');
+  setPhase('capture');
+  }
+  };
+
+  // The server replaces any prior PENDING attempt (latest photo wins), so a
+  // retry after a timeout/blip can't ever create a duplicate — it just
+  // re-lands the same photo. Retry TRANSIENT failures only (no response,
+  // 429, 5xx): real rejections (too small, wrong type, no college) bounce
+  // straight back to capture with the server's message, no pointless wait.
+  // This kills the classic first-try bounce: cold server / mobile-data blip
+  // fails the upload at 45s, and without a retry the user is dumped back on
+  // the upload screen and has to do the whole photo flow a second time.
+  const submitWithRetry = async (file: File, attemptsLeft = 2): Promise<void> => {
+  try {
+  await verificationApi.submit(file);
+  } catch (e: any) {
+  const status = e?.response?.status;
+  const transient = !e?.response || status === 429 || (typeof status === 'number' && status >= 500);
+  if (transient && attemptsLeft > 1) {
+  setSubmitNote('Connection hiccup — trying again…');
+  await new Promise((r) => setTimeout(r, 1500));
+  return submitWithRetry(file, attemptsLeft - 1);
+  }
+  throw e;
+  }
+  };
 
  const pickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
  const file = e.target.files?.[0];
@@ -116,6 +144,11 @@ export default function VerificationPage() {
  )}
   <h1 className="font-display text-2xl font-bold">ID submitted for review</h1>
   <p className="text-sm opacity-70 mt-2">Your ID card is submitted to a moderator from your college — they'll review it as soon as possible. The moment they approve, you're in.</p>
+  {submitNote && (
+  <p className="mt-6 flex items-center justify-center gap-2 text-sm" role="status">
+  <Clock3 size={15} /> {submitNote}
+  </p>
+  )}
   <p className="text-xs opacity-50 mt-6">You can leave this page — Zoclo opens by itself once you're approved.</p>
  {status?.pending?.note && (
  <p className="mt-4 text-xs opacity-60 italic">“{status.pending.note}”</p>
