@@ -68,7 +68,6 @@ interface AuthTokens {
     displayName: string;
     avatarUrl: string | null;
     avatarPhotoId: string | null;
-    avatarColor: string | null;
     collegeId: string | null;
     isProfileSetup: boolean;
     collegeEmailVerified: boolean;
@@ -92,7 +91,6 @@ function createAuthResponse(user: any, accessToken: string, refreshToken: string
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       avatarPhotoId: user.avatarPhotoId ?? null,
-      avatarColor: user.avatarColor,
       // College gate key: the client needs it immediately after login
       collegeId: user.collegeId ?? null,
       isProfileSetup: !!(user.collegeId && user.course),
@@ -193,9 +191,30 @@ export class AuthService {
           });
           if (clash) throw new Error('Username already taken');
         }
+        // Coming back through the signup wizard may come with a CORRECTED
+        // email (step-2 "wrong address? fix it"). The new address already
+        // passed the same domain + hygiene gates above; re-point the pending
+        // account at it after a dedicated clash check. Pre-verification the
+        // account is worth exactly one OTP to its own inbox, so re-pointing
+        // = re-owning — verification (an inbox-proof event) is what locks it.
+        const updateData: { username: string; displayName: string; email?: string; collegeEmail?: string } = {
+          username: input.username,
+          displayName: input.displayName.trim(),
+        };
+        if (existingUser.email !== email) {
+          const emailClash = await prisma.user.findFirst({
+            where: { OR: [{ email }, { collegeEmail: email }], NOT: { id: existingUser.id } },
+            select: { id: true },
+          });
+          if (emailClash) {
+            const e: any = new Error('Email already in use'); e.status = 409; throw e;
+          }
+          updateData.email = email;
+          updateData.collegeEmail = email;
+        }
         const user = await prisma.user.update({
           where: { id: existingUser.id },
-          data: { username: input.username, displayName: input.displayName.trim() },
+          data: updateData,
         });
         return this.issueSession(user);
       }
@@ -544,7 +563,6 @@ export class AuthService {
           displayName: 'Deleted User',
           bio: null,
           avatarUrl: null,
-          avatarColor: null,
           dateOfBirth: null,
           googleId: null,
           passwordHash: `DELETED_${userId}`,
@@ -588,7 +606,6 @@ export class AuthService {
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       avatarPhotoId: (user as any).avatarPhotoId ?? null,
-      avatarColor: user.avatarColor,
       photos: user.photos.map((p) => ({ id: p.id, slot: p.slot })),
       bio: user.bio,
       college: user.college,
@@ -606,6 +623,11 @@ export class AuthService {
       interests: user.interests.map((ui) => ui.interest),
       postCount: user._count.posts,
       isProfileSetup: !!(user.collegeId && user.course),
+      // Computed fresh on every read — never stored — so it ticks over on the
+      // user's birthday without any data change (profiles show "21 yrs").
+      age: user.dateOfBirth
+        ? Math.floor((Date.now() - user.dateOfBirth.getTime()) / (365.25 * 24 * 3600 * 1000))
+        : null,
       createdAt: user.createdAt,
       // Auth-method flags: the Settings screen shows "Change password" only
       // when a real password exists, and "Set a password" for Google-only
@@ -619,7 +641,6 @@ export class AuthService {
     displayName?: string;
     bio?: string;
     avatarUrl?: string;
-    avatarColor?: string;
     collegeId?: string;
     // NOTE: no collegeEmail — the OTP flow owns it end-to-end (the body
     // rejects it, typed as any below so forged JS payloads still hit the 403).
@@ -712,11 +733,6 @@ export class AuthService {
       if (age > 100) throw new Error('Invalid date of birth');
       update.dateOfBirth = dob;
     }
-    if (data.avatarColor !== undefined) {
-      // Discord-style picker: preset palette only
-      if (!/^#[0-9A-Fa-f]{6}$/.test(data.avatarColor)) throw new Error('Invalid avatar color');
-      update.avatarColor = data.avatarColor;
-    }
     if (data.avatarUrl !== undefined && data.avatarUrl !== null) {
       const url = data.avatarUrl.trim();
       if (url && !/^https:\/\//.test(url)) throw new Error('Avatar URL must be https');
@@ -736,15 +752,14 @@ export class AuthService {
         if (!college) throw new Error('College not found');
       }
 
-      // PRODUCT RULE: college is the isolation boundary. Once VERIFIED it
-      // cannot be changed — otherwise a user could carry old-college posts,
-      // matches and chats into a new college's feed. Pre-verification the
-      // user owns no visible data (every content route gates on VERIFIED),
-      // so a wrong pick in the signup wizard is freely fixable here.
-      // (Support/super-admin can override.)
-      const current = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true, collegeEmailVerified: true } });
-      if (current?.collegeId && current.collegeId !== data.collegeId && current.collegeEmailVerified) {
-        const e: any = new Error('Your college is already set. Contact support to change it.'); e.status = 403; throw e;
+      // PRODUCT RULE: college is the isolation boundary, chosen at signup.
+      // It locks the MOMENT THE ACCOUNT EXISTS (not just post-OTP): every
+      // future reference — posts, matches, chats, the OTP domain itself —
+      // hangs off it, and the wizard's "back" still allows a redo BEFORE
+      // submitting (no account yet). After that, support/super-admin only.
+      const current = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
+      if (current?.collegeId && current.collegeId !== data.collegeId) {
+        const e: any = new Error('Your college is locked to your account. Contact support to change it.'); e.status = 403; throw e;
       }
       update.collegeId = data.collegeId || null;
       invalidateUser(userId); // the auth gate resolves collegeId per request
@@ -783,7 +798,6 @@ export class AuthService {
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       avatarPhotoId: (user as any).avatarPhotoId ?? null,
-      avatarColor: user.avatarColor,
       photos: user.photos.map((p) => ({ id: p.id, slot: p.slot })),
       bio: user.bio,
       college: user.college,
@@ -805,7 +819,6 @@ export class AuthService {
       where: { id: userId },
       select: {
         avatarUrl: true,
-        avatarColor: true,
         photos: { select: { id: true } },
         bio: true,
         course: true,

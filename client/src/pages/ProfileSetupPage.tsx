@@ -5,7 +5,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { nextStep } from '@/utils/funnel';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
-import CollegeSelect, { CollegeOption } from '@/components/common/CollegeSelect';
+import type { CollegeOption } from '@/components/common/CollegeSelect';
 import { photoSrc, usePhotoVersion } from '@/utils/photo';
 import ImageEditorModal from '@/components/common/ImageEditorModal';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
@@ -28,7 +28,6 @@ export default function ProfileSetupPage() {
  bio: user?.bio || '',
  gender: (user as any)?.gender || 'UNKNOWN',
  dateOfBirth: '',
- avatarColor: '#6D28D9',
  interestIds: user?.interests?.map((i) => i.id) || [],
  });
  const [isLoading, setIsLoading] = useState(false);
@@ -97,7 +96,6 @@ export default function ProfileSetupPage() {
     bio: formData.bio,
     gender: formData.gender,
     dateOfBirth: formData.dateOfBirth,
-    avatarColor: formData.avatarColor,
     interestIds: formData.interestIds,
   });
   // Refresh the user so the gates re-evaluate immediately
@@ -268,26 +266,6 @@ export default function ProfileSetupPage() {
   </div>
   <p className="text-xs text-gray-500 font-body mb-1">JPG / PNG / WebP · max 5 MB each.</p>
   </div>
-
-  <fieldset>
-  <legend className="block font-display text-sm font-semibold mb-2">Avatar color</legend>
-  <div className="flex gap-2 flex-wrap" role="radiogroup" aria-label="Avatar color">
-  {['#6D28D9', '#F43F5E', '#FBBF24', '#10B981', '#60A5FA', '#C4B5FD'].map((c) => (
-  <button
-  key={c}
-  type="button"
-  role="radio"
-  aria-checked={formData.avatarColor === c}
-  aria-label={`Avatar color ${c}`}
-  onClick={() => setFormData((d) => ({ ...d, avatarColor: c }))}
-  className={`w-10 h-10 border-nb-2 transition-transform ${
-  formData.avatarColor === c ? 'border-ink scale-110' : 'border-transparent'
-  }`}
-  style={{ backgroundColor: c }}
-  />
-  ))}
-  </div>
-  </fieldset>
 
   <fieldset>
   <legend className="block font-display text-sm font-semibold mb-2">Interests</legend>

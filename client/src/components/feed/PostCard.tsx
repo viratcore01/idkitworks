@@ -101,7 +101,7 @@ export default function PostCard({ post, detailView = false, activeTab = 'all' }
  </div>
  ) : (
  <Link to={`/profile/${post.author.username}`}>
- <Avatar src={post.author.avatarUrl} photoId={post.author.avatarPhotoId} color={(post.author as any).avatarColor} name={post.author.displayName} />
+ <Avatar src={post.author.avatarUrl} photoId={post.author.avatarPhotoId} name={post.author.displayName} />
  </Link>
  )}
 

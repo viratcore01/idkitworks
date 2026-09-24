@@ -21,6 +21,7 @@ const RESEND_COOLDOWN_SEC = 60;
 export default function VerificationPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
   // The OTP flow must survive a remount. A background session refresh used to
   // unmount this page mid-send, and any reload (e.g. a deploy landing under
   // the user) reset it to the intro — with a code already sitting in the
@@ -28,9 +29,15 @@ export default function VerificationPage() {
   // leak stale state into a fresh session.
   const [phase, setPhase] = useState<Phase>(() => {
     const saved = sessionStorage.getItem('verify:phase');
-    return saved === 'email' || saved === 'otp' ? (saved as Phase) : 'intro';
+    if (saved === 'email' || saved === 'otp') return saved as Phase;
+    // Signup funnel users arrive with their college email ALREADY on the
+    // account (it's what they typed in the wizard). Skip the pitch — straight
+    // to the form, prefilled, so the address is never typed a second time.
+    const pending = useAuthStore.getState().user?.collegeEmail;
+    return pending ? 'email' : 'intro';
   });
-  const [email, setEmail] = useState(() => sessionStorage.getItem('verify:email') || '');
+  const [email, setEmail] = useState(() =>
+    sessionStorage.getItem('verify:email') || useAuthStore.getState().user?.collegeEmail || '');
   useEffect(() => {
     if (phase === 'done') {
       // Flow finished (verified) — leave nothing behind for a future visit.
@@ -49,6 +56,7 @@ export default function VerificationPage() {
   const [cooldown, setCooldown] = useState(0);
   const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const fetchMe = useAuthStore((s) => s.fetchMe);
+  void user; // read once above for the initial phase; reactivity not needed
 
   const { data: status, refetch } = useQuery<CollegeEmailStatus>({
     queryKey: ['verification-status'],

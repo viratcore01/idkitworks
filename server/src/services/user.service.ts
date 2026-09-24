@@ -37,7 +37,6 @@ export class UserService {
     displayName: true,
     avatarUrl: true,
     avatarPhotoId: true,
-    avatarColor: true,
     bio: true,
     college: true,    course: true,
     year: true,
@@ -175,7 +174,6 @@ export class UserService {
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       avatarPhotoId: (user as any).avatarPhotoId ?? null,
-      avatarColor: user.avatarColor,
       photos: user.photos.map((p) => ({ id: p.id, slot: p.slot })),
       bio: user.bio,
       college: user.college,
@@ -252,7 +250,7 @@ export class UserService {
       orderBy: { createdAt: 'desc' },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, avatarColor: true, college: true, course: true, year: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, college: true, course: true, year: true },
         },
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
         likes: { where: { userId: viewerId }, select: { userId: true } },

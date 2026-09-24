@@ -8,8 +8,6 @@ interface AvatarProps {
  name: string;
  size?: 'sm' | 'md' | 'lg' | 'xl';
  className?: string;
- /** Discord-style personalization: any hex color for the fallback tile */
- color?: string | null;
 }
 
 const sizeClasses = {
@@ -27,7 +25,7 @@ const isInternal = (u: string) => u.includes('/users/photos/');
  * instead of silently flipping to the letter tile forever ("image not
  * available"). Also re-renders whenever the photo token rotates.
  */
-export default function Avatar({ src, photoId, name, size = 'md', className = '', color }: AvatarProps) {
+export default function Avatar({ src, photoId, name, size = 'md', className = '' }: AvatarProps) {
  const version = usePhotoVersion();
  const [broken, setBroken] = useState(false);
  const [healed, setHealed] = useState(false);
@@ -65,12 +63,9 @@ export default function Avatar({ src, photoId, name, size = 'md', className = ''
  );
  }
 
- const style = color && /^#[0-9A-Fa-f]{6}$/.test(color) ? { backgroundColor: color } : undefined;
-
  return (
  <div
- style={style}
- className={` border-nb-2 border-ink bg-nb-violet text-white font-bold flex items-center justify-center ${sizeClasses[size]} ${className}`}
+ className={`border-nb-2 border-ink bg-nb-violet text-white font-bold flex items-center justify-center ${sizeClasses[size]} ${className}`}
  >
  {name?.[0]?.toUpperCase() || '?'}
  </div>

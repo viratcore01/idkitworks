@@ -8,11 +8,6 @@ import { photoSrc, usePhotoVersion } from '@/utils/photo';
 import { useAuthStore } from '@/store/auth.store';
 import toast from 'react-hot-toast';
 
-const AVATAR_COLORS = [
- '#6D28D9', '#F43F5E', '#FBBF24', '#10B981', '#60A5FA', '#C4B5FD',
- '#10B981', '#F43F5E', '#6D28D9', '#C4B5FD',
-];
-
 const GENDERS = [
  { value: 'FEMALE', label: 'Female' },
  { value: 'MALE', label: 'Male' },
@@ -39,7 +34,6 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
 }) {
   const [form, setForm] = useState({
   bio: profile.bio || '',
-  avatarColor: profile.avatarColor || AVATAR_COLORS[0],
   course: profile.course || '',
   year: profile.year || 1,
   relationshipGoals: (profile.relationshipGoals || []) as string[],
@@ -198,22 +192,7 @@ const handleSave = async () => {
   </p>
 
 <div className="flex items-center gap-4 mb-5">
-  <Avatar photoId={profilePic?.id} name={profile.displayName} size="lg" color={form.avatarColor} />
- <div className="flex-1 min-w-0">
- <label className="block font-display text-xs font-semibold mb-1">Avatar color</label>
- <div className="flex gap-1.5 flex-wrap">
- {AVATAR_COLORS.map((c) => (
- <button
- key={c}
- type="button"
- onClick={() => setForm((f) => ({ ...f, avatarColor: c }))}
- className={`w-6 h-6 border-nb-2 transition-transform ${form.avatarColor === c ? 'border-ink scale-110' : 'border-transparent'}`}
- style={{ backgroundColor: c }}
- title={c}
- />
- ))}
- </div>
- </div>
+  <Avatar photoId={profilePic?.id} name={profile.displayName} size="lg" />
  </div>
 
  {editing && (

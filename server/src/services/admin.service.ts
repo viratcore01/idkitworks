@@ -164,7 +164,7 @@ export class AdminService {
         where,
         select: {
           id: true, username: true, displayName: true, email: true,
-          avatarUrl: true, avatarPhotoId: true, avatarColor: true,
+          avatarUrl: true, avatarPhotoId: true,
           collegeId: true, college: { select: { name: true, shortName: true } },
           moderatedCollegeId: true, moderatedCollege: { select: { name: true, shortName: true } },
           role: true, verificationStatus: true, isVerified: true, isActive: true,
@@ -544,7 +544,7 @@ export class AdminService {
       where: { id: targetId },
       select: {
         id: true, email: true, username: true, displayName: true, bio: true,
-        avatarUrl: true, avatarPhotoId: true, avatarColor: true,
+        avatarUrl: true, avatarPhotoId: true,
         collegeId: true, college: { select: { id: true, name: true, shortName: true, emailDomain: true } },
         course: true, year: true, gender: true, role: true,
         verificationStatus: true, isVerified: true,

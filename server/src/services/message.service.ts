@@ -137,7 +137,7 @@ export class MessageService {
           include: {
             members: {
               include: {
-                user: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true } },
+                user: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true } },
               },
             },
             messages: { orderBy: { createdAt: 'desc' }, take: 1 },
@@ -171,7 +171,6 @@ export class MessageService {
           username: 'deleted',
           displayName: 'Deleted User',
           avatarUrl: null,
-          avatarColor: null,
           avatarPhotoId: null,
         },
         lastMessage,
@@ -212,7 +211,7 @@ export class MessageService {
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       orderBy: { createdAt: 'desc' },
       include: {
-        sender: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true } },
+        sender: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true } },
       },
     });
 
@@ -245,7 +244,7 @@ export class MessageService {
       where: { id: messageId },
       data: { content, editedAt: new Date() },
       include: {
-        sender: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true } },
+        sender: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true } },
       },
     }).then((updated) => {
       publish('message:new', { conversationId, message: updated, recipientIds: [] });
@@ -332,7 +331,7 @@ export class MessageService {
     const message = await prisma.message.create({
       data: { conversationId, senderId, content: trimmed, mediaUrl: safeMediaUrl },
       include: {
-        sender: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true } },
+        sender: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true } },
       },
     });
 

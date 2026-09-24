@@ -174,7 +174,7 @@ export default function ChatPage() {
  to={partner.username ? `/profile/${partner.username}` : '#'}
  className={`flex items-center gap-2.5 min-w-0 flex-1 ${partner.username ? '' : 'pointer-events-none'}`}
  >
- <Avatar src={partner.avatarUrl} photoId={partner.avatarPhotoId} color={partner.avatarColor} name={partner.displayName} size="sm" className="shrink-0" />
+ <Avatar src={partner.avatarUrl} photoId={partner.avatarPhotoId} name={partner.displayName} size="sm" className="shrink-0" />
  <div className="min-w-0">
  <p className="font-display font-semibold text-sm truncate">{partner.displayName}</p>
  {partner.username && <p className="text-[11px] text-gray-500 truncate">@{partner.username}</p>}

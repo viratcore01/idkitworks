@@ -5,7 +5,8 @@ export interface User {
   displayName: string;
   avatarUrl: string | null;
   avatarPhotoId?: string | null;
-  avatarColor?: string | null;
+  /** Shown on profiles; exact DOB never leaves the server. */
+  age?: number | null;
   photos?: { id: string; slot: number }[];
   bio: string | null;
   college: College | null;
@@ -70,7 +71,6 @@ export interface Post {
     displayName: string;
     avatarUrl: string | null;
     avatarPhotoId?: string | null;
-    avatarColor?: string | null;
     college?: College | null;
     course?: string | null;
     year?: number | null;
@@ -100,7 +100,6 @@ export interface Comment {
     displayName: string;
     avatarUrl: string | null;
     avatarPhotoId?: string | null;
-    avatarColor?: string | null;
   } | null;
   _count?: { replies: number };
   /** Viewer is the author — enables edit/delete. Computed server-side (authorId is masked on anonymous comments). */
@@ -115,7 +114,6 @@ export interface Match {
     displayName: string;
     avatarUrl: string | null;
     avatarPhotoId?: string | null;
-    avatarColor?: string | null;
     bio: string | null;
   };
   type: string;
@@ -132,7 +130,6 @@ export interface Conversation {
     displayName: string;
     avatarUrl: string | null;
     avatarPhotoId?: string | null;
-    avatarColor?: string | null;
   } | null;
   lastMessage: {
     content: string;
@@ -157,7 +154,6 @@ export interface Message {
     displayName: string;
     avatarUrl: string | null;
     avatarPhotoId?: string | null;
-    avatarColor?: string | null;
   };
 }
 
@@ -198,7 +194,6 @@ export interface Notification {
     displayName: string;
     avatarUrl: string | null;
     avatarPhotoId?: string | null;
-    avatarColor?: string | null;
   } | null;
 }
 

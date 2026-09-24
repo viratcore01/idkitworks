@@ -72,8 +72,7 @@ export default function Sidebar() {
  <Avatar
  photoId={user?.avatarPhotoId}
  src={user?.avatarUrl}
- color={user?.avatarColor}
- name={user?.displayName || '?'}
+  name={user?.displayName || '?'}
  size="sm"
  className="!border-white"
  />

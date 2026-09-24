@@ -45,7 +45,7 @@ export default function SearchPage() {
  to={`/profile/${user.username}`}
  className="nb-card-hover p-3 flex items-center gap-3 block"
  >
- <Avatar src={user.avatarUrl} photoId={user.avatarPhotoId} color={user.avatarColor} name={user.displayName} />
+ <Avatar src={user.avatarUrl} photoId={user.avatarPhotoId} name={user.displayName} />
  <div className="min-w-0">
  <p className="font-display font-semibold text-sm">{user.displayName}</p>
  <p className="text-xs text-gray-500 truncate">

@@ -77,7 +77,7 @@ export class PostService {
       },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, avatarColor: true, college: true, course: true, year: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, college: true, course: true, year: true },
         },
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
       },
@@ -168,7 +168,7 @@ export class PostService {
             content: true,
             isAnonymous: true,
             createdAt: true,
-            author: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, avatarColor: true } },
+            author: { select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true } },
           },
         },
       },
@@ -213,7 +213,7 @@ export class PostService {
       where: { id: postId },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, avatarColor: true, college: true, course: true, year: true, collegeId: true, isActive: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, college: true, course: true, year: true, collegeId: true, isActive: true },
         },
         _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
         likes: { where: { userId }, select: { userId: true } },
@@ -363,7 +363,7 @@ export class PostService {
       orderBy: { createdAt: 'asc' },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, avatarColor: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true },
         },
         _count: { select: { replies: true } },
       },
@@ -410,7 +410,7 @@ export class PostService {
       },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, avatarColor: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true },
         },
       },
     });
@@ -464,7 +464,7 @@ export class PostService {
       data: { content: trimmed, editedAt: new Date() },
       include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, avatarColor: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true },
         },
       },
     });
@@ -536,7 +536,7 @@ export class PostService {
         post: {
 include: {
         author: {
-          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, avatarColor: true, college: true, course: true, year: true },
+          select: { id: true, username: true, displayName: true, avatarUrl: true, avatarPhotoId: true, college: true, course: true, year: true },
         },
             _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
             likes: { where: { userId }, select: { userId: true } },

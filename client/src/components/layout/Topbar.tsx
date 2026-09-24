@@ -151,7 +151,7 @@ export default function Topbar() {
  onClick={() => goUser(u.username)}
  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-nb-cream text-left"
  >
- <Avatar src={u.avatarUrl} photoId={u.avatarPhotoId} color={u.avatarColor} name={u.displayName} size="sm" />
+ <Avatar src={u.avatarUrl} photoId={u.avatarPhotoId} name={u.displayName} size="sm" />
  <div className="min-w-0">
  <p className="text-sm font-display font-semibold truncate">{u.displayName}</p>
  <p className="text-[11px] text-gray-500 truncate">@{u.username}{u.course ? ` • ${u.course}` : ''}</p>
@@ -227,7 +227,7 @@ export default function Topbar() {
  className="block shrink-0"
  >
  {/* Avatar handles photoId-first resolution + token self-heal */}
- <Avatar photoId={user?.avatarPhotoId} src={user?.avatarUrl} color={user?.avatarColor} name={user?.displayName || '?'} size="md" className="!w-9 !h-9 !text-sm !border-white" />
+ <Avatar photoId={user?.avatarPhotoId} src={user?.avatarUrl} name={user?.displayName || '?'} size="md" className="!w-9 !h-9 !text-sm !border-white" />
  </Link>
  </div>
  </div>

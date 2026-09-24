@@ -34,7 +34,7 @@ const USER_SELECT = {
   username: true,
   displayName: true,
   avatarUrl: true,
-  avatarColor: true,
+  
   avatarPhotoId: true,
   college: true,
   course: true,
@@ -105,7 +105,7 @@ export class SearchService {
         SELECT p.id, p."content", p."createdAt", p."isAnonymous",
                p."authorId",
                u.username AS "authorUsername", u."displayName" AS "authorDisplayName",
-               u."avatarUrl" AS "authorAvatarUrl", u."avatarColor" AS "authorAvatarColor",
+               u."avatarUrl" AS "authorAvatarUrl",
                u."avatarPhotoId" AS "authorAvatarPhotoId",
                (SELECT COUNT(*)::int FROM comments c WHERE c."post_id" = p.id AND c."deleted_at" IS NULL) AS "commentCount",
                (SELECT COUNT(*)::int FROM post_likes pl WHERE pl."post_id" = p.id) AS "likeCount",
@@ -127,7 +127,7 @@ export class SearchService {
           select: {
             id: true, content: true, createdAt: true, isAnonymous: true, authorId: true,
             author: {
-              select: { username: true, displayName: true, avatarUrl: true, avatarColor: true, avatarPhotoId: true },
+              select: { username: true, displayName: true, avatarUrl: true,  avatarPhotoId: true },
             },
             _count: { select: { comments: { where: { deletedAt: null } }, likes: true } },
           },
@@ -153,7 +153,7 @@ export class SearchService {
         username: p.author?.username ?? p.authorUsername,
         displayName: p.author?.displayName ?? p.authorDisplayName,
         avatarUrl: p.author?.avatarUrl ?? p.authorAvatarUrl,
-        avatarColor: p.author?.avatarColor ?? p.authorAvatarColor,
+        
         avatarPhotoId: p.author?.avatarPhotoId ?? p.authorAvatarPhotoId,
       },
       _count: { comments: p._count?.comments ?? p.commentCount ?? 0, likes: p._count?.likes ?? p.likeCount ?? 0 },
@@ -169,7 +169,7 @@ export class SearchService {
               username: 'anonymous',
               displayName: 'Anonymous Student',
               avatarUrl: null,
-              avatarColor: null,
+              
               avatarPhotoId: null,
             },
           }

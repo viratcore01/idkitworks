@@ -662,7 +662,7 @@ setShowPrefs(true);
  </div>
   ) : (
   <div className="mb-4">
-  <Avatar src={currentUser.avatarUrl} photoId={currentUser.avatarPhotoId} color={currentUser.avatarColor} name={currentUser.displayName} size="xl" className="mx-auto" />
+  <Avatar src={currentUser.avatarUrl} photoId={currentUser.avatarPhotoId} name={currentUser.displayName} size="xl" className="mx-auto" />
   </div>
   )}
 
@@ -761,7 +761,7 @@ setShowPrefs(true);
   <div className="flex gap-3 overflow-x-auto overscroll-x-contain pb-2 -mx-1 px-1">
   {waiting.map((w: any) => (
   <div key={w.id} className="nb-card p-3 w-44 shrink-0 text-center">
-  <Avatar src={w.avatarUrl} photoId={w.avatarPhotoId ?? w.photos?.[0]?.id} color={w.avatarColor} name={w.displayName} className="mx-auto" />
+  <Avatar src={w.avatarUrl} photoId={w.avatarPhotoId ?? w.photos?.[0]?.id} name={w.displayName} className="mx-auto" />
   <p className="font-display font-semibold text-sm mt-2 truncate">{w.displayName}{w.age ? `, ${w.age}` : ''}</p>
   <p className="text-xs text-gray-500 truncate">{[w.course, w.college?.shortName || w.college?.name].filter(Boolean).join(' • ') || `@${w.username}`}</p>
   {w.isVerified && <p className="text-xs text-nb-mint font-semibold mt-0.5">✓ Verified</p>}
@@ -796,7 +796,7 @@ setShowPrefs(true);
  const conv = (conversations || []).find((c: any) => c.otherUser?.id === match.partner.id);
  return (
    <div key={match.id} className="nb-card-hover p-4 flex items-start gap-3">
-   <Avatar src={match.partner.avatarUrl} photoId={match.partner.avatarPhotoId} color={match.partner.avatarColor} name={match.partner.displayName} />
+   <Avatar src={match.partner.avatarUrl} photoId={match.partner.avatarPhotoId} name={match.partner.displayName} />
    <div className="flex-1 min-w-0">
    <p className="font-display font-semibold text-sm">{match.partner.displayName}</p>
    <p className="text-xs text-gray-500 truncate">{match.partner.bio || 'No bio yet'}</p>
@@ -859,7 +859,7 @@ setShowPrefs(true);
  >
  {conv.otherUser && (
  <>
- <Avatar src={conv.otherUser.avatarUrl} photoId={conv.otherUser.avatarPhotoId} color={conv.otherUser.avatarColor} name={conv.otherUser.displayName} />
+ <Avatar src={conv.otherUser.avatarUrl} photoId={conv.otherUser.avatarPhotoId} name={conv.otherUser.displayName} />
  <div className="flex-1 min-w-0">
  <p className="font-display font-semibold text-sm">{conv.otherUser.displayName}</p>
  <p className="text-xs text-gray-500 truncate font-body">

@@ -84,7 +84,6 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
             <Avatar
               src={user?.avatarUrl}
               photoId={user?.avatarPhotoId}
-              color={user?.avatarColor}
               name={user?.displayName || '?'}
               size="sm"
             />

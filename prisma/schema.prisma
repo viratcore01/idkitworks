@@ -57,7 +57,6 @@ model User {
   year          Int?
   gender        String?  @default("UNKNOWN")
   dateOfBirth   DateTime? @map("date_of_birth")
-  avatarColor   String?  @map("avatar_color")
   avatarPhotoId String?  @unique @map("avatar_photo_id")
   isVerified    Boolean  @default(false) @map("is_verified")
   // What this person is on the app for — shown on cards/profiles, and the

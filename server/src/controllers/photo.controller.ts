@@ -129,7 +129,7 @@ export async function issuePhotoToken(req: AuthRequest, res: Response) {
 
 /**
  * DELETE /users/me/photos/:photoId — owner only. If it was the profile pic,
- * that pointer is cleared (avatarColor fallback takes over).
+ * that pointer is cleared (initial-letter fallback takes over).
  */
 export async function deletePhoto(req: AuthRequest, res: Response) {
   try {
