@@ -1,0 +1,9 @@
+# Normalize line endings: bash scripts MUST be LF or Linux explodes on them
+* text=auto
+*.sh text eol=lf
+*.md text
+*.ts text
+*.tsx text
+*.json text
+*.prisma text
+*.env* text
