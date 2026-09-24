@@ -21,9 +21,29 @@ const RESEND_COOLDOWN_SEC = 60;
 export default function VerificationPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [phase, setPhase] = useState<Phase>('intro');
+  // The OTP flow must survive a remount. A background session refresh used to
+  // unmount this page mid-send, and any reload (e.g. a deploy landing under
+  // the user) reset it to the intro — with a code already sitting in the
+  // inbox. sessionStorage is tab-scoped and dies with the tab, so it can't
+  // leak stale state into a fresh session.
+  const [phase, setPhase] = useState<Phase>(() => {
+    const saved = sessionStorage.getItem('verify:phase');
+    return saved === 'email' || saved === 'otp' ? (saved as Phase) : 'intro';
+  });
+  const [email, setEmail] = useState(() => sessionStorage.getItem('verify:email') || '');
+  useEffect(() => {
+    if (phase === 'done') {
+      // Flow finished (verified) — leave nothing behind for a future visit.
+      sessionStorage.removeItem('verify:phase');
+      sessionStorage.removeItem('verify:email');
+      return;
+    }
+    sessionStorage.setItem('verify:phase', phase);
+  }, [phase]);
+  useEffect(() => {
+    if (email) sessionStorage.setItem('verify:email', email);
+  }, [email]);
   const [error, setError] = useState('');
-  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(0);

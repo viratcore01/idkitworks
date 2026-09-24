@@ -3,14 +3,17 @@ import api from '@/services/api';
 import { ensurePhotoToken } from '@/utils/photo';
 import { disconnectSocket } from '@/services/realtime';
 import { queryClient } from '@/services/queryClient';
-import { User } from '@/types';
-
-interface AuthState {
+import { User } from '@/types';interface AuthState {
   user: User | null;
   isLoading: boolean;
+  /** A live session is being refreshed in the background. Unlike isLoading
+   *  (boot only), this must NOT gate the route guards — flipping it would
+   *  unmount the page the user is standing on (the /verify OTP flow lost
+   *  its state exactly this way). */
+  isRefreshingSession: boolean;
   /** True when boot had stored tokens but the server never answered (cold
-   * start timeout / offline) after retries. Tokens are KEPT — this is not a
-   * logout, and the UI offers Retry instead of flashing the login page. */
+   *  start timeout / offline) after retries. Tokens are KEPT — this is not a
+   *  logout, and the UI offers Retry instead of flashing the login page. */
   bootStuck: boolean;
   isAuthenticated: boolean;
   isIncognito: boolean;
@@ -37,6 +40,7 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
+  isRefreshingSession: false,
   bootStuck: false,
   isAuthenticated: false,
   isIncognito: false,
@@ -133,7 +137,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isLoading: false, bootStuck: false });
       return;
     }
-    set({ isLoading: true, bootStuck: false });
+    // Boot (no user yet) blocks the UI through the guards. Refreshing a LIVE
+    // session must not: guards render <LoadingScreen/> on isLoading, which
+    // would unmount whatever page the user is on mid-interaction.
+    const isBoot = !get().user;
+    set(
+      isBoot
+        ? { isLoading: true, bootStuck: false }
+        : { isRefreshingSession: true, bootStuck: false },
+    );
     // Transient failures (cold-start timeouts, dropped connections) must NEVER
     // wipe a valid session — that was the "flashes login, then works" bug:
     // boot timed out at 45s, storage got cleared, user re-logged in manually
@@ -143,7 +155,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const { data } = await api.get('/auth/me');
-        set({ user: data, isAuthenticated: true, isLoading: false, bootStuck: false });
+        set({ user: data, isAuthenticated: true, isLoading: false, bootStuck: false, isRefreshingSession: false });
         ensurePhotoToken().catch(() => {}); // photo <img> URLs need it
         return;
       } catch (e: any) {
@@ -154,11 +166,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     if (lastError?.response) {
       localStorage.clear();
-      set({ user: null, isAuthenticated: false, isLoading: false, bootStuck: false });
+      set({ user: null, isAuthenticated: false, isLoading: false, bootStuck: false, isRefreshingSession: false });
     } else {
       // Server never answered. Keep the tokens — the session is probably
       // fine — and let the UI offer Retry instead of a wrong login screen.
-      set({ user: null, isAuthenticated: false, isLoading: false, bootStuck: true });
+      set({ user: null, isAuthenticated: false, isLoading: false, bootStuck: true, isRefreshingSession: false });
     }
   },
 
