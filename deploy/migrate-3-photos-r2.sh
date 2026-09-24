@@ -47,7 +47,7 @@ echo
 echo "✅ Objects synced. Verification checklist (do these on STAGING before cutover):"
 echo "  [ ] avatar renders from R2 (302 → signed R2 URL, 200 on the object)"
 echo "  [ ] photo carousel renders for all 4 slots"
-echo "  [ ] ID-verification upload works and admin queue shows the image"
+echo "  [ ] OTP signup works end-to-end (college → code → password → profile)"
 echo "  [ ] signed-URL expiry: sign one, wait/force past PHOTO_URL_TTL_SEC,"
 echo "      confirm the OLD URL 403s and a refresh gets a NEW signed URL"
 echo "  [ ] STORAGE_DRIVER=r2 is set in the app env BEFORE testing (boot log"

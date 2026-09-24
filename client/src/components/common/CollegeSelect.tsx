@@ -8,6 +8,8 @@ export interface CollegeOption {
  shortName?: string | null;
  city?: string | null;
  state?: string | null;
+ /** Student-mail domain the OTP flow enforces (may be null = not onboarded). */
+ emailDomain?: string | null;
 }
 
 interface Props {

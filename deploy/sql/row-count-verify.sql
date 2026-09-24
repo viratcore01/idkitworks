@@ -24,7 +24,8 @@ UNION ALL SELECT 'blocks',            count(*) FROM blocks
 UNION ALL SELECT 'interests',         count(*) FROM interests
 UNION ALL SELECT 'user_interests',    count(*) FROM user_interests
 UNION ALL SELECT 'refresh_tokens',    count(*) FROM refresh_tokens
-UNION ALL SELECT 'id_verifications',  count(*) FROM id_verifications
+UNION ALL SELECT 'email_otps',       count(*) FROM email_otps
+UNION ALL SELECT 'app_settings',    count(*) FROM app_settings
 UNION ALL SELECT 'moderation_logs',   count(*) FROM moderation_logs
 ORDER BY tbl;
 

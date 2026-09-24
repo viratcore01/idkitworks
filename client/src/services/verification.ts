@@ -13,7 +13,7 @@ export interface CollegeEmailStatus {
 }
 
 /**
- * College-email OTP verification (replaces the old photo-ID flow).
+ * College-email OTP verification.
  * The college email is locked permanently once verified — everything else
  * on the profile stays editable.
  */

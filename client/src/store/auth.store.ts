@@ -17,11 +17,15 @@ interface AuthState {
   setUser: (user: User | null) => void;
   toggleIncognito: () => void;
   login: (identifier: string, password: string) => Promise<void>;
-  loginWithGoogle: (idToken: string) => Promise<boolean>;
-  signup: (data: any) => Promise<void>;
+  /** Funnel college is optional: with it, Google auto-verifies on domain match. */
+  loginWithGoogle: (idToken: string, collegeId?: string) => Promise<boolean>;
+  /** Funnel start: college + identity, no password (set post-verification). */
+  signup: (data: { collegeId: string; email: string; username: string; displayName: string }) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   setPasswordViaGoogle: (idToken: string, newPassword: string) => Promise<void>;
+  /** Funnel step: first password (verified + none set). Stays logged in. */
+  setInitialPassword: (newPassword: string) => Promise<void>;
   deleteAccount: () => Promise<void>;
   fetchMe: () => Promise<void>;
   retryBoot: () => Promise<void>;
@@ -54,9 +58,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   /** Google Sign-In: server verifies the ID token, links/creates the account.
-   *  Returns true when a NEW account was created (for the welcome toast). */
-  loginWithGoogle: async (idToken) => {
-    const { data } = await api.post('/auth/google', { credential: idToken });
+   *  Returns true when a NEW account was created (for the welcome toast).
+   *  With a funnel collegeId, a matching-domain Google email auto-verifies. */
+  loginWithGoogle: async (idToken, collegeId) => {
+    const { data } = await api.post('/auth/google', { credential: idToken, ...(collegeId ? { collegeId } : {}) });
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
     set({ user: data.user, isAuthenticated: true });
@@ -92,6 +97,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     queryClient.clear();
     localStorage.clear();
     set({ user: null, isAuthenticated: false, isIncognito: false });
+  },
+
+  /** Funnel first password: server gates on verified + none-set. Unlike the
+   *  Google-token and change flows this keeps the session — the placeholder
+   *  it replaces was unguessable, so there is nothing to revoke. */
+  setInitialPassword: async (newPassword: string) => {
+    await api.post('/auth/password/set-initial', { newPassword });
+    try { await get().fetchMe(); } catch {}
   },
 
   /** Google-only accounts have no current password: a FRESH Google ID token

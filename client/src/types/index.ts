@@ -9,6 +9,7 @@ export interface User {
   photos?: { id: string; slot: number }[];
   bio: string | null;
   college: College | null;
+  collegeId?: string | null;
   course: string | null;
   year: number | null;
   isVerified: boolean;
@@ -26,6 +27,8 @@ export interface User {
   /** Auth-method flags (from /me): Google-only accounts have no password to change — only to set. */
   hasGoogle?: boolean;
   hasPassword?: boolean;
+  /** Funnel key: college + course present (server-computed). */
+  isProfileSetup?: boolean;
 }
 
 export interface College {

@@ -22,7 +22,7 @@ const sendLimiter = rateLimit({
   message: { error: 'Too many verification emails from this network. Try again in 15 minutes.' },
 });
 
-// College email verification flow (replaces photo ID verification)
+// College-email OTP verification: send → verify → status → resend.
 router.post('/college-email/send', sendLimiter, authMiddleware, (req, res) => sendCollegeEmailOtp(req, res));
 router.post('/college-email/verify', authMiddleware, (req, res) => verifyCollegeEmailOtp(req, res));
 router.get('/college-email/status', authMiddleware, (req, res) => collegeEmailStatus(req, res));

@@ -6,6 +6,7 @@ import Logo from '@/components/common/Logo';
 import { useAuthStore } from '@/store/auth.store';
 import { useVerificationUnlock } from '@/hooks/useVerificationUnlock';
 import { verificationApi, CollegeEmailStatus } from '@/services/verification';
+import { nextStep } from '@/utils/funnel';
 
 type Phase = 'intro' | 'email' | 'otp' | 'done';
 
@@ -36,25 +37,30 @@ export default function VerificationPage() {
 
   const domain = status?.collegeEmailDomain || null;
 
-  // Already verified (e.g. verified in another tab) → straight in.
+  // Funnel includes password + profile AFTER verification — never /home blind.
+  const goNext = () => {
+    navigate(nextStep(useAuthStore.getState().user), { replace: true });
+  };
+
+  // Already verified (e.g. verified in another tab) → onward in the funnel.
   useEffect(() => {
     if (status && (status.collegeEmailVerified || status.verificationStatus === 'VERIFIED')) {
       queryClient.invalidateQueries({ queryKey: ['me'] });
       fetchMe().catch(() => {});
-      navigate('/home', { replace: true });
+      goNext();
     }
   }, [status, queryClient, fetchMe, navigate]);
 
   // DONE: refresh the auth store so the route gates see the fresh status —
-  // otherwise "Continue to Zoclo" bounces straight back to /verify.
+  // otherwise "Continue" bounces straight back to /verify.
   useEffect(() => {
     if (phase === 'done') fetchMe().catch(() => {});
   }, [phase, fetchMe]);
 
-  // The moment verification lands (socket or poll), go in — no reload, no button.
+  // The moment verification lands (socket or poll), move on — no reload, no button.
   useVerificationUnlock(() => {
     setPhase('done');
-    navigate('/home', { replace: true });
+    goNext();
   });
 
   useEffect(() => () => {
@@ -121,7 +127,7 @@ export default function VerificationPage() {
       queryClient.invalidateQueries({ queryKey: ['verification-status'] });
       await fetchMe().catch(() => {});
       setPhase('done');
-      navigate('/home', { replace: true });
+      goNext();
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Invalid code — try again');
     } finally {
@@ -194,9 +200,9 @@ export default function VerificationPage() {
             <ShieldCheck size={40} className="text-nb-violet" />
           </div>
           <h1 className="font-display text-2xl font-bold mt-5">You&apos;re verified! 🎓</h1>
-          <p className="text-sm opacity-70 mt-2">Welcome to Zoclo. Your college community is waiting.</p>
-          <button onClick={() => navigate('/home')} className="nb-btn-primary w-full mt-6">
-            Enter Zoclo
+          <p className="text-sm opacity-70 mt-2">Welcome to Zoclo. One more step — lock your account.</p>
+          <button onClick={goNext} className="nb-btn-primary w-full mt-6">
+            Continue
           </button>
         </div>
       </Shell>
@@ -254,7 +260,7 @@ export default function VerificationPage() {
         </div>
         <h1 className="font-display text-2xl font-bold mt-5">Verify you&apos;re a student</h1>
         <p className="text-sm opacity-70 mt-2">
-          Zoclo is college-only. Enter your college email{domain ? <> (ending in <span className="font-semibold">@{domain}</span>)</> : null} — we&apos;ll send a 6-digit code and you&apos;re in instantly. No ID photos, no waiting on a moderator.
+          Zoclo is college-only. Enter your college email{domain ? <> (ending in <span className="font-semibold">@{domain}</span>)</> : null} — we&apos;ll send a 6-digit code and you&apos;re in instantly. No paperwork, no waiting.
         </p>
         <ul className="text-left text-sm mt-6 space-y-3">
           <Li><Check size={16} className="text-nb-violet mt-0.5 shrink-0" /> Only your college&apos;s email domain works</Li>

@@ -12,6 +12,7 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const SignupPage = lazy(() => import('@/pages/SignupPage'));
 const ProfileSetupPage = lazy(() => import('@/pages/ProfileSetupPage'));
 const VerificationPage = lazy(() => import('@/pages/VerificationPage'));
+const SetupPasswordPage = lazy(() => import('@/pages/SetupPasswordPage'));
 const AdminLayout = lazy(() => import('@/layouts/AdminLayout'));
 const AdminOverview = lazy(() => import('@/pages/admin/AdminOverview'));
 const AdminIds = lazy(() => import('@/pages/admin/AdminIds'));
@@ -182,9 +183,14 @@ export default function App() {
  <Route path="/search" element={<SearchPage />} />
  </Route>
 
- {/* Profile setup: authenticated users only (works with or without college) */}
+  {/* Profile setup: authenticated users only (works with or without college) */}
  <Route path="/setup-profile" element={
  <ProtectedRoute><ProfileSetupPage /></ProtectedRoute>
+ } />
+
+ {/* Funnel: first password, after verification (skippable for Google users) */}
+ <Route path="/setup-password" element={
+ <ProtectedRoute><SetupPasswordPage /></ProtectedRoute>
  } />
 
   {/* College-email OTP verification: full-screen flow outside the app chrome.
@@ -213,8 +219,8 @@ export default function App() {
   <Route path="console" element={<Navigate to="/admin" replace />} />
   </Route>
 
-  {/* Legacy photo-ID review URL: verification is OTP-automatic now */}
-  <Route path="/admin/verify" element={<Navigate to="/admin/ids" replace />} />
+  {/* Old console URL kept for bookmarks */}
+ <Route path="/admin/verify" element={<Navigate to="/admin/ids" replace />} />
 
  {/* Removed pages redirect to their closest replacement */}
  <Route path="/confessions" element={<Navigate to="/matches" replace />} />

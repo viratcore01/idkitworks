@@ -61,9 +61,9 @@ A wordmark-first brand: graffiti-styled logo, Youthful Maximalist Neo-Brutalism 
              └─────────────────────────────┘
                       │
              ┌────────▼─────────────────────┐
-             │   SAFETY & MODERATION        │
-             │ ID verification · reports    │
-             │ blocks · college admins      │
+              │   SAFETY & MODERATION        │
+              │ email verification · reports │
+              │ blocks · college admins      │
              └──────────────────────────────┘
 ```
 
@@ -108,7 +108,7 @@ Socket.IO (same process)   PostgreSQL (Supabase) — 19 tables
 | Domain | Tables | Notes |
 |---|---|---|
 | Identity | `colleges`, `users`, `refresh_tokens` | user: goal, gender, DOB (private), year, course, role (`user`/`admin`/`super_admin`), verification status |
-| Media | `user_photos`, `id_verifications` | photos stored as Postgres `Bytes` (slot 0 = profile, 1–3 = gallery); ID image **deleted the moment verification resolves** |
+| Media | `user_photos` | photos in Supabase Storage / R2 (slot 0 = profile, 1–3 = gallery); legacy Postgres `Bytes` fallback |
 | Community | `posts`, `comments` (self-referential), `post_likes`, `saved_posts` | post types NORMAL/CONFESS/QUESTION/POLL; anonymous = author masked, never exposed |
 | Matching | `match_preferences`, `match_likes`, `matches` | `@@unique([userA, userB])` on matches makes duplicates impossible at DB level; `match_likes` holds LIKE/PASS memory (deck loop ordering) |
 | Intent | `relationship_goal` (User), `open_to_goals` (prefs) | DATING / RELATIONSHIP / HOOKUP / CASUAL / NOT_SURE |
@@ -137,18 +137,20 @@ Socket.IO (same process)   PostgreSQL (Supabase) — 19 tables
 
 ## 5. Feature Specifications & Workflows
 
-### 5.1 Onboarding, Accounts & Student-ID Verification
+### 5.1 Onboarding, Accounts & College-Email Verification
 
-**Flow:** sign up (email/password or Google) → pick your college → profile basics (name, DOB 16+, gender, course, year, interests, avatar) → *(optional but encouraged)* student-ID photo → land on the feed.
+**Flow (college-first funnel):** pick your college → prove identity (college-email OTP **or** matching-domain Google) → set password → profile basics (name prefilled from Google when available, DOB 16+, gender, course, year, interests, avatar) → land on the feed.
 
-**Student-ID verification pipeline:**
-1. User uploads an ID image (stored as bytes in `id_verifications`, status `PENDING`).
-2. **Auto-decision pass** runs first (confidence scored) → `APPROVED` / `REJECTED` / `REVIEW`.
-3. `REVIEW` items enter the **admin verification queue**; a college admin (or super_admin) views the image and approves/rejects.
-4. **Privacy invariant:** the ID image is *deleted the moment the decision resolves* — auto or human. It is never retained.
+**College-email verification pipeline:**
+1. Account is created **passwordless** for `you@<college-domain>` (domain enforced against the college row — wrong-domain emails fail before any row exists).
+2. A 6-digit OTP is mailed (10-min TTL, 3 sends / 10 min per user + per-IP brake, 5 attempts then burn, timing-safe compare, send-before-persist so no phantom codes).
+3. **Google shortcut:** a Google ID token whose email domain matches the college auto-verifies instantly (Google's `email_verified` is the same proof as OTP). Mismatches create nothing — the user falls back to OTP.
+4. Verified → `collegeEmailVerified` locks the address **forever**; only then can the first password be set (`set-initial`: verified + no-password gate, no session kill).
 5. Verified status grants the mint ✅ badge on cards and profiles.
 
-**Access control:** email must not already exist; signup/login inputs are type-guarded against object/array injection; login attempts rate-limited to 10 / 15 min in production.
+**Funnel guarantees (all server-enforced):** resume-or-409 on re-signup (pending rows resume, full accounts 409); college freely changeable pre-verification, locked after; stale passwordless+unverified rows purged after 7 days; every funnel screen resolves from one `nextStep` map.
+
+**Access control:** email/username must not already exist (case-insensitive); signup/login inputs are type-guarded against object/array injection; login attempts rate-limited to 30 failures / 15 min in production.
 
 ---
 
@@ -247,8 +249,8 @@ The notification body of a DM is **never** snapshotted into metadata — only th
 
 - **Report system** for posts / comments / users / messages, with reason + description.
 - **College-scoped admin:** reports queue, bans, content takedowns all respect college walls; `super_admin` sees across colleges.
-- **Verification queue** (§5.1) with image review (admin-only endpoints).
-- Admin dashboard stats: users, posts, reports, verification backlog.
+- **Pending-verifications list** (§5.1): visibility-only, OTP is fully automatic — nothing to approve.
+- Admin dashboard stats: users, posts, reports, unverifiedCount.
 - Bans flip `isActive=false` → locked out everywhere.
 
 ---
@@ -327,10 +329,10 @@ Production guard: API refuses to boot with weak secrets when `NODE_ENV=productio
 
 ## 11. Success Metrics (proposed)
 
-- **Activation:** % of signups reaching (a) first post/comment, (b) first swipe, (c) ID upload
+- **Activation:** % of signups reaching (a) OTP verified, (b) password set, (c) first post/comment, (d) first swipe
 - **Match engine:** like→match conversion, likes-you like-back rate, deck cycle depth before match
 - **Community:** DAU/MAU, posts per active user, confession share, comment depth
-- **Trust:** reports resolved < 24 h, verification turnaround, block rate (leading churn indicator)
+- **Trust:** reports resolved < 24 h, OTP delivery time, block rate (leading churn indicator)
 - **Retention:** D7/D30 by cohort and by college
 
 ---

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, PartyPopper, Hourglass, Camera, Plus, X } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
+import { nextStep } from '@/utils/funnel';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
 import CollegeSelect, { CollegeOption } from '@/components/common/CollegeSelect';
@@ -84,12 +85,14 @@ export default function ProfileSetupPage() {
  }
  setIsLoading(true);
  try {
- await updateProfile(formData);
- // Refresh the user so the college gate re-evaluates immediately
- await fetchMe();
- toast.success('Profile updated!');
-  // Onboarding order: profile → college-email verification → feed
- navigate('/verify');
+  await updateProfile(formData);
+  // Refresh the user so the gates re-evaluate immediately
+  await fetchMe();
+  toast.success('Profile updated!');
+  // Funnel order: college → verification → password → profile → feed.
+  // (Fresh signups arrive verified; legacy no-college Google users may still
+  // need /verify next — nextStep decides, never a hardcoded route.)
+  navigate(nextStep(useAuthStore.getState().user), { replace: true });
  } catch (err: any) {
  toast.error(err.response?.data?.error || 'Update failed');
  } finally {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
+import { nextStep } from '@/utils/funnel';
 
 declare global {
  interface Window {
@@ -20,14 +21,23 @@ declare global {
  * /api/auth/google where the server verifies the signature against
  * Google's public keys before creating or linking the account.
  * - The same flow serves login AND signup: existing email → linked (old
- * password keeps working); new email → account inside the normal funnel
- * (no college yet, unverified → the college wall and ID gate apply).
+  * password keeps working); new email → account inside the normal funnel
+  * (no college yet, unverified → the college wall and email gate apply).
+  * With a funnel collegeId, a matching-domain Google email auto-verifies
+  * instantly (same proof as OTP); mismatches are rejected, never created.
  * - Verify mode (`mode="verify"` + `onCredential`): renders the same official
  * button but hands the fresh ID token to the caller instead of logging in —
  * used by Settings to prove Google-account ownership before setting a first
  * password. No navigation happens in this mode.
  */
-export default function GoogleButton({ mode, onCredential }: { mode: 'login' | 'signup' | 'verify'; onCredential?: (idToken: string) => Promise<void> }) {
+export default function GoogleButton({ mode, onCredential, collegeId, onSuccess }: {
+  mode: 'login' | 'signup' | 'verify';
+  onCredential?: (idToken: string) => Promise<void>;
+  /** Funnel college: server auto-verifies when the Google email's domain matches it. */
+  collegeId?: string;
+  /** Funnel override: called with (created) instead of the default /home navigation. */
+  onSuccess?: (created: boolean) => void;
+}) {
   const [enabled, setEnabled] = useState<{ clientId: string } | null>(null);
   const [busy, setBusy] = useState(false);
   // True once the /health probe has exhausted its retries without confirming
@@ -42,6 +52,10 @@ export default function GoogleButton({ mode, onCredential }: { mode: 'login' | '
   // second Google button) on every parent re-render while typing.
   const onCredentialRef = useRef(onCredential);
   onCredentialRef.current = onCredential;
+  const onSuccessRef = useRef(onSuccess);
+  onSuccessRef.current = onSuccess;
+  const collegeIdRef = useRef(collegeId);
+  collegeIdRef.current = collegeId;
 
  // 1. Ask the server whether Google sign-in is configured.
  // Render's free tier sleeps when idle — the first request can take 30-50s
@@ -91,11 +105,16 @@ export default function GoogleButton({ mode, onCredential }: { mode: 'login' | '
   await onCredentialRef.current(response.credential);
   return;
   }
-  const created = await loginWithGoogle(response.credential);
+  const created = await loginWithGoogle(response.credential, collegeIdRef.current);
   toast.success(created ? 'Account created — welcome to Zoclo!' : 'Welcome back!');
-  // The App gate routes correctly from here: no college → setup,
-  // unverified → /verify, everyone else → the feed.
-  navigate('/home');
+  if (onSuccessRef.current) {
+  // Funnel caller owns routing (college → verify → password → profile).
+  onSuccessRef.current(created);
+  return;
+  }
+  // Funnel-aware landing: no college → setup, unverified → /verify,
+  // passwordless → /setup-password, everyone else → the feed.
+  navigate(nextStep(useAuthStore.getState().user), { replace: true });
   } catch (err: any) {
   toast.error(err.response?.data?.error || err?.message || 'Google sign-in failed');
   } finally {

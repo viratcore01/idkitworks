@@ -18,17 +18,44 @@ import { verifyGoogleIdToken } from './google-auth.service';
  */
 const DUMMY_HASH = '$2a$12$C6UzMDM.H6dfI/f/IKcEeO7tAUFnOnV0Co7f3OSJ8X6VzX2rZC0Ny';
 
-interface SignupInput {
+/**
+ * Funnel step 1+2 (college → identity). The account is created WITHOUT a
+ * password — the password is set later via setInitialPassword, which the
+ * server allows ONLY after college-email verification. Identity (email,
+ * username, name) is collected up front so uniqueness fails fast, before
+ * the user spends a one-time code.
+ */
+interface SignupStartInput {
+  collegeId: string;
   email: string;
-  password: string;
   username: string;
   displayName: string;
-  collegeId?: string;
-  course?: string;
-  year?: number;
-  avatarUrl?: string;
-  bio?: string;
-  interestIds?: string[];
+}
+
+/** Stale passwordless+unverified rows are junk (abandoned signups) — purged on every start. */
+const PENDING_PURGE_DAYS = 7;
+
+async function purgeStalePendingSignups(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - PENDING_PURGE_DAYS * 24 * 3600 * 1000);
+    const candidates = await prisma.user.findMany({
+      where: {
+        collegeEmailVerified: false,
+        verificationStatus: { not: 'VERIFIED' },
+        createdAt: { lt: cutoff },
+      },
+      select: { id: true, passwordHash: true },
+    });
+    for (const c of candidates) {
+      // Only rows that never set a password: anyone with a real password is a
+      // real user, even if unverified. Per-row + best-effort: rows referenced
+      // by safety tables (reports filed) are skipped, never forced.
+      if (isPasswordSet(c.passwordHash)) continue;
+      try {
+        await prisma.user.delete({ where: { id: c.id } });
+      } catch { /* referenced elsewhere — leave it */ }
+    }
+  } catch { /* housekeeping never blocks signup */ }
 }
 
 interface AuthTokens {
@@ -46,6 +73,7 @@ interface AuthTokens {
     isProfileSetup: boolean;
     collegeEmailVerified: boolean;
     verificationStatus: string;
+    hasPassword: boolean;
   };
 }
 
@@ -70,25 +98,48 @@ function createAuthResponse(user: any, accessToken: string, refreshToken: string
       isProfileSetup: !!(user.collegeId && user.course),
       collegeEmailVerified: user.collegeEmailVerified ?? false,
       verificationStatus: user.verificationStatus ?? 'UNVERIFIED',
+      // Funnel routing needs this immediately (no extra /me round-trip):
+      // placeholder hashes (funnel/Google accounts) read as "no password".
+      hasPassword: isPasswordSet(user.passwordHash),
     },
   };
 }
 
 export class AuthService {
-  async signup(input: SignupInput): Promise<AuthTokens> {
+  async signup(input: SignupStartInput): Promise<AuthTokens> {
     // Type guards: malformed JSON bodies must never reach Prisma (engine errors leak paths).
     if (
-      typeof input?.email !== 'string' || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email) ||
+      typeof input?.collegeId !== 'string' || !input.collegeId ||
+      typeof input?.email !== 'string' || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email.trim()) ||
       typeof input?.username !== 'string' || !/^[a-zA-Z0-9_]{3,20}$/.test(input.username) ||
-      typeof input?.displayName !== 'string' || input.displayName.trim().length < 2 ||
-      typeof input?.password !== 'string' || input.password.length < 6 || input.password.length > 128 ||
-      typeof input?.collegeId !== 'string' || !input.collegeId
+      typeof input?.displayName !== 'string' || input.displayName.trim().length < 2 || input.displayName.trim().length > 50
     ) {
       const e: any = new Error('Invalid signup details'); e.status = 400; throw e;
     }
+    const email = input.email.trim().toLowerCase();
+
+    // College anchors the whole funnel: it must exist AND be onboarded for
+    // verification (have a student-mail domain). Fail fast here — creating an
+    // account that can never verify would strand the user mid-funnel.
+    const college = await prisma.college.findUnique({
+      where: { id: input.collegeId },
+      select: { id: true, name: true, emailDomain: true },
+    });
+    if (!college) {
+      const e: any = new Error('College not found'); e.status = 400; throw e;
+    }
+    if (!college.emailDomain) {
+      const e: any = new Error(`${college.name} is not onboarded for verification yet — contact support`);
+      e.status = 400; e.code = 'COLLEGE_NOT_ONBOARDED'; throw e;
+    }
+    const domain = email.split('@')[1]?.toLowerCase();
+    if (domain !== college.emailDomain.toLowerCase()) {
+      const e: any = new Error(`Use your college email (@${college.emailDomain})`);
+      e.status = 400; e.code = 'COLLEGE_DOMAIN_MISMATCH'; throw e;
+    }
 
     // Email hygiene: syntax + disposable-inbox block + typo suggestion.
-    const emailCheck = checkEmail(input.email);
+    const emailCheck = checkEmail(email);
     if (!emailCheck.ok) {
       const e: any = new Error(emailCheck.error || 'Invalid email'); e.status = 400;
       e.code = 'EMAIL_INVALID';
@@ -101,51 +152,74 @@ export class AuthService {
       e.suggestion = emailCheck.suggestion;
       throw e;
     }
-    // USERNAME UNIQUENESS IS CASE-INSENSITIVE (Virat == virat == VIRAT):
-    // the DB has UNIQUE (LOWER(username)) as the race-proof backstop, and this
-    // pre-check gives the friendly 409 instead of a raw P2002.
+
+    // Free squatted identities from signups abandoned a week ago.
+    await purgeStalePendingSignups();
+
+    // USERNAME + EMAIL UNIQUENESS (email case-insensitive by convention,
+    // username case-insensitively unique by product rule — the DB's UNIQUE
+    // (LOWER(username)) is the race-proof backstop; pre-checks give the
+    // friendly 409 instead of a raw P2002). collegeEmail is checked too so a
+    // legacy personal-email account holding this college address blocks reuse.
     const existingUser = await prisma.user.findFirst({
-      where: { OR: [{ email: input.email }, { username: { equals: input.username, mode: 'insensitive' } }] },
+      where: {
+        OR: [
+          { email },
+          { collegeEmail: email },
+          { username: { equals: input.username, mode: 'insensitive' } },
+        ],
+      },
     });
 
     if (existingUser) {
-      if (existingUser.email === input.email) {
+      const hasPw = isPasswordSet(existingUser.passwordHash);
+      const verified = existingUser.collegeEmailVerified || existingUser.verificationStatus === 'VERIFIED';
+      if (!hasPw && !verified) {
+        // RESUME, not 409: this claimant started signup and never finished —
+        // no secret exists yet, so re-issuing a session leaks nothing (the
+        // only thing it unlocks is requesting an OTP to this same inbox).
+        // Same-college only: moving a pending row across colleges happens via
+        // the pre-verification college change, not by restarting here.
+        if (existingUser.collegeId !== input.collegeId) {
+          const e: any = new Error('This email already started signup for another college — log in to continue it');
+          e.status = 409; throw e;
+        }
+        // Refresh the claimed identity (re-check the username — someone else
+        // may have taken it since). Same 409s as a fresh start.
+        if (existingUser.username.toLowerCase() !== input.username.toLowerCase()) {
+          const clash = await prisma.user.findFirst({
+            where: { username: { equals: input.username, mode: 'insensitive' }, NOT: { id: existingUser.id } },
+            select: { id: true },
+          });
+          if (clash) throw new Error('Username already taken');
+        }
+        const user = await prisma.user.update({
+          where: { id: existingUser.id },
+          data: { username: input.username, displayName: input.displayName.trim() },
+        });
+        return this.issueSession(user);
+      }
+      if (existingUser.email === email || (existingUser as any).collegeEmail === email) {
         throw new Error('Email already in use');
       }
       throw new Error('Username already taken');
     }
 
-    // Interests: dedupe the payload and verify every id exists — a stale or
-    // forged interest id would otherwise surface as an ugly FK-violation 500.
-    const interestIds = [...new Set((input.interestIds || []).filter(Boolean))];
-    if (interestIds.length > 15) {
-      const e: any = new Error('Pick at most 15 interests'); e.status = 400; throw e;
-    }
-    if (interestIds.length) {
-      const found = await prisma.interest.findMany({ where: { id: { in: interestIds } }, select: { id: true } });
-      if (found.length !== interestIds.length) {
-        const e: any = new Error('One or more interests not found'); e.status = 400; throw e;
-      }
-    }
-
-    const passwordHash = await hashPassword(input.password);
+    // No password yet — parked placeholder (same shape as Google-created
+    // accounts). The real password is set post-verification via
+    // setInitialPassword, which the server gates on collegeEmailVerified.
+    const placeholderHash = crypto.randomUUID() + crypto.randomUUID();
 
     let user: any;
     try {
       user = await prisma.user.create({
         data: {
-          email: input.email,
-          passwordHash,
+          email,
+          passwordHash: placeholderHash,
           username: input.username,
-          displayName: input.displayName,
+          displayName: input.displayName.trim(),
           collegeId: input.collegeId,
-          course: input.course,
-          year: input.year,
-          avatarUrl: input.avatarUrl,
-          bio: input.bio,
-          interests: interestIds.length
-            ? { create: interestIds.map((interestId) => ({ interestId })) }
-            : undefined,
+          collegeEmail: email,
         },
       });
     } catch (err: any) {
@@ -158,6 +232,11 @@ export class AuthService {
       throw err;
     }
 
+    return this.issueSession(user);
+  }
+
+  /** Mint a fresh session pair for a user row (signup start/resume). */
+  private async issueSession(user: any): Promise<AuthTokens> {
     const payload = createPayload(user);
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
@@ -171,10 +250,41 @@ export class AuthService {
     });
 
     // Housekeeping: expired tokens otherwise accumulate forever. Indexed and
-    // fire-and-forget — never blocks the login response.
+    // fire-and-forget — never blocks the response.
     prisma.refreshToken.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(() => {});
 
     return createAuthResponse(user, accessToken, refreshToken);
+  }
+
+  /**
+   * SET the first password for a funnel account. Allowed ONLY when the
+   * college email is verified AND no password exists yet — session auth alone
+   * is never enough (a stolen pre-verification session must not become
+   * permanent ownership), and an existing password is never overwritten here
+   * (changePassword owns that path). No session kill: the placeholder was
+   * unguessable, so there is no stolen session to revoke — the owner sails
+   * straight into profile setup.
+   */
+  async setInitialPassword(userId: string, newPassword: string): Promise<void> {
+    if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 128) {
+      const e: any = new Error('Password must be 8-128 characters'); e.status = 400; throw e;
+    }
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { collegeEmailVerified: true, passwordHash: true, isActive: true },
+    });
+    if (!user || !user.isActive) {
+      const e: any = new Error('Account unavailable'); e.status = 401; throw e;
+    }
+    if (!user.collegeEmailVerified) {
+      const e: any = new Error('Verify your college email first');
+      e.status = 403; e.code = 'VERIFICATION_REQUIRED'; throw e;
+    }
+    if (isPasswordSet(user.passwordHash)) {
+      const e: any = new Error('This account already has a password — change it instead'); e.status = 400; throw e;
+    }
+    await prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(newPassword) } });
+    invalidateUser(userId);
   }
 
   /**
@@ -509,7 +619,8 @@ export class AuthService {
     avatarUrl?: string;
     avatarColor?: string;
     collegeId?: string;
-    collegeEmail?: string;
+    // NOTE: no collegeEmail — the OTP flow owns it end-to-end (the body
+    // rejects it, typed as any below so forged JS payloads still hit the 403).
     course?: string;
     year?: number;
     gender?: string;
@@ -575,15 +686,13 @@ export class AuthService {
       if (url && !/^https:\/\//.test(url)) throw new Error('Avatar URL must be https');
       update.avatarUrl = url || null;
     }
-    // College email is locked after verification — cannot be changed
-    if (data.collegeEmail !== undefined && data.collegeEmail !== null) {
-      const current = await prisma.user.findUnique({ where: { id: userId }, select: { collegeEmailVerified: true, collegeEmail: true } });
-      if (current?.collegeEmailVerified) {
-        const e: any = new Error('College email is locked after verification and cannot be changed'); e.status = 403; throw e;
-      }
-      // Allow setting college email only if not verified yet (handled by OTP flow)
-      // This is mainly for clearing it before verification
-      update.collegeEmail = data.collegeEmail || null;
+    // College email is owned END-TO-END by the OTP flow (send overwrites it
+    // pre-verification, verify locks it). Profile edits can never touch it —
+    // any value here is rejected so a forged request can't stage an address
+    // the OTP service didn't issue a code for.
+    if ((data as any).collegeEmail !== undefined && (data as any).collegeEmail !== null) {
+      const e: any = new Error('College email is managed through verification — use /verify');
+      e.status = 403; throw e;
     }
     if (data.collegeId !== undefined && data.collegeId !== null) {
       if (data.collegeId) {
@@ -591,11 +700,14 @@ export class AuthService {
         if (!college) throw new Error('College not found');
       }
 
-      // PRODUCT RULE: college is the isolation boundary. Once assigned, it cannot
-      // be changed — otherwise a user could carry old-college posts, matches and
-      // chats into a new college's feed. (Support/super-admin can override.)
-      const current = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
-      if (current?.collegeId && current.collegeId !== data.collegeId) {
+      // PRODUCT RULE: college is the isolation boundary. Once VERIFIED it
+      // cannot be changed — otherwise a user could carry old-college posts,
+      // matches and chats into a new college's feed. Pre-verification the
+      // user owns no visible data (every content route gates on VERIFIED),
+      // so a wrong pick in the signup wizard is freely fixable here.
+      // (Support/super-admin can override.)
+      const current = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true, collegeEmailVerified: true } });
+      if (current?.collegeId && current.collegeId !== data.collegeId && current.collegeEmailVerified) {
         const e: any = new Error('Your college is already set. Contact support to change it.'); e.status = 403; throw e;
       }
       update.collegeId = data.collegeId || null;

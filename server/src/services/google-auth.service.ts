@@ -6,6 +6,8 @@ import {
 } from '../utils/jwt';
 import { env } from '../config/env';
 import { JwtPayload } from '../types';
+import { invalidateUser } from '../utils/user-cache';
+import { isPasswordSet } from '../utils/password';
 
 /**
  * Google Sign-In, real verification — not dummy:
@@ -166,18 +168,51 @@ export interface GoogleAuthResult {
     isProfileSetup: boolean;
     collegeEmailVerified: boolean;
     verificationStatus: string;
+    hasPassword: boolean;
   };
 }
 
 /**
  * The one handler behind both "Sign in with Google" and "Sign up with
- * Google": verified Google users are linked to an existing account with the
- * same email (its password keeps working) or given a new account. The
- * new account lands in the SAME funnel as password users — no college yet,
- * UNVERIFIED — so the college wall and college-email gate apply unchanged.
+ * Google", with an optional funnel college:
+ *
+ * - WITHOUT collegeId (login button): legacy behavior — verified Google
+ *   users are linked to an existing account with the same email (its password
+ *   keeps working) or given a new UNVERIFIED account with no college, which
+ *   lands in the normal funnel (college wall + college-email gate unchanged).
+ * - WITH collegeId (signup wizard): the Google email's domain MUST equal the
+ *   college's student-mail domain. Google already proved inbox control
+ *   (email_verified), which is exactly what our OTP proves — so a match
+ *   auto-verifies instantly, no code needed. A mismatch creates NOTHING (no
+ *   junk rows): the user falls back to OTP or switches Google accounts.
  */
-export async function googleAuth(idToken: string): Promise<GoogleAuthResult> {
+export async function googleAuth(idToken: string, collegeId?: string): Promise<GoogleAuthResult> {
   const g = await verifyGoogleIdToken(idToken);
+
+  // Funnel college check FIRST — before any row exists or links. A personal
+  // gmail must never auto-verify anyone into a college it doesn't belong to.
+  let funnelCollege: { id: string; name: string; emailDomain: string } | null = null;
+  if (collegeId) {
+    const college = await prisma.college.findUnique({
+      where: { id: collegeId },
+      select: { id: true, name: true, emailDomain: true },
+    });
+    if (!college) {
+      const e: any = new Error('College not found'); e.status = 400; throw e;
+    }
+    if (!college.emailDomain) {
+      const e: any = new Error(`${college.name} is not onboarded for verification yet — contact support`);
+      e.status = 400; e.code = 'COLLEGE_NOT_ONBOARDED'; throw e;
+    }
+    const domain = g.email.split('@')[1]?.toLowerCase();
+    if (domain !== college.emailDomain.toLowerCase()) {
+      const e: any = new Error(
+        `That Google account is @${domain || 'unknown'} — use your @${college.emailDomain} account, or verify with a code instead`,
+      );
+      e.status = 400; e.code = 'COLLEGE_DOMAIN_MISMATCH'; throw e;
+    }
+    funnelCollege = { id: college.id, name: college.name, emailDomain: college.emailDomain };
+  }
 
   let user = await prisma.user.findFirst({
     where: { OR: [{ googleId: g.googleId }, { email: g.email }] },
@@ -185,13 +220,66 @@ export async function googleAuth(idToken: string): Promise<GoogleAuthResult> {
 
   let created = false;
   if (user) {
-    // Existing account: remember the Google link (idempotent).
+    if (!user.isActive) throw new Error('This account has been deactivated');
+    // Link by email match (same proven inbox) or by known googleId — never
+    // attach a Google identity to a row holding a DIFFERENT email.
     if (!user.googleId) {
+      if (user.email.toLowerCase() !== g.email.toLowerCase()) {
+        const e: any = new Error('This Google account belongs to a different email — use the matching one');
+        e.status = 403; throw e;
+      }
       user = await prisma.user.update({ where: { id: user.id }, data: { googleId: g.googleId } });
     }
-    if (!user.isActive) throw new Error('This account has been deactivated');
+    if (funnelCollege) {
+      // College lock respected: fill only when empty, refuse cross-college.
+      if (!user.collegeId) {
+        user = await prisma.user.update({ where: { id: user.id }, data: { collegeId: funnelCollege.id } });
+      } else if (user.collegeId !== funnelCollege.id) {
+        const e: any = new Error('Your college is already set. Contact support to change it.');
+        e.status = 403; throw e;
+      }
+      // Google proved THIS exact inbox and the domain matches the college:
+      // identical assurance to completing OTP — verify instantly.
+      if (!user.collegeEmailVerified && user.email.toLowerCase() === g.email.toLowerCase()) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            collegeEmail: g.email,
+            collegeEmailVerified: true,
+            collegeEmailVerifiedAt: new Date(),
+            verificationStatus: 'VERIFIED',
+            isVerified: true,
+          },
+        });
+        invalidateUser(user.id);
+      }
+    }
+  } else if (funnelCollege) {
+    // New funnel account — verified from birth: Google proved the inbox and
+    // the domain matches. Password comes later via setInitialPassword.
+    created = true;
+    const username = await availableHandle(baseHandle(g.name, g.email));
+    const displayName = (g.name || g.email.split('@')[0]).slice(0, 50);
+    // passwordHash is NOT NULL: park a random secret no one can guess or use.
+    user = await prisma.user.create({
+      data: {
+        email: g.email,
+        passwordHash: crypto.randomUUID() + crypto.randomUUID(),
+        googleId: g.googleId,
+        username,
+        displayName,
+        avatarUrl: g.picture || undefined,
+        collegeId: funnelCollege.id,
+        collegeEmail: g.email,
+        collegeEmailVerified: true,
+        collegeEmailVerifiedAt: new Date(),
+        verificationStatus: 'VERIFIED',
+        isVerified: true,
+      },
+    });
   } else {
-    // New account — replicate exactly what password signup creates.
+    // New account — replicate exactly what funnel signup creates (minus the
+    // college): passwordless, UNVERIFIED, no college yet.
     created = true;
     const username = await availableHandle(baseHandle(g.name, g.email));
     const displayName = (g.name || g.email.split('@')[0]).slice(0, 50);
@@ -245,6 +333,7 @@ export async function googleAuth(idToken: string): Promise<GoogleAuthResult> {
       isProfileSetup: !!(user.collegeId && user.course),
       collegeEmailVerified: user.collegeEmailVerified ?? false,
       verificationStatus: user.verificationStatus ?? 'UNVERIFIED',
+      hasPassword: isPasswordSet(user.passwordHash),
     },
   };
 }

@@ -8,15 +8,14 @@ import { googleAuth } from '../services/google-auth.service';
 const authService = new AuthService();
 
 export class AuthController {
+  /** Funnel start: college + identity, no password (set post-verification). */
   async signup(req: Request, res: Response) {
     try {
-      const { email, password, username, displayName, collegeId, course, year, avatarUrl, bio, interestIds } = req.body;
-      const result = await authService.signup({
-        email, password, username, displayName, collegeId, course, year, avatarUrl, bio, interestIds,
-      });
+      const { collegeId, email, username, displayName } = req.body;
+      const result = await authService.signup({ collegeId, email, username, displayName });
       res.status(201).json(result);
     } catch (error: any) {
-      const status = error.message.includes('already') ? 409 : 400;
+      const status = error.status || (error.message.includes('already') ? 409 : 400);
       sendError(res, error, status);
     }
   }
@@ -36,11 +35,27 @@ export class AuthController {
       if (!idToken) {
         const e: any = new Error('Missing Google credential'); e.status = 400; throw e;
       }
-      const result = await googleAuth(idToken);
+      // Funnel college (signup wizard): the server auto-verifies ONLY when the
+      // Google email's domain matches the college. Absent = legacy login path.
+      const collegeId = typeof req.body?.collegeId === 'string' && req.body.collegeId
+        ? req.body.collegeId
+        : undefined;
+      const result = await googleAuth(idToken, collegeId);
       res.json(result);
     } catch (error: any) {
       // Verification failures are the client's fault → 401; config/env issues → their status
       sendError(res, error, error.status || 401);
+    }
+  }
+
+  /** Funnel step: first password, gated on verified college email + no password yet. */
+  async setInitialPassword(req: AuthRequest, res: Response) {
+    try {
+      const { newPassword } = req.body;
+      await authService.setInitialPassword(req.user!.id, newPassword);
+      res.json({ message: 'Password set' });
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
     }
   }
 

@@ -83,10 +83,11 @@ curl https://<api>/api/health/db     # expect database:reachable
 $env:DATABASE_CONNECTION_LIMIT=2; npx tsx scripts/test-matching.ts https://<api>
 ```
 
-**Rollout:** open 2–3 colleges → confirm verification queue drains (<24 h SLA),
-deck latency p50 <500 ms, 5xx ≈ 0 → open the next batch. Staff each campus
-queue with at least one admin before opening it (ID verification is the
-product's trust wall — a stuck queue IS a launch failure).
+**Rollout:** open 2–3 colleges → confirm OTP delivery works (test signup per
+campus, codes arrive <1 min), deck latency p50 <500 ms, 5xx ≈ 0 → open the
+next batch. Every launch college needs its student-mail domain set in
+`/admin/colleges` before opening it (verification is the product's trust
+wall — a missing domain IS a launch failure).
 
 **Watch (first 48 h):** Render logs for `[prisma]` / `EMAXCONNSESSION`
 (pool full → shed load: halve rollout, raise Supabase plan),
@@ -100,7 +101,7 @@ monitor (UptimeRobot, 5-min interval — NOT the deep check every minute).
 - [ ] Migration cutover done (§3), `migrate deploy` clean on next push
 - [ ] Manual Supabase backup taken
 - [ ] Founder `super_admin` bootstrapped + can reach `/admin`
-- [ ] Launch colleges seeded + each has ≥1 admin reviewer
+- [ ] Launch colleges seeded + each has its student-mail domain set (OTP gate)
 - [ ] `VITE_API_URL` set on Vercel + frontend redeployed
 - [ ] Suite green against the PROD api (run §4 command; deck checks need a quiet pool)
 - [ ] Support path tested: report a post → appears in admin queue → action works
@@ -117,5 +118,5 @@ monitor (UptimeRobot, 5-min interval — NOT the deep check every minute).
 Single Node process (sockets + in-memory deck/feed caches) caps at a few
 thousand concurrent connections — horizontal scale needs the Redis adapter
 for Socket.IO + shared cache (callsites already isolated behind
-`config/cache.ts` + `config/bus.ts`). No email verification yet (student-ID
-gate covers trust); no push notifications yet (polling fallbacks cover).
+`config/cache.ts` + `config/bus.ts`). No push notifications yet (polling
+fallbacks cover).

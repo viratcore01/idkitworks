@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { LogIn, Hourglass } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
+import { nextStep } from '@/utils/funnel';
 import PasswordInput from '@/components/common/PasswordInput';
 import GoogleButton from '@/components/common/GoogleButton';
 import toast from 'react-hot-toast';
@@ -33,7 +34,9 @@ export default function LoginPage() {
   try {
   await login(identifier, password);
   toast.success('Welcome back!');
-  navigate('/home');
+  // Mid-funnel returners (unverified / passwordless / no profile) land on
+  // their exact next step instead of bouncing off the app gates.
+  navigate(nextStep(useAuthStore.getState().user), { replace: true });
   } catch (err: any) {
   const msg = err.response?.data?.error || 'Login failed';
   setFormError(msg);

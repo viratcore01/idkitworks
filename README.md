@@ -28,7 +28,7 @@ Three products students already use, rebuilt for one hyperlocal context:
 | **Community** — a campus feed with posts, threaded comments, anonymous confessions and polls | **Dating** — a swipe deck of people on your campus, with preferences, mutual matching and a proper "it's a match" moment |
 | **Chat** — real-time messaging with edit windows, unsend and unread counts | **People** — searchable, verified, college-scoped profiles with relationship-aware actions |
 
-**Every account is verified.** Students sign up, pick their college, and upload their student ID — a campus moderator approves it before they can see a single post. No bots, no strangers, no one from outside your campus. Ever.
+**Every account is verified.** Students pick their college, prove their college email with a one-time code (or a matching-domain Google account — same proof, instant), set a password, and complete their profile. No bots, no strangers, no one from outside your campus. Ever.
 
 ## The one rule: college-only
 
@@ -83,7 +83,7 @@ Drop PNGs with these names into a `screenshots/` folder and they render here.
 - Unread counts that agree everywhere: topbar badge, sidebar badge, and the inbox header all read the same cache, and reading a DM thread clears its pings automatically.
 
 ### 🛡️ Safety & moderation
-- Student-ID verification gate before full access
+- College-email OTP gate before full access (Google domain-match auto-verifies)
 - Report posts, comments, users and messages
 - College-scoped moderation console: verification queue, reports, bans, takedowns, campus-wide announcements
 - Bidirectional blocking — blocks are a hard wall across feed, decks, search and chat
