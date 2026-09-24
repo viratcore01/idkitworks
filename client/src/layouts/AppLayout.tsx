@@ -53,7 +53,7 @@ export default function AppLayout() {
   };
   }, [user, queryClient]);
 
- // Verified the instant a moderator approves — no reload, no manual step.
+  // Verified the instant the email code lands — no reload, no manual step.
  useVerificationUnlock(() => {
  toast.success("You're verified — welcome to Zoclo!", { icon: '🎓', duration: 5000 });
  navigate('/home', { replace: true });

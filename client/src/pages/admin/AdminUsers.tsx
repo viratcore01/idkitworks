@@ -80,7 +80,7 @@ export default function AdminUsers() {
         </div>
         <select value={filter} onChange={(e) => setFilter(e.target.value)} className="bg-[#151D31] border border-white/20 px-3 py-2 text-sm outline-none focus:border-[#FBBF24]" aria-label="Filter users">
           <option value="">Everyone</option>
-          <option value="pending">ID pending</option>
+          <option value="pending">Pending</option>
           <option value="unverified">Unverified</option>
           <option value="banned">Banned</option>
           <option value="admins">Staff</option>
@@ -200,6 +200,7 @@ function InspectDrawer({ id, isSuper, onClose, onBan, onRole, busy }: {
                 <p className="font-bold text-white truncate">{u.displayName} <span className="font-normal opacity-50">@{u.username}</span></p>
                 <p className="text-xs text-slate-400 truncate">{u.email}</p>
                 <p className="text-xs text-slate-400">{u.college?.shortName || u.college?.name || 'no college'} · {u.role} · {u.isActive ? u.verificationStatus : 'BANNED'} · {data?.activeMatches || 0} matches</p>
+                <p className="text-xs text-slate-400">College email: {u.collegeEmail || '—'}{u.collegeEmailVerified ? ' · verified' : ''}</p>
               </div>
             </div>
 
@@ -240,8 +241,8 @@ function InspectDrawer({ id, isSuper, onClose, onBan, onRole, busy }: {
             </Section>
 
             <Section title="Verification trail">
-              {(data?.verifications || []).length === 0 ? <p className="text-slate-500 text-xs">Never submitted an ID.</p> : data.verifications.map((v: any) => (
-                <p key={v.id} className="text-xs text-slate-300 mb-1">{v.status} · {v.decidedBy || 'pending'} {v.decidedAt ? `· ${new Date(v.decidedAt).toLocaleDateString()}` : ''}</p>
+              {(data?.verifications || []).length === 0 ? <p className="text-slate-500 text-xs">No OTP requests yet.</p> : data.verifications.map((v: any) => (
+                <p key={v.id} className="text-xs text-slate-300 mb-1">OTP → {v.email} · {v.usedAt ? `used ${new Date(v.usedAt).toLocaleDateString()}` : 'unused'} · {new Date(v.createdAt).toLocaleDateString()}</p>
               ))}
             </Section>
 
@@ -298,8 +299,8 @@ function InspectDrawer({ id, isSuper, onClose, onBan, onRole, busy }: {
             </Section>
 
             <Section title="Verification trail">
-              {(data?.verifications || []).length === 0 ? <p className="text-slate-500 text-xs">Never submitted an ID.</p> : data.verifications.map((v: any) => (
-                <p key={v.id} className="text-xs text-slate-300 mb-1">{v.status} · {v.decidedBy || 'pending'} {v.decidedAt ? `· ${new Date(v.decidedAt).toLocaleDateString()}` : ''}</p>
+              {(data?.verifications || []).length === 0 ? <p className="text-slate-500 text-xs">No OTP requests yet.</p> : data.verifications.map((v: any) => (
+                <p key={v.id} className="text-xs text-slate-300 mb-1">OTP → {v.email} · {v.usedAt ? `used ${new Date(v.usedAt).toLocaleDateString()}` : 'unused'} · {new Date(v.createdAt).toLocaleDateString()}</p>
               ))}
             </Section>
 

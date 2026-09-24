@@ -4,10 +4,10 @@ import { useAuthStore } from '@/store/auth.store';
 import { getSocket } from '@/services/realtime';
 
 /**
- * PRODUCT RULE: the moment a moderator approves the student ID, the session
+ * PRODUCT RULE: the moment college-email OTP verification lands, the session
  * flips to VERIFIED everywhere — instantly, with no reload and no manual step.
  *
- * The decision publishes a notification; this hook listens for it on the
+ * Verification publishes a notification; this hook listens for it on the
  * realtime socket, refreshes the session (VERIFIED unlocks every gate), and
  * fires the callback once. The callback should navigate the user into the app.
  */
@@ -46,7 +46,7 @@ export function useVerificationUnlock(onVerified: () => void) {
       if (busy) return;
       try {
         const { data } = await import('@/services/verification').then(m => m.verificationApi.status());
-        if (data.status === 'VERIFIED') {
+        if (data.collegeEmailVerified || data.verificationStatus === 'VERIFIED') {
           await fetchMe().catch(() => {});
           queryClient.invalidateQueries({ queryKey: ['me'] });
           queryClient.invalidateQueries({ queryKey: ['verification-status'] });

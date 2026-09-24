@@ -23,6 +23,7 @@ router.post('/reports', (req, res) => controller.createReport(req, res));
   router.get('/colleges', adminMiddleware, (req, res) => controller.listColleges(req, res));
   router.get('/colleges/duplicates', adminMiddleware, (req, res) => controller.duplicateColleges(req, res));
   router.post('/colleges/merge', adminMiddleware, (req, res) => controller.mergeColleges(req, res));
+  router.patch('/colleges/:id', adminMiddleware, (req, res) => controller.updateCollegeDomain(req, res));
   router.patch('/reports/bulk', adminMiddleware, (req, res) => controller.bulkResolve(req, res));
   router.get('/reports', adminMiddleware, (req, res) => controller.getReports(req, res));
 router.patch('/reports/:id/resolve', adminMiddleware, (req, res) => controller.resolveReport(req, res));
@@ -30,5 +31,6 @@ router.delete('/content/:type/:id', adminMiddleware, (req, res) => controller.de
 router.post('/users/:id/ban', adminMiddleware, (req, res) => controller.banUser(req, res));
 router.post('/users/:id/unban', adminMiddleware, (req, res) => controller.unbanUser(req, res));
 router.get('/stats', adminMiddleware, (req, res) => controller.getStats(req, res));
+router.get('/cost-guard', adminMiddleware, (req, res) => controller.costGuardStatus(req, res));
 
 export default router;

@@ -88,7 +88,7 @@ export default function ProfileSetupPage() {
  // Refresh the user so the college gate re-evaluates immediately
  await fetchMe();
  toast.success('Profile updated!');
- // Onboarding order: profile → student ID verification → feed
+  // Onboarding order: profile → college-email verification → feed
  navigate('/verify');
  } catch (err: any) {
  toast.error(err.response?.data?.error || 'Update failed');

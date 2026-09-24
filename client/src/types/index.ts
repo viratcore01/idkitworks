@@ -13,6 +13,10 @@ export interface User {
   year: number | null;
   isVerified: boolean;
   verificationStatus: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED';
+  /** College-email OTP state: once verified, collegeEmail is locked forever. */
+  collegeEmail?: string | null;
+  collegeEmailVerified?: boolean;
+  collegeEmailVerifiedAt?: string | null;
   role?: string;
   isFounder?: boolean;
   moderatedCollegeId?: string | null;
@@ -31,6 +35,8 @@ export interface College {
   city: string | null;
   state: string | null;
   logoUrl: string | null;
+  /** Official student-mail domain enforced by OTP verification (e.g. "ipec.org.in"). */
+  emailDomain?: string | null;
 }
 
 export interface Interest {

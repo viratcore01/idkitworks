@@ -48,4 +48,9 @@ export const env = {
   // The client detects support via /api/health so the button only shows when
   // the server can actually verify tokens.
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
+  // Outbound mail (company Gmail via SMTP + app password): sends the
+  // college-email OTP codes. Missing creds = dev logs the code, production
+  // refuses to send (503) rather than fail silently.
+  GMAIL_USER: process.env.GMAIL_USER || '',
+  GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD || '',
 };

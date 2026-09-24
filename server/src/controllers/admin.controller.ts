@@ -4,6 +4,7 @@ import { PostService } from '../services/post.service';
 import { AdminService } from '../services/admin.service';
 import { AuthRequest } from '../types';
 import { prisma } from '../config/prisma';
+import { readCostGuardDoc } from '../config/cost-guard';
 import { sendError } from '../utils/http-error';
 import { invalidateUser } from '../utils/user-cache';
 import { moderationScope } from '../middleware/auth';
@@ -208,6 +209,18 @@ export class AdminController {
     }
   }
 
+  /** Supreme only: set/clear a campus's student-mail domain (the OTP gate value). */
+  async updateCollegeDomain(req: AuthRequest, res: Response) {
+    try {
+      const id = String(req.params.id || '');
+      const body = req.body || {};
+      const domain = body.emailDomain === null ? null : String(body.emailDomain ?? '');
+      res.json(await adminService.updateCollegeDomain(req.user!.id, req.user!.role, id, domain === '' ? null : domain));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
   // Admin actions
   async deleteContent(req: AuthRequest, res: Response) {
     try {
@@ -287,6 +300,22 @@ export class AdminController {
             : { id: '__none__' } as any),
       ]);
       res.json({ users: userCount, posts: postCount, pendingReports: reportCount, matches: matchCount });
+    } catch (error: any) {
+      sendError(res, error, 400);
+    }
+  }
+
+  /** R2 cost-guard state: uploads paused? when was usage last checked? */
+  async costGuardStatus(_req: AuthRequest, res: Response) {
+    try {
+      const doc = await readCostGuardDoc();
+      res.json({
+        uploadsEnabled: doc?.uploadsEnabled !== false,
+        lastCheckAt: doc?.lastCheckAt ?? null,
+        lastUsage: doc?.lastUsage ?? null,
+        lastError: doc?.lastError ?? null,
+        lastErrorAt: doc?.lastErrorAt ?? null,
+      });
     } catch (error: any) {
       sendError(res, error, 400);
     }

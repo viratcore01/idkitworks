@@ -21,7 +21,7 @@ export default function AdminOverview() {
   const t = data?.totals || {};
   const cards = [
     { label: 'Users', value: t.users, sub: `${t.banned || 0} banned` },
-    { label: 'Pending IDs', value: t.pendingVerifications, alert: (t.pendingVerifications || 0) > 0, to: '/admin/ids' },
+    { label: 'Unverified', value: t.pendingVerifications, alert: (t.pendingVerifications || 0) > 0, to: '/admin/ids' },
     { label: 'Pending reports', value: t.pendingReports, alert: (t.pendingReports || 0) > 0, to: '/admin/reports' },
     { label: 'Posts', value: t.posts, sub: `${t.posts24h || 0} in 24h` },
     { label: 'Active matches', value: t.activeMatches },

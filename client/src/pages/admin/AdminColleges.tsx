@@ -114,25 +114,13 @@ export default function AdminColleges() {
       {isLoading ? <p className="text-slate-400 text-sm p-8">Loading directory…</p> : (
         <div className="bg-[#151D31] border border-white/10 divide-y divide-white/10">
           {colleges.map((c: any) => (
-            <div key={c.id} className="px-4 py-3 flex flex-wrap items-center gap-2 text-sm">
-              <div className="flex-1 min-w-[200px]">
-                <p className="font-bold text-white">{c.shortName || c.name}</p>
-                {c.shortName && <p className="text-xs text-slate-500 truncate">{c.name}</p>}
-                <p className="text-xs text-slate-500">{[c.city, c.state].filter(Boolean).join(', ') || 'no location'}</p>
-              </div>
-              <span className="text-xs text-slate-300">{c.users} users</span>
-              {c.pendingVerifications > 0 && <span className="text-[11px] font-bold px-2 py-0.5 bg-[#FBBF24] text-[#0F172A]">{c.pendingVerifications} IDs</span>}
-              {c.banned > 0 && <span className="text-[11px] font-bold px-2 py-0.5 bg-[#F43F5E] text-white">{c.banned} banned</span>}
-              {isSuper && (
-                <button
-                  onClick={() => setMergeFrom(mergeFrom?.id === c.id ? null : { id: c.id, name: c.shortName || c.name, users: c.users })}
-                  className={`text-[11px] px-2 py-1 border font-bold ${mergeFrom?.id === c.id ? 'border-[#FBBF24] text-white' : 'border-white/20 text-slate-400'}`}
-                  title="Mark as merge source"
-                >
-                  <GitMerge size={11} className="inline mr-1" />{mergeFrom?.id === c.id ? 'source ✓' : 'merge…'}
-                </button>
-              )}
-            </div>
+            <CollegeRow
+              key={c.id}
+              c={c}
+              isSuper={isSuper}
+              mergeFrom={mergeFrom}
+              setMergeFrom={setMergeFrom}
+            />
           ))}
           {colleges.length === 0 && <p className="px-4 py-6 text-sm text-slate-500 text-center">No campuses match.</p>}
         </div>
@@ -179,6 +167,80 @@ function DuplicateMergeRow({ group, mergeFrom, setMergeFrom, onMerge, busy }: {
   );
 }
 
+/** One directory row: domain badge + supreme-only inline domain editing.
+ * A campus without a domain blocks every student at OTP verify, so the
+ * missing-domain state is loud (red) and fixable right here. */
+function CollegeRow({ c, isSuper, mergeFrom, setMergeFrom }: {
+  c: any; isSuper: boolean; mergeFrom: any; setMergeFrom: (c: any) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [domain, setDomain] = useState(c.emailDomain || '');
+  const [msg, setMsg] = useState('');
+
+  const save = useMutation({
+    mutationFn: () => api.patch(`/admin/colleges/${c.id}`, { emailDomain: domain.trim() === '' ? null : domain.trim().toLowerCase() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ops-colleges-list'] });
+      setEditing(false);
+      setMsg('');
+    },
+    onError: (e: any) => setMsg(e?.response?.data?.error || 'Could not save domain'),
+  });
+
+  return (
+    <div className="px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex-1 min-w-[200px]">
+          <p className="font-bold text-white">{c.shortName || c.name}</p>
+          {c.shortName && <p className="text-xs text-slate-500 truncate">{c.name}</p>}
+          <p className="text-xs text-slate-500">{[c.city, c.state].filter(Boolean).join(', ') || 'no location'}</p>
+        </div>
+        <span className="text-xs text-slate-300">{c.users} users</span>
+        {c.emailDomain
+          ? <span className="text-[11px] px-2 py-0.5 border border-white/20 text-slate-300">@{c.emailDomain}</span>
+          : <span className="text-[11px] font-bold px-2 py-0.5 bg-[#F43F5E] text-white">NO DOMAIN — OTP blocked</span>}
+        {c.pendingVerifications > 0 && <span className="text-[11px] font-bold px-2 py-0.5 bg-[#FBBF24] text-[#0F172A]">{c.pendingVerifications} unverified</span>}
+        {c.banned > 0 && <span className="text-[11px] font-bold px-2 py-0.5 bg-[#F43F5E] text-white">{c.banned} banned</span>}
+        {isSuper && !editing && (
+          <button
+            onClick={() => { setDomain(c.emailDomain || ''); setMsg(''); setEditing(true); }}
+            className="text-[11px] px-2 py-1 border border-white/20 text-slate-400 font-bold"
+            title="Set the student email domain"
+          >
+            {c.emailDomain ? 'edit domain' : 'set domain'}
+          </button>
+        )}
+        {isSuper && (
+          <button
+            onClick={() => setMergeFrom(mergeFrom?.id === c.id ? null : { id: c.id, name: c.shortName || c.name, users: c.users })}
+            className={`text-[11px] px-2 py-1 border font-bold ${mergeFrom?.id === c.id ? 'border-[#FBBF24] text-white' : 'border-white/20 text-slate-400'}`}
+            title="Mark as merge source"
+          >
+            <GitMerge size={11} className="inline mr-1" />{mergeFrom?.id === c.id ? 'source ✓' : 'merge…'}
+          </button>
+        )}
+      </div>
+      {isSuper && editing && (
+        <div className="flex flex-wrap items-center gap-2 mt-2">
+          <input
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+            placeholder="e.g. ipec.org.in (empty = clear)"
+            className="bg-[#0B1120] border border-white/20 px-2 py-1.5 text-xs outline-none focus:border-[#FBBF24] placeholder:text-slate-600 min-w-[220px]"
+            aria-label={`Email domain for ${c.shortName || c.name}`}
+          />
+          <button onClick={() => save.mutate()} disabled={save.isPending} className="text-[11px] px-3 py-1.5 bg-[#FBBF24] text-[#0F172A] font-bold disabled:opacity-50">
+            {save.isPending ? 'Saving…' : 'Save'}
+          </button>
+          <button onClick={() => { setEditing(false); setMsg(''); }} className="text-[11px] px-2 py-1.5 border border-white/25 text-slate-300">Cancel</button>
+          {msg && <span className="text-[11px] text-[#F43F5E]">{msg}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Supreme-only directory curation: students can no longer mint colleges,
  * so missing campuses get added here — with city and short name included. */
 function AddCollegeForm() {
@@ -188,6 +250,7 @@ function AddCollegeForm() {
   const [shortName, setShortName] = useState('');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
+  const [emailDomain, setEmailDomain] = useState('');
   const [msg, setMsg] = useState('');
 
   const add = useMutation({
@@ -196,12 +259,13 @@ function AddCollegeForm() {
       ...(shortName.trim() && { shortName: shortName.trim() }),
       ...(city.trim() && { city: city.trim() }),
       ...(state.trim() && { state: state.trim() }),
+      ...(emailDomain.trim() && { emailDomain: emailDomain.trim().toLowerCase() }),
     }),
     onSuccess: (r: any) => {
       queryClient.invalidateQueries({ queryKey: ['ops-colleges-list'] });
       queryClient.invalidateQueries({ queryKey: ['ops-college-dups'] });
       setMsg(r.data?.deduped ? 'Already in the directory — no duplicate created.' : 'College added to the directory.');
-      setName(''); setShortName(''); setCity(''); setState('');
+      setName(''); setShortName(''); setCity(''); setState(''); setEmailDomain('');
     },
     onError: (e: any) => setMsg(e?.response?.data?.error || 'Could not add college'),
   });
@@ -215,12 +279,13 @@ function AddCollegeForm() {
   }
   return (
     <div className="bg-[#151D31] border border-[#FBBF24] p-4 mb-4 max-w-xl">
-      <p className="text-xs text-slate-400 mb-3">New campuses go live for every signup the moment you add them. Duplicates are blocked automatically.</p>
+      <p className="text-xs text-slate-400 mb-3">New campuses go live for every signup the moment you add them. Set the student email domain — without it, OTP verification stays blocked. Duplicates are blocked automatically.</p>
       <div className="grid sm:grid-cols-2 gap-2">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name *" className="bg-[#0B1120] border border-white/20 px-3 py-2 text-sm outline-none focus:border-[#FBBF24] placeholder:text-slate-600 sm:col-span-2" aria-label="College full name" />
         <input value={shortName} onChange={(e) => setShortName(e.target.value)} placeholder="Short name (e.g. IIT Delhi)" className="bg-[#0B1120] border border-white/20 px-3 py-2 text-sm outline-none focus:border-[#FBBF24] placeholder:text-slate-600" aria-label="Short name" />
         <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className="bg-[#0B1120] border border-white/20 px-3 py-2 text-sm outline-none focus:border-[#FBBF24] placeholder:text-slate-600" aria-label="City" />
-        <input value={state} onChange={(e) => setState(e.target.value)} placeholder="State" className="bg-[#0B1120] border border-white/20 px-3 py-2 text-sm outline-none focus:border-[#FBBF24] placeholder:text-slate-600 sm:col-span-2" aria-label="State" />
+        <input value={state} onChange={(e) => setState(e.target.value)} placeholder="State" className="bg-[#0B1120] border border-white/20 px-3 py-2 text-sm outline-none focus:border-[#FBBF24] placeholder:text-slate-600" aria-label="State" />
+        <input value={emailDomain} onChange={(e) => setEmailDomain(e.target.value)} placeholder="Student email domain * (e.g. ipec.org.in)" className="bg-[#0B1120] border border-white/20 px-3 py-2 text-sm outline-none focus:border-[#FBBF24] placeholder:text-slate-600 sm:col-span-2" aria-label="Student email domain" />
       </div>
       <div className="flex gap-2 mt-3">
         <button onClick={() => add.mutate()} disabled={add.isPending || name.trim().length < 4} className="text-xs px-4 py-2 bg-[#FBBF24] text-[#0F172A] font-bold disabled:opacity-50">

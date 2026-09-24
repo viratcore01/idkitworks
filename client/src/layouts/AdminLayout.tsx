@@ -10,7 +10,7 @@ import { useAuthStore } from '@/store/auth.store';
 
 const NAV = [
   { to: '/admin', label: 'Overview', icon: <LayoutDashboard size={17} />, end: true },
-  { to: '/admin/ids', label: 'ID reviews', icon: <IdCard size={17} /> },
+  { to: '/admin/ids', label: 'Verifications', icon: <IdCard size={17} /> },
   { to: '/admin/reports', label: 'Reports', icon: <Flag size={17} /> },
   { to: '/admin/users', label: 'Users', icon: <Users size={17} /> },
   { to: '/admin/content', label: 'Content', icon: <Newspaper size={17} /> },

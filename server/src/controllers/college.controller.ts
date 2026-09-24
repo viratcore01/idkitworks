@@ -28,7 +28,7 @@ export async function createCollege(req: AuthRequest, res: Response) {
     if (req.user!.role !== 'super_admin') {
       return res.status(403).json({ error: 'Only the supreme admin can add colleges' });
     }
-    const { name, shortName, city, state } = req.body || {};
+    const { name, shortName, city, state, emailDomain } = req.body || {};
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ error: 'College name is required' });
     }
@@ -38,7 +38,16 @@ export async function createCollege(req: AuthRequest, res: Response) {
     if (/[<>{}]|\$|script/i.test(String(name) + String(shortName || '') + String(city || '') + String(state || ''))) {
       return res.status(400).json({ error: 'College name contains invalid characters' });
     }
-    const { college, created } = await service.createIfMissing({ name, shortName, city, state });
+    // Official student-mail domain (e.g. "ipec.org.in") — this is what OTP
+    // verification enforces. Required for any campus whose students must verify.
+    let domain: string | undefined;
+    if (emailDomain !== undefined && emailDomain !== null && String(emailDomain).trim() !== '') {
+      domain = String(emailDomain).trim().toLowerCase();
+      if (domain.length > 120 || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) {
+        return res.status(400).json({ error: 'Email domain looks invalid (e.g. "ipec.org.in")' });
+      }
+    }
+    const { college, created } = await service.createIfMissing({ name, shortName, city, state, emailDomain: domain });
     res.status(created ? 201 : 200).json(created ? college : { ...college, deduped: true });
   } catch (error: any) {
     sendError(res, error, error.status || 400);

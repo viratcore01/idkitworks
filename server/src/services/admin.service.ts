@@ -73,9 +73,9 @@ export class AdminService {
       prisma.post.count({ where: { deletedAt: null } }),
       prisma.post.count({ where: { deletedAt: null, createdAt: { gte: dayAgo } } }),
       prisma.match.count({ where: { status: 'ACTIVE' } }),
-      prisma.idVerification.findMany({
-        where: { status: 'PENDING' },
-        select: { id: true, createdAt: true, user: { select: { id: true, username: true, displayName: true, college: { select: { id: true, name: true, shortName: true } } } } },
+      prisma.user.findMany({
+        where: { collegeId: { not: null }, collegeEmailVerified: false, isActive: true },
+        select: { id: true, createdAt: true, username: true, displayName: true, college: { select: { id: true, name: true, shortName: true } } },
         orderBy: { createdAt: 'asc' },
         take: 50,
       }),
@@ -114,7 +114,7 @@ export class AdminService {
     const [users, banned, pendingVerifications, posts, posts24h, pendingReports, activeMatches, staff] = await Promise.all([
       prisma.user.count({ where: { collegeId } }),
       prisma.user.count({ where: { collegeId, isActive: false } }),
-      prisma.idVerification.count({ where: { status: 'PENDING', user: { collegeId } } }),
+      prisma.user.count({ where: { collegeId, collegeEmailVerified: false, isActive: true } }),
       prisma.post.count({ where: { deletedAt: null, author: { collegeId } } }),
       prisma.post.count({ where: { deletedAt: null, createdAt: { gte: dayAgo }, author: { collegeId } } }),
       prisma.report.count({ where: { status: 'PENDING', reporter: { collegeId } } }),
@@ -168,6 +168,7 @@ export class AdminService {
           collegeId: true, college: { select: { name: true, shortName: true } },
           moderatedCollegeId: true, moderatedCollege: { select: { name: true, shortName: true } },
           role: true, verificationStatus: true, isVerified: true, isActive: true,
+          collegeEmail: true, collegeEmailVerified: true,
           createdAt: true,
           _count: { select: { posts: true, reports: true } },
         },
@@ -544,9 +545,11 @@ export class AdminService {
       select: {
         id: true, email: true, username: true, displayName: true, bio: true,
         avatarUrl: true, avatarPhotoId: true, avatarColor: true,
-        collegeId: true, college: { select: { id: true, name: true, shortName: true } },
+        collegeId: true, college: { select: { id: true, name: true, shortName: true, emailDomain: true } },
         course: true, year: true, gender: true, role: true,
-        verificationStatus: true, isVerified: true, isActive: true, createdAt: true,
+        verificationStatus: true, isVerified: true,
+        collegeEmail: true, collegeEmailVerified: true, collegeEmailVerifiedAt: true,
+        isActive: true, createdAt: true,
         _count: { select: { posts: true, comments: true } },
       },
     });
@@ -584,9 +587,9 @@ export class AdminService {
         orderBy: { createdAt: 'desc' },
         take: 10,
       }),
-      prisma.idVerification.findMany({
+      prisma.emailOtp.findMany({
         where: { userId: targetId },
-        select: { id: true, status: true, autoReason: true, decidedBy: true, createdAt: true, decidedAt: true },
+        select: { id: true, email: true, purpose: true, usedAt: true, createdAt: true, expiresAt: true },
         orderBy: { createdAt: 'desc' },
         take: 5,
       }),
@@ -769,7 +772,7 @@ export class AdminService {
     }
     const colleges = await prisma.college.findMany({
       where,
-      select: { id: true, name: true, shortName: true, city: true, state: true, createdAt: true },
+      select: { id: true, name: true, shortName: true, city: true, state: true, emailDomain: true, createdAt: true },
       orderBy: { name: 'asc' },
       take: query || !isSuper ? take : 50,
     });
@@ -777,7 +780,7 @@ export class AdminService {
       colleges.map(async (c) => {
         const [users, pendingVerifications, banned] = await Promise.all([
           prisma.user.count({ where: { collegeId: c.id } }),
-          prisma.idVerification.count({ where: { status: 'PENDING', user: { collegeId: c.id } } }),
+          prisma.user.count({ where: { collegeId: c.id, collegeEmailVerified: false, isActive: true } }),
           prisma.user.count({ where: { collegeId: c.id, isActive: false } }),
         ]);
         return { ...c, users, pendingVerifications, banned };
@@ -855,5 +858,40 @@ export class AdminService {
     for (const u of movedUsers) invalidateUser(u.id);
     await this.log(viewerId, 'college:merge', 'COLLEGE', fromId, toId, `${from.name} → ${to.name}`, moved);
     return { merged: true, from: { id: fromId, name: from.name }, to: { id: toId, name: to.name }, ...moved };
+  }
+
+  /**
+   * Set (or clear) a campus's official student-mail domain (super-admin only).
+   * This is the value OTP verification enforces — campuses without one block
+   * every student at the verify step, so the console must be able to fix it.
+   * Changing the domain does NOT un-verify anyone already verified.
+   */
+  async updateCollegeDomain(viewerId: string, role: string, collegeId: string, emailDomain: string | null) {
+    if (role !== 'super_admin') {
+      const e: any = new Error('Not authorized'); e.status = 403; throw e;
+    }
+    const college = await prisma.college.findUnique({ where: { id: collegeId } });
+    if (!college) {
+      const e: any = new Error('College not found'); e.status = 404; throw e;
+    }
+    let domain: string | null = null;
+    if (emailDomain !== null && emailDomain !== undefined && String(emailDomain).trim() !== '') {
+      domain = String(emailDomain).trim().toLowerCase();
+      if (domain.length > 120 || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) {
+        const e: any = new Error('Email domain looks invalid (e.g. "ipec.org.in")'); e.status = 400; throw e;
+      }
+      // One domain per campus: two colleges sharing a domain breaks the gate.
+      const clash = await prisma.college.findFirst({ where: { emailDomain: domain, NOT: { id: collegeId } }, select: { id: true, name: true } });
+      if (clash) {
+        const e: any = new Error(`Domain already belongs to "${clash.name}" — merge the campuses instead`); e.status = 409; throw e;
+      }
+    }
+    const updated = await prisma.college.update({
+      where: { id: collegeId },
+      data: { emailDomain: domain },
+      select: { id: true, name: true, shortName: true, emailDomain: true },
+    });
+    await this.log(viewerId, 'college:domain', 'COLLEGE', collegeId, collegeId, `${college.name} domain → ${domain || '(cleared)'}`, { from: (college as any).emailDomain || null, to: domain });
+    return updated;
   }
 }

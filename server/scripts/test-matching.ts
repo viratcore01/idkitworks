@@ -151,9 +151,11 @@ async function main() {
   const l1 = await api(tokA, 'POST', '/matches/like', { receiverId: B.id });
   const l2 = l1.data.matched ? null : await api(tokB, 'POST', '/matches/like', { receiverId: A.id });
   const rematch = l1.data.matched ? l1 : l2;
+  const rc = rematch?.data.criteria;
+  const interests = rc?.interests;
   check('re-mutual → re-match', !!rematch && rematch.data.matched === true);
-  check('diverged goals excluded from criteria', rematch.data.criteria?.goals?.length === 0, JSON.stringify(rematch.data.criteria));
-  check('only the shared interest appears', rematch.data.criteria?.interests?.length === 1 && rematch.data.criteria.interests[0].name === 'skateboarding', JSON.stringify(rematch.data.criteria?.interests));
+  check('diverged goals excluded from criteria', rc?.goals?.length === 0, JSON.stringify(rc));
+  check('only the shared interest appears', !!interests && interests.length === 1 && interests[0].name === 'skateboarding', JSON.stringify(interests));
   await prisma.user.update({ where: { id: B.id }, data: { relationshipGoals: ['DATING'] } });
 
   // ── 2d. Mutual-match transaction budget (regression guard) ──

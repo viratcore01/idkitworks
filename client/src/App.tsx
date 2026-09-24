@@ -12,7 +12,6 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const SignupPage = lazy(() => import('@/pages/SignupPage'));
 const ProfileSetupPage = lazy(() => import('@/pages/ProfileSetupPage'));
 const VerificationPage = lazy(() => import('@/pages/VerificationPage'));
-const AdminVerifyPage = lazy(() => import('@/pages/AdminVerifyPage'));
 const AdminLayout = lazy(() => import('@/layouts/AdminLayout'));
 const AdminOverview = lazy(() => import('@/pages/admin/AdminOverview'));
 const AdminIds = lazy(() => import('@/pages/admin/AdminIds'));
@@ -40,10 +39,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * PRODUCT RULE (dead simple): nobody enters the app until a moderator has
- * approved their student ID. No college → profile setup. Not VERIFIED → the
+ * PRODUCT RULE (dead simple): nobody enters the app until their college
+ * email is OTP-verified. No college → profile setup. Not VERIFIED → the
  * verification flow, full stop. (The server enforces the same wall.)
- * Admins are staff — they bypass the wall so they can run the review queue.
+ * Admins are staff — they bypass the wall.
  */
 function CollegeRoute({ children }: { children: React.ReactNode }) {
  const { user, isAuthenticated, isLoading } = useAuthStore();
@@ -58,7 +57,7 @@ function CollegeRoute({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * PRODUCT RULE: main app requires student verification (staff exempt).
+ * PRODUCT RULE: main app requires college-email verification (staff exempt).
  */
 function VerifiedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore();
@@ -188,8 +187,8 @@ export default function App() {
  <ProtectedRoute><ProfileSetupPage /></ProtectedRoute>
  } />
 
- {/* Student ID verification: full-screen flow outside the app chrome.
- VERIFIED users and staff don't need it. */}
+  {/* College-email OTP verification: full-screen flow outside the app chrome.
+  VERIFIED users and staff don't need it. */}
  <Route path="/verify" element={
  <ProtectedRoute>
  {user && (user.verificationStatus === 'VERIFIED' || user.role === 'admin' || user.role === 'super_admin')
@@ -214,10 +213,8 @@ export default function App() {
   <Route path="console" element={<Navigate to="/admin" replace />} />
   </Route>
 
-  {/* Admin verification review queue (college-scoped) */}
- <Route path="/admin/verify" element={
- <ProtectedRoute><AdminVerifyPage /></ProtectedRoute>
- } />
+  {/* Legacy photo-ID review URL: verification is OTP-automatic now */}
+  <Route path="/admin/verify" element={<Navigate to="/admin/ids" replace />} />
 
  {/* Removed pages redirect to their closest replacement */}
  <Route path="/confessions" element={<Navigate to="/matches" replace />} />

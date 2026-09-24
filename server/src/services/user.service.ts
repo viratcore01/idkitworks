@@ -189,6 +189,7 @@ export class UserService {
       age: this.ageOf(user.dateOfBirth),
       gender: user.gender,
       isVerified: user.isVerified,
+      collegeEmailVerified: user.collegeEmailVerified,
       joinedAt: user.createdAt,
       interests: user.interests.map((ui) => ui.interest),
       stats,

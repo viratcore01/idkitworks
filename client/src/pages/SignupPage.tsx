@@ -81,7 +81,7 @@ export default function SignupPage() {
   try {
   await signup(formData);
   toast.success('Welcome to Zoclo!');
-  // Onboarding: signup → verify student ID → feed (App gate handles routing)
+  // Onboarding: signup → verify college email → feed (App gate handles routing)
   navigate('/verify');
   } catch (err: any) {
   fail(err.response?.data?.error || 'Signup failed');

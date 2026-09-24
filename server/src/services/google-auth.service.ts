@@ -164,6 +164,8 @@ export interface GoogleAuthResult {
     avatarColor: string | null;
     collegeId: string | null;
     isProfileSetup: boolean;
+    collegeEmailVerified: boolean;
+    verificationStatus: string;
   };
 }
 
@@ -172,7 +174,7 @@ export interface GoogleAuthResult {
  * Google": verified Google users are linked to an existing account with the
  * same email (its password keeps working) or given a new account. The
  * new account lands in the SAME funnel as password users — no college yet,
- * UNVERIFIED — so the college wall and student-ID gate apply unchanged.
+ * UNVERIFIED — so the college wall and college-email gate apply unchanged.
  */
 export async function googleAuth(idToken: string): Promise<GoogleAuthResult> {
   const g = await verifyGoogleIdToken(idToken);
@@ -241,6 +243,8 @@ export async function googleAuth(idToken: string): Promise<GoogleAuthResult> {
       avatarColor: user.avatarColor,
       collegeId: user.collegeId ?? null,
       isProfileSetup: !!(user.collegeId && user.course),
+      collegeEmailVerified: user.collegeEmailVerified ?? false,
+      verificationStatus: user.verificationStatus ?? 'UNVERIFIED',
     },
   };
 }

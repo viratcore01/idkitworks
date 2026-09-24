@@ -165,17 +165,20 @@ export default function SettingsPage() {
 
   {/* Student verification */}
   <div className="nb-card p-4 sm:p-6 mb-4 min-w-0">
- <h2 className="font-display font-bold text-lg mb-4 flex items-center gap-2">Student Verification</h2>
+  <h2 className="font-display font-bold text-lg mb-4 flex items-center gap-2">Student Verification</h2>
   {user?.verificationStatus === 'VERIFIED' ? (
+  <div>
   <p className="text-sm flex items-center gap-2">
   <BadgeCheck size={18} className="text-nb-violet" /> Verified student of {user.college?.shortName || user.college?.name || 'your college'}
   </p>
+  {user?.collegeEmail && (
+  <p className="text-xs text-gray-500 mt-1">College email {user.collegeEmail} is locked to this account.</p>
+  )}
+  </div>
   ) : (
   <div>
   <p className="text-sm text-gray-600 mb-3">
-  {user?.verificationStatus === 'PENDING'
-  ? 'Your ID is in review — a moderator will confirm it shortly.'
-  : 'Verify your college ID to unlock matching and chat.'}
+  Verify with a code sent to your college email to unlock matching and chat.
   </p>
   <button onClick={() => navigate('/verify')} className="nb-btn-primary text-sm">Verify now</button>
   </div>

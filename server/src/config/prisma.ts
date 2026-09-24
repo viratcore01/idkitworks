@@ -1,26 +1,31 @@
 import { PrismaClient } from '@prisma/client';
 
 /**
- * Production pool for Supabase Supavisor (transaction mode):
- * - pgbouncer=true  → skip server-side prepared statements (required in
- *                     transaction mode; without it, concurrent load crashes
- *                     requests with "prepared statement already exists")
+ * Production pool configuration — single source of truth.
+ *
  * - connection_limit → cap per-instance pool (Render free + Supabase free).
  * - pool_timeout    → wait instead of instantly 500-ing during spikes.
+ * - pgbouncer=true  → skip server-side prepared statements. Required when the
+ *   URL is a POOLER endpoint (Supabase Supavisor); WITHOUT it, concurrent load
+ *   through a transaction-pooler crashes requests with "prepared statement
+ *   already exists". Against SELF-HOSTED Postgres (direct, no pooler) it is
+ *   dead weight — it disables prepared-statement caching for zero benefit.
+ *   Set DATABASE_PGBOUNCER=0 on self-hosted; default stays on so the existing
+ *   Supabase deploy behavior is unchanged.
  *
- * SINGLE SOURCE OF TRUTH: params are set exactly once here (overwrite, not
- * append), so DATABASE_URL can never carry duplicate connection_limit /
- * pool_timeout values. Tune upward via env as the database grows:
+ * Params are set exactly once here (overwrite, not append), so DATABASE_URL can
+ * never carry duplicate connection_limit / pool_timeout values. Tune via env:
  *   DATABASE_CONNECTION_LIMIT (default 10), DATABASE_POOL_TIMEOUT (default 20s)
  */
 const CONNECTION_LIMIT = Number(process.env.DATABASE_CONNECTION_LIMIT || 10);
 const POOL_TIMEOUT = Number(process.env.DATABASE_POOL_TIMEOUT || 20);
+const PGBOUNCER = process.env.DATABASE_PGBOUNCER !== '0';
 
 function pooledDatabaseUrl(raw: string | undefined): string | undefined {
   if (!raw) return raw;
   try {
     const url = new URL(raw);
-    url.searchParams.set('pgbouncer', 'true');
+    if (PGBOUNCER) url.searchParams.set('pgbouncer', 'true');
     url.searchParams.set('connection_limit', String(CONNECTION_LIMIT));
     url.searchParams.set('pool_timeout', String(POOL_TIMEOUT));
     return url.toString();

@@ -44,6 +44,8 @@ interface AuthTokens {
     avatarColor: string | null;
     collegeId: string | null;
     isProfileSetup: boolean;
+    collegeEmailVerified: boolean;
+    verificationStatus: string;
   };
 }
 
@@ -66,6 +68,8 @@ function createAuthResponse(user: any, accessToken: string, refreshToken: string
       // College gate key: the client needs it immediately after login
       collegeId: user.collegeId ?? null,
       isProfileSetup: !!(user.collegeId && user.course),
+      collegeEmailVerified: user.collegeEmailVerified ?? false,
+      verificationStatus: user.verificationStatus ?? 'UNVERIFIED',
     },
   };
 }
@@ -352,7 +356,7 @@ export class AuthService {
    * PERMANENT account deletion (user-invoked "delete my account").
    *
    * This is the ONLY account exit besides logout. Everything the user owned
-   * is wiped — profile, photos, ID documents, posts, comments, messages,
+   * is wiped — profile, photos, OTP records, posts, comments, messages,
    * likes, saves, swipes, matches, notifications, reports they filed,
    * sessions — and the email/username are freed, so signing up again with
    * the same email starts completely fresh (new id, empty everything).
@@ -414,8 +418,8 @@ export class AuthService {
       // then wipe the bytes.
       await tx.user.update({ where: { id: userId }, data: { avatarPhotoId: null } });
       await tx.userPhoto.deleteMany({ where: { userId } });
-      // ID documents die entirely.
-      await tx.idVerification.deleteMany({ where: { userId } });
+      // OTP records die entirely.
+      await tx.emailOtp.deleteMany({ where: { userId } });
       await tx.userInterest.deleteMany({ where: { userId } });
       await tx.matchPreference.deleteMany({ where: { userId } });
       await tx.refreshToken.deleteMany({ where: { userId } });
@@ -438,6 +442,9 @@ export class AuthService {
           relationshipGoals: [],
           isVerified: false,
           verificationStatus: 'UNVERIFIED',
+          collegeEmail: null,
+          collegeEmailVerified: false,
+          collegeEmailVerifiedAt: null,
           isActive: false,
           role: 'user',
           collegeId: null,
@@ -478,6 +485,9 @@ export class AuthService {
       year: user.year,
       isVerified: user.isVerified,
       verificationStatus: user.verificationStatus,
+      collegeEmail: user.collegeEmail,
+      collegeEmailVerified: user.collegeEmailVerified,
+      collegeEmailVerifiedAt: user.collegeEmailVerifiedAt,
       role: user.role,
       isFounder: (user as any).isFounder || false,
       moderatedCollegeId: (user as any).moderatedCollegeId || null,
@@ -499,6 +509,7 @@ export class AuthService {
     avatarUrl?: string;
     avatarColor?: string;
     collegeId?: string;
+    collegeEmail?: string;
     course?: string;
     year?: number;
     gender?: string;
@@ -563,6 +574,16 @@ export class AuthService {
       const url = data.avatarUrl.trim();
       if (url && !/^https:\/\//.test(url)) throw new Error('Avatar URL must be https');
       update.avatarUrl = url || null;
+    }
+    // College email is locked after verification — cannot be changed
+    if (data.collegeEmail !== undefined && data.collegeEmail !== null) {
+      const current = await prisma.user.findUnique({ where: { id: userId }, select: { collegeEmailVerified: true, collegeEmail: true } });
+      if (current?.collegeEmailVerified) {
+        const e: any = new Error('College email is locked after verification and cannot be changed'); e.status = 403; throw e;
+      }
+      // Allow setting college email only if not verified yet (handled by OTP flow)
+      // This is mainly for clearing it before verification
+      update.collegeEmail = data.collegeEmail || null;
     }
     if (data.collegeId !== undefined && data.collegeId !== null) {
       if (data.collegeId) {

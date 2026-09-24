@@ -15,6 +15,7 @@ import {
   deletePhotoFromStorage,
   PHOTO_URL_TTL_SEC,
 } from '../config/storage';
+import { isUploadsEnabled } from '../config/cost-guard';
 
 /** Max 4 photos per user: slot 0 = profile pic, slots 1-3 = gallery. */
 const MAX_PHOTOS = 4;
@@ -32,6 +33,13 @@ const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
  */
 export async function uploadPhoto(req: AuthRequest, res: Response) {
   try {
+    // ── R2 cost guard: pause NEW uploads at 80% of the free cap ──
+    // Feed/chat/matching keep working; only media uploads 503 until the
+    // usage checker flips the flag back (config/cost-guard.ts +
+    // scripts/check-r2-usage.ts). Fails open if the flag is unreadable.
+    if (!(await isUploadsEnabled())) {
+      return res.status(503).json({ error: 'Uploads temporarily paused — service at capacity.' });
+    }
     const file = (req as any).file;
     if (!file) return res.status(400).json({ error: 'No photo provided' });
     if (!ALLOWED_MIME.includes(file.mimetype)) {

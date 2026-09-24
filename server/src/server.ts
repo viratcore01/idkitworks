@@ -10,6 +10,8 @@ import jwt from 'jsonwebtoken';
 import { env } from './config/env';
 import { prisma } from './config/prisma';
 import { subscribe } from './config/bus';
+import { STORAGE_DRIVER } from './config/storage';
+import { logCostGuardState } from './config/cost-guard';
 
 // Routes
 import authRoutes from './routes/auth.routes';
@@ -75,6 +77,20 @@ app.use(
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 
+// ── Real client IP for rate limiting behind Cloudflare + Nginx ──
+// express-rate-limit keys on req.ip. Behind the CF → Nginx → Node chain with
+// `trust proxy 1`, req.ip resolves to Cloudflare's EDGE IP — so every user
+// shares one bucket and a single abusive client rate-limits the whole campus.
+// Cloudflare sets cf-connecting-ip with the real client address on every
+// proxied request; fall back to req.ip for direct local/dev traffic.
+// Nginx MUST overwrite (not append) X-Forwarded-For and the origin should
+// accept traffic only from Cloudflare IP ranges, otherwise this header is
+// client-spoofable (see deploy/nginx/zoclo.conf).
+const realClientIpKey = (req: express.Request): string => {
+  const cf = req.headers['cf-connecting-ip'];
+  return (Array.isArray(cf) ? cf[0] : cf) || req.ip || 'unknown';
+};
+
 // ── Global API brake: every IP, 1000 req/min ──
 // Sized for launch: carrier/campus NAT puts thousands of students behind a
 // handful of public IPs, so per-IP budgets must assume whole-campuses of
@@ -82,6 +98,7 @@ app.use(cookieParser());
 // NOTE: /api/health is explicitly skipped below — keep-alive pings and
 // uptime monitors must NEVER consume this budget or get 429'd.
 const globalLimiter = rateLimit({
+  keyGenerator: realClientIpKey,
   windowMs: 60 * 1000,
   limit: 1000,
   standardHeaders: 'draft-7',
@@ -101,6 +118,7 @@ app.use('/api', globalLimiter);
 // session refreshes every ~15 min), and a stolen refresh token is already
 // a signed secret checked against the DB.
 const loginLimiter = rateLimit({
+  keyGenerator: realClientIpKey,
   windowMs: 15 * 60 * 1000,
   limit: process.env.NODE_ENV === 'production' ? 30 : 300, // dev shares one 127.0.0.1 bucket across browser+tests
   skipSuccessfulRequests: true,
@@ -112,8 +130,9 @@ app.use('/api/auth/login', loginLimiter);
 
 // ── Signup brake: 50 accounts / 15 min per IP (all attempts count) ──
 // Generous enough for a dorm flooding in on launch night; account-farming
-// beyond this is still fenced off by student-ID verification.
+// beyond this is still fenced off by college-email OTP verification.
 const signupLimiter = rateLimit({
+  keyGenerator: realClientIpKey,
   windowMs: 15 * 60 * 1000,
   limit: process.env.NODE_ENV === 'production' ? 50 : 300,
   standardHeaders: 'draft-7',
@@ -321,7 +340,9 @@ new CollegeService().seedDirectory().then(({ added, total }) => {
 // under the pooler size with headroom left for scripts/monitors.
 try {
   console.log(`[db] pool limit=${process.env.DATABASE_CONNECTION_LIMIT || 10} timeout=${process.env.DATABASE_POOL_TIMEOUT || 20}s heartbeat=${process.env.DATABASE_HEARTBEAT_SEC || 60}s · NODE_ENV=${process.env.NODE_ENV || 'development'}`);
+  console.log(`[storage] driver=${STORAGE_DRIVER}`);
 } catch { /* never block boot on a log line */ }
+logCostGuardState().catch(() => {});
 
 // Warm the pool now (grabs sessions while they're free) — boot continues regardless.
 import { warmPool } from './config/prisma';

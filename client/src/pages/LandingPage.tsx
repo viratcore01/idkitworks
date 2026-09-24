@@ -158,10 +158,10 @@ const BIG_FEATURES = [
 
 const MINI_FEATURES = [
  {
- icon: BadgeCheck,
- chip: 'bg-nb-yellow',
- title: 'Mod-verified students',
- body: 'Every student ID is reviewed by college moderators before anyone gets past the gate.',
+  icon: BadgeCheck,
+  chip: 'bg-nb-yellow',
+  title: 'College-email verified',
+  body: 'Every account is verified with a code sent to its official college email before anyone gets past the gate.',
  },
  {
  icon: Search,
@@ -195,8 +195,8 @@ const STEPS = [
  n: '02',
  icon: BadgeCheck,
  chip: 'bg-nb-yellow text-ink',
- title: 'Get verified',
- body: 'Upload your student ID. College moderators approve real students — fakes, lurkers and alumni never make it in.',
+  title: 'Get verified',
+  body: 'Enter your college email and type the 6-digit code we send. Only your college domain works — fakes, lurkers and alumni never make it in.',
  },
  {
  n: '03',
@@ -229,7 +229,7 @@ const FAQS = [
  },
  {
  q: 'Who can join?',
- a: 'Verified students only. You sign up, pick your college, and a college moderator reviews your student ID. No college on file? Every main-app route returns 403 — there is no backdoor.',
+  a: 'Verified students only. You sign up, pick your college, and verify with a code sent to your college email. No college on file? Every main-app route returns 403 — there is no backdoor.',
  },
  {
  q: 'What about the dating side — is it creepy?',
@@ -1103,8 +1103,8 @@ export default function LandingPage() {
  },
  {
  icon: Gift,
- title: 'Only real students',
- body: 'Every single person is verified with a student ID and approved by a moderator before they can post, swipe or message. No lurkers, no fakes, no randoms from the internet.',
+  title: 'Only real students',
+  body: 'Every single person is verified with a code sent to their college email before they can post, swipe or message. No lurkers, no fakes, no randoms from the internet.',
  },
  {
  icon: Sparkles,

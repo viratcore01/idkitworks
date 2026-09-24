@@ -3,11 +3,12 @@ import { COLLEGE_SEED, normalizeCollegeName } from '../config/college-directory'
 
 /**
  * College directory service.
- * - Seed: idempotent, runs at boot; adds any missing curated colleges.
+ * - Seed: idempotent, runs at boot; adds any missing curated colleges and
+ *   backfills email domains on existing rows that lack one.
  * - Search: typeahead against name + shortName, ranked (exact shortName >
  *   shortName prefix > name prefix > name contains), capped at 20 rows.
- * - Create: users may add a college that isn't in the directory; the student
- *   ID verification step is the real trust gate, not this list.
+ * - Create: users may add a college that isn't in the directory; the
+ *   college-email OTP verification step is the real trust gate, not this list.
  */
 export class CollegeService {
   /**
@@ -31,6 +32,7 @@ export class CollegeService {
         shortName: c.shortName,
         city: c.city,
         state: c.state,
+        emailDomain: c.emailDomain,
       }));
       try {
         const r = await prisma.college.createMany({ data: chunk });
@@ -46,8 +48,30 @@ export class CollegeService {
         }
       }
     }
+    // Backfill: existing rows created before email domains existed get
+    // theirs from the seed. Skips rows that already have a domain and
+    // seeds without one — idempotent, runs every boot.
+    let backfilled = 0;
+    const wantDomain = new Map(
+      COLLEGE_SEED.filter((c) => c.emailDomain).map((c) => [c.name, c.emailDomain!] as const),
+    );
+    if (wantDomain.size) {
+      const lacking = await prisma.college.findMany({
+        where: { name: { in: [...wantDomain.keys()] }, emailDomain: null },
+        select: { name: true },
+      });
+      for (const row of lacking) {
+        try {
+          await prisma.college.update({
+            where: { name: row.name },
+            data: { emailDomain: wantDomain.get(row.name)! },
+          });
+          backfilled++;
+        } catch { /* raced another instance — the domain landed, which is the goal */ }
+      }
+    }
     const total = await prisma.college.count();
-    return { added, total };
+    return { added: added + backfilled, total };
   }
 
   /** Typeahead search over name + shortName, best matches first. */
@@ -117,7 +141,7 @@ export class CollegeService {
   }
 
   /** Find-or-create by name (used when a student's college isn't listed). */
-  async createIfMissing(input: { name: string; shortName?: string; city?: string; state?: string }) {
+  async createIfMissing(input: { name: string; shortName?: string; city?: string; state?: string; emailDomain?: string }) {
     const name = input.name.trim().slice(0, 120);
     if (name.length < 4) {
       const e: any = new Error('College name is too short'); e.status = 400; throw e;
@@ -150,6 +174,7 @@ export class CollegeService {
         shortName: input.shortName?.trim().slice(0, 24) || undefined,
         city: input.city?.trim().slice(0, 60) || undefined,
         state: input.state?.trim().slice(0, 60) || undefined,
+        emailDomain: input.emailDomain?.trim().toLowerCase() || undefined,
       },
     }).catch((err: any) => {
       // Simultaneous duplicate creates: the unique index wins, loser reads it.

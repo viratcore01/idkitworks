@@ -149,14 +149,14 @@ export function moderationScope(user?: AuthUser): string | null {
 
 /**
  * PRODUCT RULE (the dead-simple one): a person gets into the app — feed,
- * match, chat, everything — ONLY after a moderator approves their student ID.
+ * match, chat, everything — ONLY after college-email OTP verification.
  * Enforced HERE, on the server, per request: the client hiding screens is
  * convenience, this is the actual wall. Admins are exempt (they must be able
- * to reach the review queue and every page regardless of their own status).
+ * to reach the console and every page regardless of their own status).
  *
  * STALE-CACHE GUARD: auth state is cached for 30s. If the cache says
  * UNVERIFIED we do ONE live re-read before rejecting — otherwise a student
- * approved seconds ago stares at "must be verified" until the TTL expires.
+ * verified seconds ago stares at "must be verified" until the TTL expires.
  * (Fail-closed on the live read: any DB error still rejects.)
  */
 export async function verificationRequired(req: AuthRequest, res: Response, next: NextFunction) {
@@ -178,7 +178,7 @@ export async function verificationRequired(req: AuthRequest, res: Response, next
     /* fall through to the 403 below */
   }
   return res.status(403).json({
-    error: 'Your student ID must be verified by a moderator first',
+    error: 'Verify your college email first — check /verify for the code',
     code: 'VERIFICATION_REQUIRED',
   });
 }

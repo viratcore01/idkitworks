@@ -12,11 +12,17 @@
     "db:generate": "cd server && npx prisma generate",
     "db:push": "cd server && npx prisma db push",
     "db:migrate": "cd server && npx prisma migrate dev",
-    "db:seed": "cd server && npx ts-node prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "prisma": "^5.22.0"
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.5.0"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"
