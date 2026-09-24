@@ -48,5 +48,36 @@ Render service for a week as a fallback.
   (`sudo bash oracle-setup.sh` pulls + rebuilds + restarts).
 - OCI reclaims Always-Free VMs idle (≈0% CPU/RAM) for 7 days — irrelevant
   once real users hit it.
-- Oracle images ship iptables rules on top of ufw; the script enables ufw,
-  but if ports stay closed check `iptables -L INPUT -n` too.
+
+## Gotchas that actually bit us (2026-09-24 migration)
+
+Each of these produced a confusing failure elsewhere; all are handled by the
+bootstrap steps in `deploy/vm-step*.sh` (kept for reference) and must be
+re-applied if the VM is ever rebuilt:
+
+1. **Oracle's iptables REJECTs everything except SSH before ufw runs.**
+   ufw showed 80/443 as ALLOW while the outside world got `000`. Fix: insert
+   ACCEPT rules for 80/443 *before* the REJECT line and persist via
+   `iptables-save > /etc/iptables/rules.v4` (see vm-step10). Symptom to
+   remember: `curl http://<ip>` → 000 from outside, but everything listens
+   correctly inside.
+2. **Supabase pooler allows 15 sessions total.** Render (10) + the new VM's
+   app (10) starve `prisma migrate deploy` (`EMAXCONNSESSION`). Fix:
+   `DATABASE_CONNECTION_LIMIT=4` on the VM **and** `systemctl stop zoclo-api`
+   while migrating (vm-step8). Same math as the Render blueprint comment.
+3. **Prisma CLI requires a nonempty `DIRECT_URL`** (schema.prisma declares
+   `directUrl = env("DIRECT_URL")`). Local dev had it empty; set it equal to
+   `DATABASE_URL` — exactly what Render's start command did. Never rewrite
+   these lines with `sed` — URLs contain `&`, which sed eats (vm-step5 bug).
+4. **`CLIENT_URL` must be the Vercel origin** (`https://idkitworks.vercel.app`),
+   not localhost — it seeds the CORS allowlist. Copying a local `.env` to the
+   VM silently breaks every browser request until this is fixed (vm-step11).
+5. **sslip.io + Let's Encrypt** works, but the cert is only issued once 80
+   *and* 443 are reachable from the internet (HTTP-01 and TLS-ALPN-01 both
+   fail behind a closed firewall — Caddy retries every 10 min, or
+   `systemctl restart caddy` to retry immediately).
+
+Current production: `https://129.154.239.74.sslip.io` (Caddy TLS →
+127.0.0.1:5000, systemd `zoclo-api`, Gmail API transport). Render remains
+suspended as rollback: removing `VITE_API_URL` in Vercel + redeploy switches
+the client back instantly.
