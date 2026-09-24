@@ -60,6 +60,10 @@ async function main(): Promise<void> {
   } catch (err) {
     console.error('\n❌ SMTP verify failed (this is why OTP sends 502):');
     report(err);
+    console.error('\n   If this works locally but not in production, the host is blocking outbound');
+    console.error('   SMTP (Render blocks ports 25/465/587). Switch to the Gmail API instead:');
+    console.error('      npm run ops:gmail-auth     → mint the OAuth trio');
+    console.error('      npm run ops:email-check    → verify the active transport');
     process.exit(2);
   }
 

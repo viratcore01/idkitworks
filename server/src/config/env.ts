@@ -48,12 +48,24 @@ export const env = {
   // The client detects support via /api/health so the button only shows when
   // the server can actually verify tokens.
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
-  // Outbound mail (company Gmail via SMTP + app password): sends the
-  // college-email OTP codes. Missing creds = dev logs the code, production
-  // refuses to send (503) rather than fail silently.
-  // Spaces stripped: Google shows the code grouped (xxxx xxxx xxxx xxxx)
-  // and a spaced paste authenticates nowhere — normalize once here so every
-  // environment (local .env, Render dashboard) behaves identically.
+  // Outbound mail (company Gmail): sends the college-email OTP codes.
+  // Missing creds = dev logs the code, production refuses to send (503)
+  // rather than fail silently.
+  //
+  // TWO transports are supported and the code picks automatically:
+  //   1. Gmail REST API over HTTPS (port 443) — preferred. Required on hosts
+  //      that block outbound SMTP (Render free/starter, most PaaS). Uses
+  //      GMAIL_OAUTH_* below. No app password involved.
+  //   2. SMTP + app password — works on a laptop or a host with SMTP open.
+  // Spaces stripped: Google shows the app password grouped
+  // (xxxx xxxx xxxx xxxx) and a spaced paste authenticates nowhere —
+  // normalize once here so every environment (local .env, Render dashboard)
+  // behaves identically.
   GMAIL_USER: process.env.GMAIL_USER || '',
   GMAIL_APP_PASSWORD: (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, ''),
+  // Gmail API OAuth 2.0 (refresh-token flow). All three together enable the
+  // HTTPS transport. Mint the refresh token with `npm run ops:gmail-auth`.
+  GMAIL_OAUTH_CLIENT_ID: process.env.GMAIL_OAUTH_CLIENT_ID || '',
+  GMAIL_OAUTH_CLIENT_SECRET: process.env.GMAIL_OAUTH_CLIENT_SECRET || '',
+  GMAIL_OAUTH_REFRESH_TOKEN: process.env.GMAIL_OAUTH_REFRESH_TOKEN || '',
 };

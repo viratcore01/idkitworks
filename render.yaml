@@ -34,6 +34,11 @@ services:
       # JWT_SECRET / JWT_REFRESH_SECRET: strong random, ≥32 chars each.
       # CLIENT_URL: https://<vercel-app>.vercel.app (comma-separated if more).
       # GOOGLE_CLIENT_ID: enables Google Sign-In button (optional but recommended).
+      # GMAIL_USER + GMAIL_OAUTH_CLIENT_ID / _CLIENT_SECRET / _REFRESH_TOKEN:
+      #   REQUIRED for OTP email. Render blocks outbound SMTP (ports 25/465/587),
+      #   so Gmail SMTP times out here — mail must go over the Gmail API (HTTPS).
+      #   Mint the OAuth trio locally with `npm run ops:gmail-auth`, then verify
+      #   with `npm run ops:email-check -- --send`.
       # SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY: photo storage (private bucket).
       # SUPABASE_PHOTOS_BUCKET: user-photos
       # PHOTO_URL_TTL_SEC: 3600

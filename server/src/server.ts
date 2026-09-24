@@ -12,6 +12,7 @@ import { prisma } from './config/prisma';
 import { subscribe } from './config/bus';
 import { STORAGE_DRIVER } from './config/storage';
 import { logCostGuardState } from './config/cost-guard';
+import { logMailTransport } from './utils/email';
 
 // Routes
 import authRoutes from './routes/auth.routes';
@@ -402,6 +403,7 @@ warmPool().catch(() => {});
 httpServer.listen(env.PORT, () => {
   console.log(`🚀 Server running on http://localhost:${env.PORT}`);
   console.log(`📡 Socket.IO ready`);
+  logMailTransport();
 });
 
 // ── Crash resilience: log and keep serving where possible ──
