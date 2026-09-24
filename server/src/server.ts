@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { env } from './config/env';
 import { prisma } from './config/prisma';
@@ -88,7 +88,12 @@ app.use(cookieParser());
 // client-spoofable (see deploy/nginx/zoclo.conf).
 const realClientIpKey = (req: express.Request): string => {
   const cf = req.headers['cf-connecting-ip'];
-  return (Array.isArray(cf) ? cf[0] : cf) || req.ip || 'unknown';
+  const headerIp = Array.isArray(cf) ? cf[0] : cf;
+  // Routed through ipKeyGenerator (IPv6 → /56 subnet): the library rejects
+  // raw-IP keyGenerators at boot (ERR_ERL_KEY_GEN_IPV6) since a single IPv6
+  // user owns a whole /64 and would otherwise get a fresh bucket per request.
+  if (typeof headerIp === 'string' && headerIp.length > 0) return ipKeyGenerator(headerIp);
+  return ipKeyGenerator(req.ip ?? 'unknown');
 };
 
 // ── Global API brake: every IP, 1000 req/min ──
