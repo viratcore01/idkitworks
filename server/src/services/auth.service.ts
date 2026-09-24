@@ -633,6 +633,39 @@ export class AuthService {
     // ── Server-side validation (real apps never trust the client) ──
     const update: any = {};
 
+    // ── Identity lock (one true source: signup / Google auth) ──
+    // Name comes from signup (or the Google profile) at account creation;
+    // DOB and gender are set once in profile setup and then fixed. The
+    // post-setup edit modal already shows these as "(locked)" — this makes
+    // the API agree, so a crafted request can't rewrite an identity that
+    // feeds age-segregation (DOB) and matching (gender).
+    const current = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { displayName: true, dateOfBirth: true, gender: true },
+    });
+    if (!current) {
+      const e: any = new Error('User not found'); e.status = 404; throw e;
+    }
+    if (data.displayName !== undefined && data.displayName.trim() !== current.displayName) {
+      const e: any = new Error('Your name is locked to what you signed up with'); e.status = 403; throw e;
+    }
+    if (data.dateOfBirth !== undefined && data.dateOfBirth !== null && data.dateOfBirth !== '') {
+      if (current.dateOfBirth) {
+        // Same calendar day = a harmless resubmission (e.g. setup form
+        // re-required the field for a half-finished profile). Any other
+        // value is an attempt to change identity → refused.
+        const sameDay = new Date(data.dateOfBirth).toDateString() === current.dateOfBirth.toDateString();
+        if (!sameDay) {
+          const e: any = new Error('Birth date is locked once set'); e.status = 403; throw e;
+        }
+      }
+    }
+    if (data.gender !== undefined && data.gender !== current.gender) {
+      if (current.gender && current.gender !== 'UNKNOWN') {
+        const e: any = new Error('Gender is locked once set'); e.status = 403; throw e;
+      }
+    }
+
     if (data.displayName !== undefined) {
       const name = data.displayName.trim();
       if (name.length < 2 || name.length > 50) throw new Error('Name must be 2-50 characters');
@@ -671,6 +704,7 @@ export class AuthService {
       }
     }
     if (data.dateOfBirth !== undefined && data.dateOfBirth !== null && data.dateOfBirth !== '') {
+      // (Lock for already-set DOB is enforced above.)
       const dob = new Date(data.dateOfBirth);
       if (isNaN(dob.getTime())) throw new Error('Invalid date of birth');
       const age = (Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000);

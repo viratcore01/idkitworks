@@ -26,7 +26,10 @@ export default function SettingsPage() {
   const handleSave = async () => {
   setIsSaving(true);
   try {
-  await updateProfile({ displayName, bio });
+  // displayName is locked server-side (signup/Google identity) — sending an
+  // unchanged value passes the lock, but we omit it entirely so a stale
+  // local copy can never trigger a spurious 403.
+  await updateProfile({ bio });
   toast.success('Profile updated!');
   } catch {
   toast.error('Failed to update');
@@ -102,15 +105,15 @@ export default function SettingsPage() {
   <h2 className="font-display font-bold text-lg mb-4">Edit Profile</h2>
   <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
   <div>
-  <label htmlFor="settings-displayname" className="block font-display text-sm font-semibold mb-1.5">Display Name</label>
+  <label htmlFor="settings-displayname" className="block font-display text-sm font-semibold mb-1.5">Display Name (locked)</label>
   <input
   id="settings-displayname"
   type="text"
-  className="nb-input"
+  className="nb-input bg-gray-50 text-gray-500"
   value={displayName}
-  onChange={(e) => setDisplayName(e.target.value)}
-  autoComplete="name"
-  required
+  readOnly
+  disabled
+  aria-readonly="true"
   />
   </div>
   <div>

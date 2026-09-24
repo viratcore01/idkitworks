@@ -15,9 +15,12 @@ export default function ProfileSetupPage() {
  const { user, updateProfile, fetchMe, refreshUser } = useAuthStore();
  const navigate = useNavigate();
  const photoVersion = usePhotoVersion(); // token rotation → thumbnails reload
- const [college, setCollege] = useState<CollegeOption | null>(
- user?.college ? { id: user.college.id, name: user.college.name, shortName: user.college.shortName, city: user.college.city, state: user.college.state } : null,
- );
+ // College is the account's permanent home (locked like name/DOB/gender —
+ // see ProfileEditModal). It arrives from the signup step (or Google) and is
+ // shown read-only here so it can't be quietly swapped mid-onboarding.
+ const college: CollegeOption | null = user?.college
+   ? { id: user.college.id, name: user.college.name, shortName: user.college.shortName, city: user.college.city, state: user.college.state }
+   : null;
  const [formData, setFormData] = useState({
  collegeId: user?.college?.id || '',
  course: user?.course || '',
@@ -78,14 +81,25 @@ export default function ProfileSetupPage() {
 
  const handleSubmit = async (e: React.FormEvent) => {
  e.preventDefault();
- // PRODUCT RULE: college-only app — setup cannot be completed without one
- if (!formData.collegeId) {
- toast.error('Please select your college to continue');
+ // PRODUCT RULE: college comes from signup (locked) — every gate below
+ // depends on it, so setup simply cannot complete without one.
+ if (!college) {
+ toast.error('No college on your account — restart signup or contact support');
  return;
  }
  setIsLoading(true);
  try {
-  await updateProfile(formData);
+  // No collegeId in the payload: it's locked and the server rejects
+  // attempts to move it post-verification anyway.
+  await updateProfile({
+    course: formData.course,
+    year: formData.year,
+    bio: formData.bio,
+    gender: formData.gender,
+    dateOfBirth: formData.dateOfBirth,
+    avatarColor: formData.avatarColor,
+    interestIds: formData.interestIds,
+  });
   // Refresh the user so the gates re-evaluate immediately
   await fetchMe();
   toast.success('Profile updated!');
@@ -116,15 +130,18 @@ export default function ProfileSetupPage() {
 
   <form onSubmit={handleSubmit} className="nb-card p-4 sm:p-6 space-y-4 min-w-0">
   <div>
-  <label htmlFor="setup-college" className="block font-display text-sm font-semibold mb-1.5">College *</label>
-  <CollegeSelect
-  value={college}
-  onChange={(c) => {
-  setCollege(c);
-  setFormData((d) => ({ ...d, collegeId: c?.id || '' }));
-  }}
+  <label htmlFor="setup-college" className="block font-display text-sm font-semibold mb-1.5">College (locked)</label>
+  <input
+  id="setup-college"
+  type="text"
+  className="nb-input bg-gray-50 text-gray-500"
+  value={college ? `${college.name}${college.shortName ? ` (${college.shortName})` : ''}` : ''}
+  placeholder="Not set — go back to signup"
+  readOnly
+  disabled
+  aria-readonly="true"
   />
-  <p className="text-xs text-gray-500 mt-1">Search by name, short name or city — worldwide.</p>
+  <p className="text-xs text-gray-500 mt-1">Your college is fixed for the life of the account — posts, matches and chats never cross campuses.</p>
   </div>
 
   <div>
