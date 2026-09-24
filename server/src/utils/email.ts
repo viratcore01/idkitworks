@@ -43,7 +43,7 @@ export async function sendOtpEmail(to: string, code: string, collegeName: string
   if (!isEmailConfigured()) {
     if (process.env.NODE_ENV === 'production') {
       const e: any = new Error('Email sending is not configured on this server');
-      e.status = 503; e.code = 'EMAIL_NOT_CONFIGURED';
+      e.status = 503; e.code = 'EMAIL_NOT_CONFIGURED'; e.expose = true;
       throw e;
     }
     console.log(`[OTP] (dev fallback, no SMTP creds) code for ${to}: ${code}`);
@@ -71,7 +71,7 @@ export async function sendOtpEmail(to: string, code: string, collegeName: string
     });
   } catch (err: any) {
     const e: any = new Error('Could not send the verification email — try again in a minute');
-    e.status = 502; e.code = 'EMAIL_SEND_FAILED';
+    e.status = 502; e.code = 'EMAIL_SEND_FAILED'; e.expose = true;
     e.cause = err;
     throw e;
   }

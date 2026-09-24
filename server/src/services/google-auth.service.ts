@@ -83,7 +83,7 @@ function b64urlJson(segment: string): any {
 export async function verifyGoogleIdToken(idToken: string): Promise<GooglePayload> {
   if (!env.GOOGLE_CLIENT_ID) {
     const e: any = new Error('Google Sign-In is not configured on this server');
-    e.status = 503; e.code = 'GOOGLE_NOT_CONFIGURED';
+    e.status = 503; e.code = 'GOOGLE_NOT_CONFIGURED'; e.expose = true;
     throw e;
   }
 

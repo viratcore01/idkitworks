@@ -37,6 +37,13 @@ export function sendError(res: Response, error: any, fallbackStatus = 400): void
   const status = error?.status || fallbackStatus;
   if (status >= 500) {
     console.error('[error]', status, raw.slice(0, 500));
+    // Operational errors explicitly marked safe (missing email config,
+    // failed send, unconfigured OAuth) travel verbatim — they are
+    // user-actionable and contain no internals. Everything else stays hidden.
+    if (error?.expose) {
+      res.status(status).json({ error: raw || 'Bad request', ...(code ? { code } : {}) });
+      return;
+    }
     res.status(500).json({ error: 'Something went wrong' });
     return;
   }
