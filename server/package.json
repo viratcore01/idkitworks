@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.scripts.json",
     "typecheck:scripts": "tsc -p tsconfig.scripts.json",
     "ops:bootstrap-admin": "tsx scripts/bootstrap-admin.ts",
+    "ops:smtp-check": "tsx scripts/smtp-check.ts",
     "photos:migrate": "tsx scripts/migrate-photos-to-storage.ts",
     "photos:migrate:dry": "tsx scripts/migrate-photos-to-storage.ts --dry-run"
   },
