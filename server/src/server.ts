@@ -146,6 +146,20 @@ const signupLimiter = rateLimit({
 });
 app.use('/api/auth/signup', signupLimiter);
 
+// ── Google token brake: each hit burns a JWKS fetch/verify + (on success)
+// an account write. Counts FAILURES only (same campus-NAT reasoning as
+// login): forged-token spray is capped, real dorm sign-ins never trip it.
+const googleLimiter = rateLimit({
+  keyGenerator: realClientIpKey,
+  windowMs: 15 * 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 60 : 300,
+  skipSuccessfulRequests: true,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many Google attempts from this network. Try again in 15 minutes.' },
+});
+app.use('/api/auth/google', googleLimiter);
+
 // ── Health checks ──
 // GET /api/health: EXTREMELY lightweight, NO DB calls. Safe to ping every
 // few minutes from cron-job.org / UptimeRobot / GitHub Actions to keep the
@@ -219,10 +233,38 @@ io.on('connection', (socket) => {
   // Live account check: a banned/deleted account's sockets are dropped even
   // if the 15-min access token hasn't expired yet. Also joins the college's
   // feed room so new posts push to everyone on campus instantly.
-  prisma.user.findUnique({ where: { id: userId }, select: { isActive: true, collegeId: true } }).then((u) => {
+  // Verification is cached on the socket (mirrors verificationRequired:
+  // VERIFIED or staff). A stale false is refreshed live on first use below,
+  // so a user who verifies mid-connection is never muted until reconnect.
+  prisma.user.findUnique({
+    where: { id: userId },
+    select: { isActive: true, collegeId: true, verificationStatus: true, role: true },
+  }).then((u) => {
     if (!u || !u.isActive) return socket.disconnect(true);
-    if (u.collegeId) socket.join(`college:${u.collegeId}`);
+    (socket.data as any).verified = u.verificationStatus === 'VERIFIED' || u.role === 'admin' || u.role === 'super_admin';
+    if (u.collegeId && (socket.data as any).verified) socket.join(`college:${u.collegeId}`);
   }).catch(() => {});
+
+  // Stale-cache guard: cached false → one live re-read before refusing.
+  // Zero extra queries in the common (verified) case.
+  const ensureSocketVerified = async (): Promise<boolean> => {
+    if ((socket.data as any).verified) return true;
+    try {
+      const live = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { verificationStatus: true, role: true },
+      });
+      const ok = !!live && (live.verificationStatus === 'VERIFIED' || live.role === 'admin' || live.role === 'super_admin');
+      if (ok) {
+        (socket.data as any).verified = true;
+        const full = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true } });
+        if (full?.collegeId) socket.join(`college:${full.collegeId}`);
+      }
+      return ok;
+    } catch {
+      return false;
+    }
+  };
 
   // Per-user message throttle: a burst of sends is spam or a buggy client.
   // 30 msgs / 10s is far above any real typing pace (WhatsApp-class clients
@@ -236,6 +278,7 @@ io.on('connection', (socket) => {
   socket.on('join-conversation', async (conversationId: string) => {
     try {
       if (typeof conversationId !== 'string' || !conversationId) return;
+      if (!(await ensureSocketVerified())) return;
       const member = await prisma.conversationMember.findUnique({
         where: { conversationId_userId: { conversationId, userId } },
       });
@@ -262,8 +305,11 @@ io.on('connection', (socket) => {
   });
 
   // Real-time message send: persists via the service so REST pollers see it too.
+  // Verified-only (mirrors message.routes): the REST path gates, so the
+  // socket must too — membership alone is not proof of membership.
   socket.on('send-message', async (data: { conversationId: string; content: string }, ack?: (r: any) => void) => {
     try {
+      if (!(await ensureSocketVerified())) return ack?.({ error: 'Verify your college email first' });
       const now = Date.now();
       sendTimestamps = sendTimestamps.filter((t) => now - t < 10_000);
       if (sendTimestamps.length >= 30) {

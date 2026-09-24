@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { UserController } from '../controllers/user.controller';
 import { uploadPhoto, deletePhoto, getPhoto, issuePhotoToken } from '../controllers/photo.controller';
-import { authMiddleware, collegeRequired, photoAuth } from '../middleware/auth';
+import { authMiddleware, collegeRequired, verificationRequired, photoAuth } from '../middleware/auth';
 
 const router = Router();
 const controller = new UserController();
@@ -33,10 +33,13 @@ router.get('/blocked', (req, res) => controller.getBlockedUsers(req, res));
 router.post('/me/photos', authMiddleware, upload.single('photo'), (req, res) => uploadPhoto(req, res));
 router.delete('/me/photos/:photoId', authMiddleware, (req, res) => deletePhoto(req, res));
 
-// Main-app profile surface: strictly inside your college
-router.get('/:username', collegeRequired, (req, res) => controller.getProfile(req, res));
-router.get('/:username/posts', collegeRequired, (req, res) => controller.getUserPosts(req, res));
-router.post('/:id/block', collegeRequired, (req, res) => controller.block(req, res));
-router.delete('/:id/block', collegeRequired, (req, res) => controller.unblock(req, res));
+// Main-app profile surface: strictly inside your college AND verified.
+// An unverified session proves nothing (college is merely claimed), so
+// profile browsing stays closed until OTP/Google verification lands.
+// Funnel-safe: setup uses /auth/me + /me/photos + /interests (all open above).
+router.get('/:username', collegeRequired, verificationRequired, (req, res) => controller.getProfile(req, res));
+router.get('/:username/posts', collegeRequired, verificationRequired, (req, res) => controller.getUserPosts(req, res));
+router.post('/:id/block', collegeRequired, verificationRequired, (req, res) => controller.block(req, res));
+router.delete('/:id/block', collegeRequired, verificationRequired, (req, res) => controller.unblock(req, res));
 
 export default router;

@@ -412,8 +412,10 @@ export class AuthService {
     if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
       const e: any = new Error('Invalid password'); e.status = 400; throw e;
     }
-    if (newPassword.length < 6 || newPassword.length > 128) {
-      const e: any = new Error('New password must be 6-128 characters'); e.status = 400; throw e;
+    // 8-floor everywhere (signup, set-initial, set-via-google, change):
+    // one minimum means no path mints a weaker password than another.
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      const e: any = new Error('New password must be 8-128 characters'); e.status = 400; throw e;
     }
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.isActive) {
@@ -437,8 +439,8 @@ export class AuthService {
    * permanent account ownership. Same session-kill as changePassword.
    */
   async setPasswordViaGoogle(userId: string, idToken: string, newPassword: string): Promise<void> {
-    if (typeof newPassword !== 'string' || newPassword.length < 6 || newPassword.length > 128) {
-      const e: any = new Error('New password must be 6-128 characters'); e.status = 400; throw e;
+    if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 128) {
+      const e: any = new Error('New password must be 8-128 characters'); e.status = 400; throw e;
     }
     if (typeof idToken !== 'string' || !idToken) {
       const e: any = new Error('Missing Google credential'); e.status = 400; throw e;
