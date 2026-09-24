@@ -51,6 +51,9 @@ export const env = {
   // Outbound mail (company Gmail via SMTP + app password): sends the
   // college-email OTP codes. Missing creds = dev logs the code, production
   // refuses to send (503) rather than fail silently.
+  // Spaces stripped: Google shows the code grouped (xxxx xxxx xxxx xxxx)
+  // and a spaced paste authenticates nowhere — normalize once here so every
+  // environment (local .env, Render dashboard) behaves identically.
   GMAIL_USER: process.env.GMAIL_USER || '',
-  GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD || '',
+  GMAIL_APP_PASSWORD: (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, ''),
 };

@@ -36,7 +36,11 @@ export function sendError(res: Response, error: any, fallbackStatus = 400): void
 
   const status = error?.status || fallbackStatus;
   if (status >= 500) {
-    console.error('[error]', status, raw.slice(0, 500));
+    // SMTP/provider replies ride on error.cause (never credentials —
+    // nodemailer keeps auth out of its error objects). Logging the cause is
+    // the difference between "email failed" and "email failed BECAUSE ...".
+    const cause = String((error as any)?.cause?.response || (error as any)?.cause?.message || (error as any)?.cause || '');
+    console.error('[error]', status, raw.slice(0, 500), cause ? `cause: ${cause.slice(0, 300)}` : '');
     // Operational errors explicitly marked safe (missing email config,
     // failed send, unconfigured OAuth) travel verbatim — they are
     // user-actionable and contain no internals. Everything else stays hidden.
