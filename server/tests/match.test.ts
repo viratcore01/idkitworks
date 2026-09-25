@@ -262,8 +262,7 @@ test('gender preference narrows the deck', async () => {
   assert.deepEqual(deckIds(await svc.discover('viewer')), ['her']);
 });
 
-test('PREFERENCE WALL: a liker outside my filters never enters the deck, boost or not', async () => {
-  // Female-only preference; a guy likes the viewer. The silent front-boost
+test('PREFERENCE WALL: a liker outside my filters never enters the deck, boost or not', async () => {  // Female-only preference; a guy likes the viewer. The silent front-boost
   // only REORDERS cards already inside the filtered window — it can never
   // smuggle a filtered-out profile in. Answer: no, he never shows.
   const { svc } = setup({
