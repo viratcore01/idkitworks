@@ -64,6 +64,7 @@ test('listAnnouncements shows remaining row counts per broadcast (super sees all
   const superView = await svc.listAnnouncements('admin-1', 'super_admin');
   assert.equal(superView.items.length, 2);
   const network = superView.items.find((b: any) => b.title === 'Network blast');
+  assert.ok(network, 'the network blast must be in the super-admin list');
   assert.equal(network.remaining, 2, 'both inbox rows still present');
   assert.equal(network.removed, false);
   assert.equal(network.recipients, 2);
