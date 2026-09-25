@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Heart, MessageSquare, X, HeartCrack, SearchX, MessageSquareOff, SlidersHorizontal, PartyPopper, UserMinus, RotateCcw, Camera, ImageOff, ChevronLeft, ChevronRight, Undo2, BadgeCheck, Sparkles, Lock, UserPlus } from 'lucide-react';
@@ -9,6 +9,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
 import MatchReasons from '@/components/match/MatchReasons';
 import { formatDistanceToNow } from '@/utils/date';
+import { decidePhotoSwipe } from '@/utils/photoSwipe';
 import { photoSrc, usePhotoVersion } from '@/utils/photo';
 import toast from 'react-hot-toast';
 
@@ -58,7 +59,11 @@ export default function MatchesPage() {
   // single minYear floor — the server filters the deck on exactly this set.
   years: [] as number[],
 });
- const [photoIdx, setPhotoIdx] = useState(0);
+  const [photoIdx, setPhotoIdx] = useState(0);
+  // One-finger swipe anchor for the deck carousel. A ref (not state): the
+  // gesture must not re-render mid-swipe, and multi-touch (pinch/zoom) voids
+  // the anchor instead of guessing.
+  const photoTouchStart = useRef<{ x: number; y: number } | null>(null);
  const queryClient = useQueryClient();
  const navigate = useNavigate();  const { data: deck, isLoading: loadingDiscover } = useQuery({
  queryKey: ['match-discover', deckPage],
@@ -652,7 +657,28 @@ setShowPrefs(true);
   {/* Photo carousel — profile pic + up to 3 extra photos. Clamped so the
       Like button stays above the fold on phones and small laptops. */}
   {cardPhotos.length > 0 ? (
-  <div className="relative mb-4">
+  <div
+  className="relative mb-4 touch-pan-y"
+  onTouchStart={(e) => {
+  // Pinch/zoom (or any second finger) voids the swipe — never guess.
+  if (e.touches.length !== 1) { photoTouchStart.current = null; return; }
+  const t = e.touches[0];
+  photoTouchStart.current = { x: t.clientX, y: t.clientY };
+  }}
+  onTouchEnd={(e) => {
+  const start = photoTouchStart.current;
+  photoTouchStart.current = null;
+  if (!start || cardPhotos.length <= 1) return;
+  const t = e.changedTouches[0];
+  if (!t) return;
+  // Vertical-dominant movement returns null (page scroll wins) and nothing
+  // is ever preventDefaulted — the page must keep scrolling on mobile.
+  const dir = decidePhotoSwipe(start.x, start.y, t.clientX, t.clientY);
+  if (dir === 'next') setPhotoIdx((i) => (i + 1) % cardPhotos.length);
+  else if (dir === 'prev') setPhotoIdx((i) => (i - 1 + cardPhotos.length) % cardPhotos.length);
+  }}
+  onTouchCancel={() => { photoTouchStart.current = null; }}
+  >
   <div className="nb-card overflow-hidden !p-0">
    <img
    key={cardPhotos[safePhotoIdx]}
