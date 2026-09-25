@@ -23,7 +23,7 @@
       "purpose": "any"
     },
     {
-      "src": "/icons/zoclo-icon.png",
+      "src": "/icons/zoclo-icon-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
