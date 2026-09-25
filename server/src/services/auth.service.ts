@@ -94,6 +94,7 @@ interface AuthTokens {
     avatarPhotoId: string | null;
     collegeId: string | null;
     isProfileSetup: boolean;
+    collegeEmail: string | null;
     collegeEmailVerified: boolean;
     verificationStatus: string;
     hasPassword: boolean;
@@ -118,6 +119,10 @@ function createAuthResponse(user: any, accessToken: string, refreshToken: string
       // College gate key: the client needs it immediately after login
       collegeId: user.collegeId ?? null,
       isProfileSetup: !!(user.collegeId && user.course),
+      // The verified/being-verified inbox: /verify uses it to open straight on
+      // the OTP form (no intro re-asking for the email the wizard has) and the
+      // wizard's fast path matches it against a re-submitted identity.
+      collegeEmail: user.collegeEmail ?? null,
       collegeEmailVerified: user.collegeEmailVerified ?? false,
       verificationStatus: user.verificationStatus ?? 'UNVERIFIED',
       // Funnel routing needs this immediately (no extra /me round-trip):

@@ -25,6 +25,26 @@ export function hasCollege(user: User | null | undefined): boolean {
   return !!(user?.collegeId || user?.college);
 }
 
+/**
+ * Has this account finished onboarding — is it "just a user of the app"?
+ *
+ * Exactly one consumer: PublicRoute. A mid-funnel account (created by the
+ * signup wizard's "Send my code", still unverified and passwordless) must be
+ * allowed to STAY on /signup — the wizard owns its next three screens, and the
+ * inline OTP is the reason the email is only ever typed once. Kicking such an
+ * account out of the wizard bounces it /home → /verify, where the pitch screen
+ * demands the same email a second time.
+ *
+ * "Done" therefore means the account can stand on its own: it has a way back
+ * in (password or Google) AND no open funnel step in front of it. Anything
+ * else stays in the funnel's hands.
+ */
+export function funnelDone(user: User | null | undefined): boolean {
+  if (!user) return false;
+  const hasWayIn = user.hasPassword === true || user.hasGoogle === true;
+  return hasCollege(user) && hasWayIn && !!user.isProfileSetup;
+}
+
 export function nextStep(user: User | null | undefined): string {
   if (!user) return '/login';
   // No college yet (legacy Google accounts created pre-funnel).

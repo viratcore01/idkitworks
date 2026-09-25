@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import BrandLoader from '@/components/common/BrandLoader';
 import Logo from '@/components/common/Logo';
 import { useAuthStore } from '@/store/auth.store';
-import { hasCollege } from '@/utils/funnel';
+import { funnelDone } from '@/utils/funnel';
 import AuthLayout from '@/layouts/AuthLayout';
 import AppLayout from '@/layouts/AppLayout';
 // PERF: every page is a separate chunk — first paint ships the shell only,
@@ -76,13 +76,24 @@ function VerifiedRoute({ children }: { children: React.ReactNode }) {
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, isLoading } = useAuthStore();
+  const location = useLocation();
   if (isLoading) return <LoadingScreen />;
-  // A signed-in account with NO college is not "back in the app" — it is still
-  // mid-funnel (a Google sign-in from the login page creates exactly that), and
-  // the wizard's college step is where it gets fixed. Bouncing it to /home would
-  // loop: /home → CollegeRoute → /setup-profile → "choose your college" → /signup
-  // → here → /home → …
-  if (isAuthenticated && hasCollege(user)) return <Navigate to="/home" />;
+  if (isAuthenticated) {
+    // A finished account never sees auth pages.
+    if (funnelDone(user)) return <Navigate to="/home" />;
+    // A MID-FUNNEL account stays on /signup: the wizard owns its next screens
+    // (OTP → password → profile), and evicting it the instant "Send my code"
+    // creates the row bounces /home → CollegeRoute → /verify — where the pitch
+    // screen demands the same email the wizard already has. That redirect war
+    // was the "why is it asking for my email again" bug. (A Google sign-in
+    // from the login page also lands here mid-funnel; the same rule keeps the
+    // wizard's college step reachable instead of looping /home → /setup-profile.)
+    if (location.pathname === '/signup') return <>{children}</>;
+    // Mid-funnel on /login etc: let the app's gates place them (/verify,
+    // /setup-password, /setup-profile) instead of showing a sign-in form to
+    // someone who is already signed in.
+    return <Navigate to="/home" />;
+  }
   return <>{children}</>;
 }
 

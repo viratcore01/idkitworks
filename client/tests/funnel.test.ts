@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextStep, hasCollege } from '../src/utils/funnel';
+import { nextStep, hasCollege, funnelDone } from '../src/utils/funnel';
 import type { User } from '../src/types';
 
 /**
@@ -117,4 +117,50 @@ test('no route is ever returned without a leading slash', () => {
   for (const variant of variants) {
     assert.match(step(variant), /^\/[a-z-]+$/);
   }
+});
+
+// ────────────────────── funnelDone (PublicRoute's only question) ──────────────────────
+
+/** The account row the wizard's "Send my code" just created. */
+const midFunnel: Partial<User> = {
+  collegeId: 'c1',
+  college: COLLEGE,
+  collegeEmail: 'student@ipec.org.in',
+  collegeEmailVerified: false,
+  verificationStatus: 'UNVERIFIED',
+  hasPassword: false,
+  hasGoogle: false,
+  isProfileSetup: false,
+};
+
+test('a wizard-minted account (just created, unverified, passwordless) is NOT done', () => {
+  // PublicRoute must let it STAY on /signup — evicting it bounces
+  // /home → CollegeRoute → /verify, which re-asks for the email.
+  assert.equal(funnelDone({ ...base, ...midFunnel }), false);
+});
+
+test('a verified but passwordless account is still mid-funnel', () => {
+  assert.equal(
+    funnelDone({ ...base, ...midFunnel, collegeEmailVerified: true, verificationStatus: 'VERIFIED' }),
+    false,
+  );
+});
+
+test('no way back in (no password, no Google) means never "done"', () => {
+  // The one account shape that must never be left alone on a public page.
+  assert.equal(funnelDone({ ...base, ...onboarded, hasPassword: false, hasGoogle: false }), false);
+});
+
+test('a fully onboarded account is done and gets bounced off auth pages', () => {
+  assert.equal(funnelDone({ ...base, ...onboarded, hasGoogle: false }), true);
+  assert.equal(funnelDone({ ...base, ...onboarded, hasPassword: false, hasGoogle: true }), true);
+});
+
+test('profile details unfinished means not done, even with a password', () => {
+  assert.equal(funnelDone({ ...base, ...onboarded, isProfileSetup: false }), false);
+});
+
+test('signed out is trivially not done', () => {
+  assert.equal(funnelDone(null), false);
+  assert.equal(funnelDone(undefined), false);
 });

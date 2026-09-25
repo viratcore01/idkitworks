@@ -33,11 +33,15 @@ export default function VerificationPage() {
     // Signup funnel users arrive with their college email ALREADY on the
     // account (it's what they typed in the wizard). Skip the pitch — straight
     // to the form, prefilled, so the address is never typed a second time.
+    // Same for a wizard-minted session that landed here before fetchMe filled
+    // the store: the OTP was ALREADY SENT by the wizard, so the code screen is
+    // the only honest landing (the intro would re-ask for a known address).
     const pending = useAuthStore.getState().user?.collegeEmail;
-    return pending ? 'email' : 'intro';
+    const draftEmail = sessionStorage.getItem('signup:email');
+    return pending || draftEmail ? 'email' : 'intro';
   });
   const [email, setEmail] = useState(() =>
-    sessionStorage.getItem('verify:email') || useAuthStore.getState().user?.collegeEmail || '');
+    sessionStorage.getItem('verify:email') || useAuthStore.getState().user?.collegeEmail || sessionStorage.getItem('signup:email') || '');
   useEffect(() => {
     if (phase === 'done') {
       // Flow finished (verified) — leave nothing behind for a future visit.
