@@ -7,9 +7,23 @@ import App from './App';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import { queryClient } from '@/services/queryClient';
 import './index.css';
+// Must be imported before anything renders: captures `beforeinstallprompt`
+// at module scope so the one-click Install button never misses the event.
+import '@/utils/installPrompt';
 
 if (import.meta.env.DEV) {
   import('./utils/layoutAudit');
+}
+
+// PWA installability: Chromium browsers require a service worker with a
+// fetch handler before they'll offer the native one-click install dialog.
+// public/sw.js is network-first (never serves stale content while online).
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* install prompt is a bonus; the app works without it */
+    });
+  });
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

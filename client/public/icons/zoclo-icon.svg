@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Zoclo app icon: brand mark only, centered in the maskable safe zone (inner 66% = 340px).
+       Background fills the full canvas so maskable crops (circle/squircle) stay on-brand. -->
+  <rect width="512" height="512" fill="#FAF7F2"/>
+
+  <!-- violet burst, top-left of the mark -->
+  <polygon transform="translate(150,166) scale(1.6)" fill="#6D28D9"
+    points="44,0 16.5,7 31,31 7,16.5 0,44 -7,16.5 -31,31 -16.5,7 -44,0 -16.5,-7 -31,-31 -7,-16.5 0,-44 7,-16.5 31,-31 16.5,-7"/>
+
+  <!-- pixel heart, the core mark -->
+  <g transform="translate(196,196) scale(3.4)" fill="#F43F5E">
+    <rect x="0" y="0" width="8" height="8"/><rect x="8" y="0" width="8" height="8"/>
+    <rect x="24" y="0" width="8" height="8"/><rect x="32" y="0" width="8" height="8"/>
+    <rect x="0" y="8" width="40" height="8"/>
+    <rect x="8" y="16" width="24" height="8"/>
+    <rect x="16" y="24" width="8" height="8"/>
+  </g>
+
+  <!-- yellow bolt, accent -->
+  <path transform="translate(318,150) scale(1.5)" d="M16 0 L54 0 L35 35 L54 35 L11 92 L24 46 L5 46 Z"
+    fill="#FBBF24" stroke="#0F172A" stroke-width="3" stroke-linejoin="round"/>
+</svg>

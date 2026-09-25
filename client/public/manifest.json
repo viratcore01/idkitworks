@@ -10,10 +10,28 @@
   "scope": "/",
   "icons": [
     {
-      "src": "/zoclo-favicon.png",
+      "src": "/icons/zoclo-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/zoclo-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/zoclo-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "zoclo-favicon.png",
       "sizes": "64x64",
       "type": "image/png",
-      "purpose": "any maskable"
+ "purpose": "any"
     }
   ],
   "categories": ["social", "lifestyle", "education"],
