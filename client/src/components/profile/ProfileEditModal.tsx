@@ -1,11 +1,14 @@
-import { useState } from 'react';
-import { X, Save, Hourglass, Camera, Plus, Calendar, Lock, Mail, Shield } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { X, Save, Hourglass, Camera, Plus, Calendar, Lock, Mail, Shield, Check, Loader2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
 import ImageEditorModal from '@/components/common/ImageEditorModal';
 import { photoSrc, usePhotoVersion } from '@/utils/photo';
 import { useAuthStore } from '@/store/auth.store';
+import { sanitizeUsernameInput, localUsernameStatus, usernameFeedback, blocksSubmit, type UsernameStatus } from '@/utils/username';
+import { checkUsername } from '@/services/username';
 import toast from 'react-hot-toast';
 
 const GENDERS = [
@@ -43,6 +46,16 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
   const [busySlot, setBusySlot] = useState<number | null>(null);
   const [editing, setEditing] = useState<{ slot: number; file: File } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const navigate = useNavigate();
+  // Username stays changeable for life (only the name locks): same live
+  // availability check as profile setup. Unchanged skips the check — the
+  // handle belongs to this account, so "taken" would be a lie (the server's
+  // self-excluding check knows it too).
+  const [username, setUsername] = useState(profile.username || '');
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
+  const usernameSeqRef = useRef(0);
+  const usernameUnchanged = username.trim().toLowerCase() === String(profile.username || '').trim().toLowerCase();
+  const usernameChanged = !usernameUnchanged;
   const photoVersion = usePhotoVersion(); // token rotation → thumbnails reload
  // Avatar changes must reach the whole shell (Topbar/Sidebar/MobileNav), not
  // just this modal — so photo add/remove re-syncs the logged-in user.
@@ -53,11 +66,44 @@ export default function ProfileEditModal({ profile, onClose, onSaved }: {
  queryFn: () => api.get('/users/interests').then((r) => r.data),
  });
 
- const profilePic = slots.find((s) => s.slot === 0) || null;
+  const profilePic = slots.find((s) => s.slot === 0) || null;
 
- // Client mirrors of server rules — instant feedback, server still enforces
+  // Live handle availability, debounced, stale answers dropped. Only runs
+  // while the handle actually differs — see usernameUnchanged above.
+  useEffect(() => {
+  if (usernameUnchanged) return;
+  const typed = username.trim().toLowerCase();
+  const local = localUsernameStatus(typed);
+  if (local !== 'ok') {
+  setUsernameStatus(local === 'empty' ? 'idle' : local);
+  return;
+  }
+  setUsernameStatus('checking');
+  const seq = ++usernameSeqRef.current;
+  const timer = setTimeout(async () => {
+  try {
+  const result = await checkUsername(typed);
+  if (seq !== usernameSeqRef.current) return;
+  if (result.available) setUsernameStatus('available');
+  else setUsernameStatus(result.reason === 'reserved' ? 'reserved' : 'taken');
+  } catch {
+  if (seq !== usernameSeqRef.current) return;
+  // A failed CHECK is not a verdict: keep going and let the save (whose
+  // unique index is the truth) decide.
+  setUsernameStatus('unavailable');
+  }
+  }, 400);
+  return () => clearTimeout(timer);
+  }, [username, usernameUnchanged]);
+
+  const usernameHandle = usernameFeedback(usernameStatus, username);
+  const usernameOk = usernameUnchanged ||
+  (localUsernameStatus(username) === 'ok' && !blocksSubmit(usernameStatus));
+
+  // Client mirrors of server rules — instant feedback, server still enforces
 const validate = (): string | null => {
   if (form.bio.length > 300) return 'Bio must be under 300 characters';
+  if (!usernameOk) return usernameHandle?.text || 'Pick a valid username first';
   return null;
   };
 
@@ -105,12 +151,21 @@ const handleSave = async () => {
   if (problem) return toast.error(problem);
   setIsSaving(true);
   try {
-  await api.patch('/auth/me', {
+  const { data } = await api.patch('/auth/me', {
   ...form,
+  // Only send the handle when it changed: resubmitting it is a server no-op,
+  // but skipping it keeps the request (and the audit story) clean.
+  ...(usernameChanged ? { username: username.trim().toLowerCase() } : {}),
   });
-  toast.success('Profile updated');
-  refreshUser(); // sync avatar/color everywhere (Topbar, Sidebar, MobileNav, profile)
+  toast.success(usernameChanged ? `Username changed to @${data?.username || username.trim().toLowerCase()}` : 'Profile updated');
+  refreshUser(); // sync everywhere (Topbar, Sidebar, MobileNav, profile)
+  const nextHandle = String(data?.username || (usernameChanged ? username.trim().toLowerCase() : profile.username) || '');
   onSaved();
+  // The profile URL carries the handle: after a rename the old URL 404s, so
+  // land on the new one instead of refetching a dead address.
+  if (usernameChanged && nextHandle && nextHandle.toLowerCase() !== String(profile.username || '').toLowerCase()) {
+  navigate(`/profile/${nextHandle}`, { replace: true });
+  }
   } catch (e: any) {
   toast.error(e.response?.data?.error || 'Could not save');
   } finally {
@@ -214,10 +269,49 @@ const handleSave = async () => {
  />
  )}
 
-<div className="mb-3 p-3 bg-nb-cream border border-nb border-ink rounded">
-    <label className="block font-display text-xs font-semibold text-gray-500 mb-1">Name (locked)</label>
-    <p className="font-display text-sm text-ink">{profile.displayName}</p>
+ <div className="mb-3 p-3 bg-nb-cream border border-nb border-ink rounded">
+     <label className="block font-display text-xs font-semibold text-gray-500 mb-1">Name (locked)</label>
+     <p className="font-display text-sm text-ink">{profile.displayName}</p>
+   </div>
+
+  <label htmlFor="edit-username" className="block font-display text-sm font-semibold mb-1.5">Username</label>
+  <div className="relative mb-1">
+  <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-display">@</span>
+  <input
+  id="edit-username"
+  type="text"
+  className="nb-input pl-8 pr-9"
+  placeholder="coolstudent"
+  value={username}
+  onChange={(e) => setUsername(sanitizeUsernameInput(e.target.value))}
+  autoComplete="username"
+  aria-invalid={blocksSubmit(usernameStatus) || undefined}
+  aria-describedby="edit-username-status"
+  />
+  {usernameStatus === 'checking' && (
+  <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-400" aria-hidden="true" />
+  )}
+  {usernameStatus === 'available' && (
+  <Check size={15} strokeWidth={3} className="absolute right-3 top-1/2 -translate-y-1/2 text-green-600" aria-hidden="true" />
+  )}
+  {blocksSubmit(usernameStatus) && (
+  <X size={15} strokeWidth={3} className="absolute right-3 top-1/2 -translate-y-1/2 text-nb-pink" aria-hidden="true" />
+  )}
   </div>
+  <p
+  id="edit-username-status"
+  role="status"
+  aria-live="polite"
+  className={`text-xs mb-3 ${
+  usernameHandle?.tone === 'bad' ? 'text-nb-pink font-semibold'
+  : usernameHandle?.tone === 'ok' ? 'text-green-700 font-semibold'
+  : 'text-gray-500'
+  }`}
+  >
+  {usernameUnchanged
+  ? <>Your current handle — change it anytime, but it must stay unique across the app.</>
+  : (usernameHandle?.text ?? <>Your public handle — it must stay unique across the app.</>)}
+  </p>
 
   <label className="block font-display text-sm font-semibold mb-1.5">
   Bio <span className="font-normal text-gray-500">({form.bio.length}/300)</span>

@@ -85,18 +85,22 @@ test('SECURITY: profile setup refuses a reserved handle', async () => {
   assert.equal(db.rows('user')[0].usernameChosen, false, 'nothing is finalized for a reserved handle');
 });
 
-test('profile setup accepts an ordinary handle exactly once, then locks it for life', async () => {
+test('profile setup accepts an ordinary handle, then it stays changeable for life', async () => {
   const { db, svc } = setup({ users: [makeUser({ id: 'u1', usernameChosen: false })] });
   const result = await svc.updateProfile('u1', { username: 'Student_1' });
   assert.equal(result.username, 'student_1', 'the choice is stored normalized');
   assert.equal(result.usernameChosen, true);
   assert.equal(db.rows('user')[0].usernameChosen, true);
 
-  // A second, different handle is refused…
-  await rejectsWithStatus(() => svc.updateProfile('u1', { username: 'somethingelse' }), 403);
-  // …while resubmitting the chosen one is a harmless no-op (stale forms).
-  await svc.updateProfile('u1', { username: 'student_1' });
-  assert.equal(db.rows('user')[0].username, 'student_1');
+  // A later change to a free handle works — the same gates run again, it is
+  // not a lock. Only the name locks; the handle stays editable.
+  const again = await svc.updateProfile('u1', { username: 'second_pick' });
+  assert.equal(again.username, 'second_pick');
+  assert.equal(db.rows('user')[0].username, 'second_pick');
+
+  // …while resubmitting the current one is a harmless no-op (stale forms).
+  await svc.updateProfile('u1', { username: 'second_pick' });
+  assert.equal(db.rows('user')[0].username, 'second_pick');
 });
 
 test('profile setup refuses a taken handle, case-insensitively, and creates no row', async () => {
@@ -105,6 +109,24 @@ test('profile setup refuses a taken handle, case-insensitively, and creates no r
   });
   await rejectsWithStatus(() => svc.updateProfile('u1', { username: 'TAKEN' }), 409);
   assert.equal(db.rows('user').length, 2, 'a taken handle duplicates nothing');
+});
+
+test('handle CHANGES refuse taken and reserved handles, case-insensitively', async () => {
+  const { svc } = setup({
+    users: [makeUser({ id: 'u1', username: 'original' }), makeUser({ id: 'u2', username: 'Taken' })],
+  });
+  await rejectsWithStatus(() => svc.updateProfile('u1', { username: 'TAKEN' }), 409);
+  await rejectsWithStatus(() => svc.updateProfile('u1', { username: 'admin' }), 400, 'USERNAME_RESERVED');
+  await rejectsWithStatus(() => svc.updateProfile('u1', { username: 'ab' }), 400, 'USERNAME_INVALID');
+});
+
+test('a handle race between the check and the write answers 409, never 500', async () => {
+  const { svc } = setup({ users: [makeUser({ id: 'u1', usernameChosen: false })] });
+  // Simulate losing a race: the pre-check passes, the UPDATE hits UNIQUE.
+  (prisma as any).user.update = async () => {
+    throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+  };
+  await rejectsWithStatus(() => svc.updateProfile('u1', { username: 'freshhandle' }), 409);
 });
 
 // ─────────────────── live availability (profile setup's check) ─────────────

@@ -384,7 +384,7 @@ export default function ProfileSetupPage() {
    aria-readonly="true"
    />
    <p className="text-xs text-gray-500 mt-1">
-   Chosen once in setup and fixed for the life of the account.
+   Chosen once here to finish setup — you can change it anytime later from Edit profile.
    </p>
    </div>
    )}

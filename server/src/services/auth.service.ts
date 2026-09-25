@@ -919,8 +919,9 @@ export class AuthService {
     collegeId?: string;
     // NOTE: no collegeEmail — the OTP flow owns it end-to-end (the body
     // rejects it, typed as any below so forged JS payloads still hit the 403).
-    // username is the ONE handle choice: allowed exactly once, while the
-    // account still holds its generated placeholder (usernameChosen false).
+    // username is changeable (first pick in profile setup, later edits from
+    // Edit profile) — every value runs the same shape + reserved + uniqueness
+    // gates, so a forged handle never lands on the row.
     username?: string;
     course?: string;
     year?: number;
@@ -984,18 +985,20 @@ export class AuthService {
       if (name.length < 2 || name.length > 50) throw new Error('Name must be 2-50 characters');
       update.displayName = name;
     }
-    // ── Handle lock (one true source: profile setup, once) ──
-    // The handle is generated at signup and chosen ONCE here — it feeds
-    // profile URLs and login, so after the choice it locks exactly like the
-    // name. Resubmitting the already-chosen handle is a harmless no-op (stale
-    // forms, double taps); anything else on a locked account is refused.
+    // ── Handle changes (profile setup's first pick, Edit profile after) ──
+    // The handle stays changeable for the life of the account — only the
+    // name, birth date, gender and college lock. EVERY change runs the same
+    // gates: shape, reserved words, and app-wide uniqueness excluding self
+    // (UNIQUE (LOWER(username)) is the race-proof backstop, mapped to a clean
+    // 409 below). Resubmitting the current handle is a harmless no-op; keeping
+    // the generated placeholder counts as choosing (flips the lock).
     if (data.username !== undefined) {
       const picked = normalizeUsername(data.username);
-      if (current.usernameChosen) {
-        if (picked !== normalizeUsername(current.username)) {
-          const e: any = new Error('Your username is locked — it was chosen once, in profile setup'); e.status = 403; throw e;
-        }
-      } else {
+      const sameAsCurrent = picked === normalizeUsername(current.username);
+      if (!current.usernameChosen && sameAsCurrent) {
+        update.usernameChosen = true;
+        invalidateUser(userId);
+      } else if (!sameAsCurrent) {
         const check = checkUsernameLocally(picked);
         if (!check.available) {
           const e: any = new Error(check.error!);
@@ -1098,20 +1101,29 @@ export class AuthService {
       await prisma.userInterest.deleteMany({ where: { userId } });
     }
 
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        ...update,
-        ...(data.interestIds && {
-          interests: { create: interestConnect || [] },
-        }),
-      },
-      include: {
-        college: true,
-        interests: { include: { interest: true } },
-        photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' } },
-      },
-    });
+    let user: any;
+    try {
+      user = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          ...update,
+          ...(data.interestIds && {
+            interests: { create: interestConnect || [] },
+          }),
+        },
+        include: {
+          college: true,
+          interests: { include: { interest: true } },
+          photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' } },
+        },
+      });
+    } catch (err: any) {
+      // Lost a handle race between the check above and this write (two people
+      // claiming the same handle in the same second): the DB's UNIQUE
+      // (LOWER(username)) is the truth — answer 409, never 500.
+      if (err?.code === 'P2002') conflict('Username already taken');
+      throw err;
+    }
 
     return {
       id: user.id,
@@ -1120,7 +1132,7 @@ export class AuthService {
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       avatarPhotoId: (user as any).avatarPhotoId ?? null,
-      photos: user.photos.map((p) => ({ id: p.id, slot: p.slot })),
+      photos: user.photos.map((p: any) => ({ id: p.id, slot: p.slot })),
       bio: user.bio,
       college: user.college,
       course: user.course,
@@ -1131,7 +1143,7 @@ export class AuthService {
       age: user.dateOfBirth
         ? Math.floor((Date.now() - user.dateOfBirth.getTime()) / (365.25 * 24 * 3600 * 1000))
         : null,
-      interests: user.interests.map((ui) => ui.interest),
+      interests: user.interests.map((ui: any) => ui.interest),
     };
   }
 
