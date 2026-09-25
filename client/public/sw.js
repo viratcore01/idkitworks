@@ -8,7 +8,7 @@
 // fallback. We deliberately never serve from cache while online, so users
 // always get the newest build the moment Vercel deploys (the app's own
 // dead-chunk reload logic keeps working exactly as before).
-const SHELL = 'zoclo-shell-v3';
+const SHELL = 'zoclo-shell-v4';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
