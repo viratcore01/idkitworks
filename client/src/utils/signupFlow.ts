@@ -96,9 +96,15 @@ export function goBack(state: WizardState): BackResult {
  * inbox and needs a screen to land on) and cleared the moment the user leaves
  * the wizard on purpose — by back, or by walking out of onboarding altogether.
  */
+/** The keys describing the picked college (name/domain are kept so a reload
+ *  can redraw the pick without a network round trip). */
+export const COLLEGE_STORAGE_KEYS = [
+  'signup:collegeId', 'signup:collegeName', 'signup:collegeShort', 'signup:collegeDomain',
+] as const;
+
 export const WIZARD_STORAGE_KEYS = [
   'signup:phase', 'signup:email', 'signup:username', 'signup:displayName',
-  'signup:collegeId', 'signup:collegeName', 'signup:collegeShort', 'signup:collegeDomain',
+  ...COLLEGE_STORAGE_KEYS,
   'signup:cooldownUntil',
 ] as const;
 
@@ -108,6 +114,46 @@ export const WIZARD_STORAGE_KEYS = [
  */
 export function clearWizardDraft(storage: Pick<Storage, 'removeItem'>): void {
   for (const key of WIZARD_STORAGE_KEYS) storage.removeItem(key);
+}
+
+/** The college shape storage needs (a subset of the picker's option). */
+export interface WizardCollege {
+  id: string;
+  name?: string | null;
+  shortName?: string | null;
+  emailDomain?: string | null;
+}
+
+/**
+ * Write a wizard state (plus the college pick) to storage.
+ *
+ * Needed after an EXPLICIT clear: the wizard's persistence effects only fire
+ * when a value CHANGES, so a value that SURVIVES a back press — the address,
+ * when stepping back from the code screen to correct it — would be erased from
+ * storage and then vanish on the next reload while still on screen. Found by
+ * walking the live flow: the erased key never came back.
+ */
+export function saveWizardDraft(
+  state: WizardState,
+  picked: WizardCollege | null,
+  storage: Pick<Storage, 'setItem' | 'removeItem'>,
+): void {
+  storage.setItem('signup:phase', state.phase);
+  storage.setItem('signup:email', state.email);
+  storage.setItem('signup:username', state.username);
+  storage.setItem('signup:displayName', state.displayName);
+  if (picked) {
+    storage.setItem('signup:collegeId', picked.id);
+    storage.setItem('signup:collegeName', picked.name ?? '');
+    picked.shortName
+      ? storage.setItem('signup:collegeShort', picked.shortName)
+      : storage.removeItem('signup:collegeShort');
+    picked.emailDomain
+      ? storage.setItem('signup:collegeDomain', picked.emailDomain)
+      : storage.removeItem('signup:collegeDomain');
+  } else {
+    for (const key of COLLEGE_STORAGE_KEYS) storage.removeItem(key);
+  }
 }
 
 /** A pristine wizard — what a fresh arrival (or a full reset) looks like. */

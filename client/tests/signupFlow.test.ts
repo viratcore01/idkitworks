@@ -7,6 +7,8 @@ import {
   isVerifiedIdentity,
   canSignOut,
   clearWizardDraft,
+  saveWizardDraft,
+  COLLEGE_STORAGE_KEYS,
   WIZARD_STORAGE_KEYS,
   type WizardState,
 } from '../src/utils/signupFlow';
@@ -147,6 +149,45 @@ test('clearWizardDraft forgets every key the wizard wrote, and nothing else', ()
   for (const key of WIZARD_STORAGE_KEYS) {
     assert.equal(store.has(key), false, `${key} must be forgotten`);
   }
+});
+
+test('saveWizardDraft writes the surviving state back after an explicit clear', () => {
+  // The bug this exists for: a deliberate back clears storage, and the wizard's
+  // persistence effects only fire on CHANGE — so the address that survives the
+  // press (stepping back from the code screen to fix it) was erased from
+  // storage and then vanished on the next reload while still on screen.
+  const store = new Map<string, string>();
+  const storage = {
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  };
+  const pick = { id: 'c1', name: 'College One', shortName: 'C1', emailDomain: 'ipec.org.in' };
+
+  saveWizardDraft({ phase: 'identity', collegeId: 'c1', email: 'student@ipec.org.in', username: 'student', displayName: 'Student' }, pick, storage);
+
+  assert.equal(store.get('signup:phase'), 'identity');
+  assert.equal(store.get('signup:email'), 'student@ipec.org.in', 'the value that survived must survive a reload too');
+  assert.equal(store.get('signup:username'), 'student');
+  assert.equal(store.get('signup:displayName'), 'Student');
+  assert.equal(store.get('signup:collegeId'), 'c1');
+  assert.equal(store.get('signup:collegeDomain'), 'ipec.org.in');
+});
+
+test('saveWizardDraft with no college clears the college keys', () => {
+  const store = new Map<string, string>([
+    ['signup:collegeId', 'c1'], ['signup:collegeName', 'College One'],
+    ['signup:collegeShort', 'C1'], ['signup:collegeDomain', 'ipec.org.in'],
+  ]);
+  const storage = {
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  };
+
+  saveWizardDraft(blankWizard(), null, storage);
+
+  for (const key of COLLEGE_STORAGE_KEYS) assert.equal(store.has(key), false, `${key} must be cleared`);
+  assert.equal(store.get('signup:phase'), 'college');
+  assert.equal(store.get('signup:email'), '');
 });
 
 test('the key list covers every field the wizard persists', () => {

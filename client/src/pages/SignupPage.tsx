@@ -8,7 +8,7 @@ import GoogleButton from '@/components/common/GoogleButton';
 import { verificationApi } from '@/services/verification';
 import { checkUsername } from '@/services/username';
 import { nextStep } from '@/utils/funnel';
-import { goBack, isVerifiedIdentity, canSignOut, clearWizardDraft, stepIndex, type Phase, type WizardState } from '@/utils/signupFlow';
+import { goBack, isVerifiedIdentity, canSignOut, clearWizardDraft, saveWizardDraft, COLLEGE_STORAGE_KEYS, stepIndex, type Phase, type WizardState } from '@/utils/signupFlow';
 import { sanitizeUsernameInput, localUsernameStatus, usernameFeedback, blocksSubmit, type UsernameStatus } from '@/utils/username';
 import toast from 'react-hot-toast';
 
@@ -47,7 +47,7 @@ function clearWizardStorage() {
   clearWizardDraft(sessionStorage);
 }
 
-const COLLEGE_KEYS = ['signup:collegeId', 'signup:collegeName', 'signup:collegeShort', 'signup:collegeDomain'] as const;
+const COLLEGE_KEYS = COLLEGE_STORAGE_KEYS;
 
 export default function SignupPage() {
   const [phase, setPhase] = useState<Phase>(() => {
@@ -209,20 +209,20 @@ export default function SignupPage() {
       return;
     }
     const next: WizardState = result.state;
-    // Deliberate back = erased: storage first, then state, so a reload right
-    // after cannot resurrect what the user just discarded.
-    clearWizardStorage();
-    setFormData({ email: next.email, username: next.username, displayName: next.displayName });
-    setCollege(next.collegeId
+    const picked: CollegeOption | null = next.collegeId
       ? { id: next.collegeId, name: college?.name || '', shortName: college?.shortName || null, emailDomain: college?.emailDomain || null }
-      : null);
+      : null;
+    // Deliberate back = erased, then the SURVIVING state written back: what the
+    // user still sees on screen must also survive a reload.
+    clearWizardStorage();
+    saveWizardDraft(next, picked, sessionStorage);
+    setFormData({ email: next.email, username: next.username, displayName: next.displayName });
+    setCollege(picked);
     setOtp('');
     setPassword('');
     setConfirm('');
     setCooldown(0);
-    sessionStorage.removeItem('signup:cooldownUntil');
     setPhase(next.phase);
-    if (next.phase === 'college') sessionStorage.setItem('signup:collegeId', next.collegeId || '');
   };
 
   /**
