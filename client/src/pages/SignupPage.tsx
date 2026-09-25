@@ -61,10 +61,16 @@ export default function SignupPage() {
   });
   const [college, setCollege] = useState<CollegeOption | null>(() => {
     const id = sessionStorage.getItem('signup:collegeId');
-    if (!id) return null;
+    const name = sessionStorage.getItem('signup:collegeName');
+    // A pick we cannot DESCRIBE (an id with no name) is not a pick: only a
+    // broken write can produce that shape, and rendering it means an empty
+    // chip plus a scary "not onboarded" alert — worse than simply re-asking.
+    // A genuinely non-onboarded college still has its name, so the name (not
+    // the domain) is the honesty signal here.
+    if (!id || !name) return null;
     return {
       id,
-      name: sessionStorage.getItem('signup:collegeName') || '',
+      name,
       shortName: sessionStorage.getItem('signup:collegeShort') || null,
       emailDomain: sessionStorage.getItem('signup:collegeDomain') || null,
     };
