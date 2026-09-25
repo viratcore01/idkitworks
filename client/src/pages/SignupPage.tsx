@@ -519,19 +519,10 @@ export default function SignupPage() {
           <GoogleButton
             mode="signup"
             collegeId={college!.id}
-            identity={{ displayName: formData.displayName.trim() }}
-            validateIdentity={() => {
-              // Same name the email path requires: Google must never mint an
-              // account with a name the user didn't type (it locks for life).
-              // The handle is picked later, in Complete Your Profile.
-              if (formData.displayName.trim().length < 2 || formData.displayName.trim().length > 50)
-                return 'Type your name above first — it is fixed for life once your account is created';
-              return null;
-            }}
             onSuccess={goApp}
           />
           <p className="text-xs font-body text-gray-500 text-center">
-            Uses the name you typed above with your <span className="font-semibold">@{domain}</span> Google account — and skips the code entirely. You&apos;ll pick your username in the next step.
+            Continue with your <span className="font-semibold">@{domain}</span> Google account — we take your name from Google and skip the code entirely. You&apos;ll pick your username in the next step.
           </p>
         </div>
       )}

@@ -194,42 +194,11 @@ export async function availableHandle(stem: string): Promise<string> {
   return `student${Date.now().toString().slice(-6)}`;
 }
 
-/**
- * Display name typed in the signup wizard before tapping "Continue with
- * Google".
- *
- * The handle is NEVER taken from the wizard anymore: every signup path mints
- * a generated placeholder and the owner picks the real handle once, in
- * "Complete Your Profile" (usernameChosen flips, profile setup completes).
- * The typed name, though, is still honored for new accounts (same 2-50 rule
- * as email signup) — empty/missing falls back to the Google claim, and
- * linking an existing account ignores it entirely.
- */
-export interface GoogleSignupIdentity {
-  displayName?: string;
-}
-
 /** Explicit 409 for creation races (same contract as typed signup). */
 function creationConflict(message: string): never {
   const e: any = new Error(message);
   e.status = 409;
   throw e;
-}
-
-/**
- * Resolve the display name for a NEW Google-created account: the wizard-typed
- * one when given (same 2-50 rule as typed signup), else the Google claim.
- * Throws 400 on a provided-but-invalid name; empty/missing falls back.
- */
-function resolveGoogleDisplayName(raw: unknown, googleName: unknown): string {
-  const typed = String(raw ?? '').trim();
-  if (!typed) return sanitizeDisplayName(googleName);
-  if (typed.length < 2 || typed.length > 50) {
-    const e: any = new Error('Name must be 2-50 characters');
-    e.status = 400;
-    throw e;
-  }
-  return typed.slice(0, 50);
 }
 
 export interface GoogleAuthResult {
@@ -266,14 +235,13 @@ export interface GoogleAuthResult {
  *   (email_verified), which is exactly what our OTP proves — so a match
  *   auto-verifies instantly, no code needed. A mismatch creates NOTHING (no
  *   junk rows): the user falls back to OTP or switches Google accounts.
- *   The handle is always a generated placeholder (the owner picks the real
- *   one in profile setup); the wizard-typed display name is honored when
- *   given — same validation as email signup.
+ *   Name and details come from the Google account itself (a missing name is
+ *   filled once, in profile setup); the handle is always a generated
+ *   placeholder picked for real in profile setup.
  */
 export async function googleAuth(
   idToken: string,
   collegeId?: string,
-  identity?: GoogleSignupIdentity,
 ): Promise<GoogleAuthResult> {
   const g = await verifyGoogleIdToken(idToken);
 
@@ -351,13 +319,14 @@ export async function googleAuth(
     }
   } else if (funnelCollege) {
     // New funnel account — verified from birth: Google proved the inbox and
-    // the domain matches. Password comes later via setInitialPassword.
-    // The handle is ALWAYS a generated placeholder here: the owner picks the
-    // real one once, in profile setup (usernameChosen flips there). The
-    // wizard-typed name is still honored (same 2-50 rule as email signup).
+    // the domain matches. Password comes later via setInitialPassword. Name
+    // and details come straight from the Google account (locked like the
+    // email path's); the handle is always a generated placeholder — the owner
+    // picks the real one in profile setup. An empty Google name is filled
+    // once, in profile setup (never invented from the address).
     created = true;
     const username = await availableHandle(baseHandle(g.name, g.email));
-    const displayName = resolveGoogleDisplayName(identity?.displayName, g.name);
+    const displayName = sanitizeDisplayName(g.name);
     // passwordHash is NOT NULL: park a random secret no one can guess or use.
     try {
       user = await prisma.user.create({
@@ -385,10 +354,11 @@ export async function googleAuth(
     }
   } else {
     // New account — replicate exactly what funnel signup creates (minus the
-    // college): passwordless, UNVERIFIED, no college yet, placeholder handle.
+    // college): passwordless, UNVERIFIED, no college yet, placeholder handle,
+    // Google-claim name.
     created = true;
     const username = await availableHandle(baseHandle(g.name, g.email));
-    const displayName = resolveGoogleDisplayName(identity?.displayName, g.name);
+    const displayName = sanitizeDisplayName(g.name);
     // passwordHash is NOT NULL: park a random secret no one can guess or use —
     // Google users keep signing in with Google; it exists to keep the shape.
     try {

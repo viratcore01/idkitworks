@@ -67,14 +67,10 @@ export class AuthController {
       const collegeId = typeof req.body?.collegeId === 'string' && req.body.collegeId
         ? req.body.collegeId
         : undefined;
-      // Wizard-typed display name (signup wizard only): honored for new
-      // accounts with the same validation as email signup. The handle is
-      // never taken from the client — it is generated at creation and chosen
-      // once in profile setup. Absent = legacy path (Google claim, as the
-      // login button does).
-      const rawDisplayName = typeof req.body?.displayName === 'string' ? req.body.displayName : undefined;
-      const identity = rawDisplayName !== undefined ? { displayName: rawDisplayName } : undefined;
-      const result = await googleAuth(idToken, collegeId, identity);
+      // Name and details come from the Google account itself — the wizard
+      // never types them for this path (a missing Google name is filled once,
+      // in profile setup).
+      const result = await googleAuth(idToken, collegeId);
       res.json(result);
     } catch (error: any) {
       // Verification failures are the client's fault → 401; config/env issues → their status

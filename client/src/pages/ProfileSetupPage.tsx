@@ -133,7 +133,7 @@ export default function ProfileSetupPage() {
    * entirely: it belongs to this account, so "taken" would be a lie.
    */
   useEffect(() => {
-    if (!needsUsername || usernameUnchanged) return;
+    if (usernameUnchanged) return;
     const typed = username.trim().toLowerCase();
     const local = localUsernameStatus(typed);
     if (local !== 'ok') {
@@ -156,7 +156,7 @@ export default function ProfileSetupPage() {
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [username, needsUsername, usernameUnchanged]);
+  }, [username, usernameUnchanged]);
 
   const usernameOk = !needsUsername || usernameUnchanged ||
     (localUsernameStatus(username) === 'ok' && !blocksSubmit(usernameStatus));
@@ -210,9 +210,10 @@ export default function ProfileSetupPage() {
      course: formData.course,
      year: formData.year,
      bio: formData.bio,
-     // The one-time handle choice (this screen owns it now): sent even when
-     // unchanged, so keeping the placeholder still flips the lock.
-     ...(needsUsername ? { username: username.trim().toLowerCase() } : {}),
+     // The handle: always sent when it still needs choosing (even unchanged,
+     // so keeping the placeholder flips the lock), and whenever it changed.
+     // Resubmitting an unchanged chosen handle is a server no-op.
+     ...((needsUsername || !usernameUnchanged) ? { username: username.trim().toLowerCase() } : {}),
      ...(genderLocked ? {} : { gender: formData.gender }),
     ...(dobLocked ? {} : { dateOfBirth: formData.dateOfBirth }),
     ...(nameLocked ? {} : { displayName: formData.displayName.trim() }),
@@ -329,9 +330,11 @@ export default function ProfileSetupPage() {
  </div>
 
    <form onSubmit={handleSubmit} className="nb-card p-4 sm:p-6 space-y-4 min-w-0">
-   {needsUsername ? (
+   {/* Username is never locked here: first pick finishes setup, later edits
+   stay allowed (Edit profile offers the same field). Uniqueness is enforced
+   server-side, app-wide, on every save. */}
    <div>
-   <label htmlFor="setup-username" className="block font-display text-sm font-semibold mb-1.5">Username * <span className="font-normal text-gray-500">(choose once)</span></label>
+   <label htmlFor="setup-username" className="block font-display text-sm font-semibold mb-1.5">Username{needsUsername ? ' *' : ''}</label>
    <div className="relative">
    <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-display">@</span>
    <input
@@ -366,28 +369,13 @@ export default function ProfileSetupPage() {
    : 'text-gray-500'
    }`}
    >
-   {usernameUnchanged
-   ? <>This temporary handle is reserved for you — keep it or pick a new one. Either way it locks forever once you save.</>
-   : (usernameHandle?.text ?? <>Your public handle — permanent. We check it as you type.</>)}
-   </p>
-   </div>
-   ) : (
-   <div>
-   <label htmlFor="setup-username-locked" className="block font-display text-sm font-semibold mb-1.5">Username (locked)</label>
-   <input
-   id="setup-username-locked"
-   type="text"
-   className="nb-input bg-gray-50 text-gray-500"
-   value={user?.username || ''}
-   readOnly
-   disabled
-   aria-readonly="true"
-   />
-   <p className="text-xs text-gray-500 mt-1">
-   Chosen once here to finish setup — you can change it anytime later from Edit profile.
-   </p>
-   </div>
-   )}
+    {usernameUnchanged
+    ? (needsUsername
+      ? <>This temporary handle is reserved for you — keep it or pick a new one. Saving finishes your setup.</>
+      : <>Your current handle — change it anytime, but it must stay unique across the app.</>)
+    : (usernameHandle?.text ?? <>Your public handle — we check it as you type, and it must stay unique across the app.</>)}
+    </p>
+    </div>
    <div>
   <label htmlFor="setup-college" className="block font-display text-sm font-semibold mb-1.5">College (locked)</label>
   <input

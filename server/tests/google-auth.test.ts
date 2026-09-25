@@ -338,34 +338,27 @@ test('SECURITY: a generated handle can never be a reserved word', async () => {
   assert.match(username, /^[a-z0-9_]{3,20}$/);
 });
 
-// ─────────── wizard-typed name + placeholder handle ───────────────────────
-// The signup wizard collects the name BEFORE the Google button; Google signup
-// honors it (same 2-50 rule as email signup). The handle is ALWAYS generated
-// — the owner picks the real one once, in Complete Your Profile.
+// ─────────── Google-claim name + placeholder handle ───────────────────────
+// Google signup takes the name straight from the Google account (locked like
+// the email path's); the handle is ALWAYS generated — picked for real once,
+// in Complete Your Profile. A missing Google name is filled once there.
 
-test('Google signup uses the wizard-typed display name and mints a placeholder handle', async () => {
+test('Google signup takes the display name from the Google account and mints a placeholder handle', async () => {
   stubJwks();
   const { db } = setup();
-  const result = await googleAuth(mintToken(), COLLEGE_ID, { displayName: 'Chosen Name' });
+  const result = await googleAuth(mintToken({ name: 'Gmail Name' }), COLLEGE_ID);
 
   assert.equal(result.created, true);
-  assert.equal(result.user.displayName, 'Chosen Name');
-  assert.equal(db.rows('user')[0].displayName, 'Chosen Name');
+  assert.equal(result.user.displayName, 'Gmail Name');
+  assert.equal(db.rows('user')[0].displayName, 'Gmail Name');
   assert.ok(/^[a-z0-9_]{3,20}$/.test(db.rows('user')[0].username));
   assert.equal(db.rows('user')[0].usernameChosen, false);
 });
 
-test('Google signup rejects a wizard name outside 2-50 characters and creates nothing', async () => {
-  stubJwks();
-  const { db } = setup();
-  await rejectsWithStatus(() => googleAuth(mintToken(), COLLEGE_ID, { displayName: 'x' }), 400);
-  assert.equal(db.rows('user').length, 0, 'a bad name creates no junk row');
-});
-
-test('linking an existing account ignores the wizard name (it keeps its own)', async () => {
+test('linking an existing account keeps its own name (Google never renames it)', async () => {
   stubJwks();
   const { db } = setup({ users: [makeUser({ id: 'u1', username: 'original', displayName: 'Original Name' })] });
-  const result = await googleAuth(mintToken(), undefined, { displayName: 'Sneaky Name' });
+  const result = await googleAuth(mintToken({ name: 'Sneaky Name' }));
 
   assert.equal(result.created, false);
   assert.equal(result.user.displayName, 'Original Name', 'a link never renames the account');

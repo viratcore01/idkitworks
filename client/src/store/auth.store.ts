@@ -21,9 +21,8 @@ import { User } from '@/types';interface AuthState {
   setUser: (user: User | null) => void;
   toggleIncognito: () => void;
   login: (identifier: string, password: string) => Promise<void>;
-  /** Funnel college is optional: with it, Google auto-verifies on domain match.
-   *  Identity (wizard-typed name) is honored for new accounts. */
-  loginWithGoogle: (idToken: string, collegeId?: string, identity?: { displayName?: string }) => Promise<boolean>;
+  /** Funnel college is optional: with it, Google auto-verifies on domain match. */
+  loginWithGoogle: (idToken: string, collegeId?: string) => Promise<boolean>;
   /** Funnel start: college + identity, no password (set post-verification).
    *  The handle is generated server-side; the owner picks it in profile setup. */
   signup: (data: { collegeId: string; email: string; displayName: string }) => Promise<void>;
@@ -73,13 +72,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   /** Google Sign-In: server verifies the ID token, links/creates the account.
    *  Returns true when a NEW account was created (for the welcome toast).
    *  With a funnel collegeId, a matching-domain Google email auto-verifies.
-   *  With an identity (signup wizard), the typed name is used for new
-   *  accounts instead of the Google claim. */
-  loginWithGoogle: async (idToken, collegeId, identity) => {
+   *  Name and details come from the Google account itself. */
+  loginWithGoogle: async (idToken, collegeId) => {
     const { data } = await api.post('/auth/google', {
       credential: idToken,
       ...(collegeId ? { collegeId } : {}),
-      ...(identity?.displayName ? { displayName: identity.displayName } : {}),
     });
     safeLocalStorage.setItem('accessToken', data.accessToken);
     safeLocalStorage.setItem('refreshToken', data.refreshToken);

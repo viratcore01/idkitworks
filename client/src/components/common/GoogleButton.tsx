@@ -29,24 +29,17 @@ declare global {
  * button but hands the fresh ID token to the caller instead of logging in —
  * used by Settings to prove Google-account ownership before setting a first
  * password. No navigation happens in this mode.
- * - Signup-wizard mode (`identity` + `validateIdentity`): the name the user
- * already typed is sent along and used for the new account (same validation
- * as email signup) instead of the Google claim. The handle is never sent:
- * every path mints a placeholder and the owner picks it in profile setup.
- * The validator runs FIRST — a bad/incomplete name aborts before Google even
- * opens, so the user fixes it on the form they can see.
+ * - Signup-wizard mode: nothing to type first — name and details come straight
+ * from the Google account (locked like the email path's). Only a Google
+ * account with no name needs the profile-setup fill-in later.
  */
-export default function GoogleButton({ mode, onCredential, collegeId, onSuccess, identity, validateIdentity }: {
+export default function GoogleButton({ mode, onCredential, collegeId, onSuccess }: {
   mode: 'login' | 'signup' | 'verify';
   onCredential?: (idToken: string) => Promise<void>;
   /** Funnel college: server auto-verifies when the Google email's domain matches it. */
   collegeId?: string;
   /** Funnel override: called with (created) instead of the default /home navigation. */
   onSuccess?: (created: boolean) => void;
-  /** Wizard-typed name: honored for new accounts, never generated over. */
-  identity?: { displayName?: string };
-  /** Runs before Google opens; return an error message to abort and show it. */
-  validateIdentity?: () => string | null;
 }) {
   const [enabled, setEnabled] = useState<{ clientId: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -66,10 +59,6 @@ export default function GoogleButton({ mode, onCredential, collegeId, onSuccess,
   onSuccessRef.current = onSuccess;
   const collegeIdRef = useRef(collegeId);
   collegeIdRef.current = collegeId;
-  const identityRef = useRef(identity);
-  identityRef.current = identity;
-  const validateIdentityRef = useRef(validateIdentity);
-  validateIdentityRef.current = validateIdentity;
 
  // 1. Ask the server whether Google sign-in is configured.
  // Render's free tier sleeps when idle — the first request can take 30-50s
@@ -110,16 +99,6 @@ export default function GoogleButton({ mode, onCredential, collegeId, onSuccess,
   client_id: clientId,
    callback: async (response: { credential?: string }) => {
    if (!response?.credential || busy) return;
-   // Signup wizard: the typed name must be valid BEFORE Google opens —
-   // aborting here keeps the user on the form they can fix, instead of
-   // minting an account with a name they never chose.
-   if (validateIdentityRef.current) {
-   const problem = validateIdentityRef.current();
-   if (problem) {
-   toast.error(problem);
-   return;
-   }
-   }
    setBusy(true);
   try {
   // Verify mode: hand the fresh ID token to the caller (e.g. Settings
@@ -129,7 +108,7 @@ export default function GoogleButton({ mode, onCredential, collegeId, onSuccess,
   await onCredentialRef.current(response.credential);
   return;
   }
-   const created = await loginWithGoogle(response.credential, collegeIdRef.current, identityRef.current);
+   const created = await loginWithGoogle(response.credential, collegeIdRef.current);
   toast.success(created ? 'Account created — welcome to Zoclo!' : 'Welcome back!');
   if (onSuccessRef.current) {
   // Funnel caller owns routing (college → verify → password → profile).
