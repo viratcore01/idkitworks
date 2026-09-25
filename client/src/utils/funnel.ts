@@ -49,8 +49,9 @@ export function nextStep(user: User | null | undefined): string {
   if (!user) return '/login';
   // No college yet (legacy Google accounts created pre-funnel).
   if (!hasCollege(user)) return '/setup-profile';
-  // Not verified → the OTP flow (Google-domain users skip: already VERIFIED).
-  if (user.verificationStatus !== 'VERIFIED' && !user.collegeEmailVerified) return '/verify';
+  // Not verified → the signup wizard, which resumes straight at its OTP step
+  // (the standalone verification page no longer exists).
+  if (user.verificationStatus !== 'VERIFIED' && !user.collegeEmailVerified) return '/signup';
   // Verified but passwordless → set the first password (skippable for
   // Google users — nothing here is a wall, the server gates the real actions).
   if (user.hasPassword === false) return '/setup-password';

@@ -172,7 +172,7 @@ export default function SettingsPage() {
   <p className="text-sm text-gray-600 mb-3">
   Verify with a code sent to your college email to unlock matching and chat.
   </p>
-  <button onClick={() => navigate('/verify')} className="nb-btn-primary text-sm">Verify now</button>
+  <button onClick={() => navigate('/signup')} className="nb-btn-primary text-sm">Verify now</button>
   </div>
   )}
   {(user?.role === 'admin' || user?.role === 'super_admin') && (

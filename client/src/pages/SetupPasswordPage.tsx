@@ -31,7 +31,8 @@ export default function SetupPasswordPage() {
  useEffect(() => {
    if (!user) return;
    if (isUnverified) {
-     navigate('/verify', { replace: true });
+     // The wizard owns the OTP step now (no standalone verify page).
+     navigate('/signup', { replace: true });
      return;
    }
    if (hasNothingToDoHere) {

@@ -49,7 +49,9 @@ test('no college yet goes to profile setup (legacy Google accounts)', () => {
 });
 
 test('unverified goes to the OTP flow', () => {
-  assert.equal(step({ collegeId: 'c1', college: COLLEGE, collegeEmailVerified: false }), '/verify');
+  // The OTP step lives INSIDE the signup wizard; the standalone verify page
+  // is gone, so the funnel sends unverified users to the wizard.
+  assert.equal(step({ collegeId: 'c1', college: COLLEGE, collegeEmailVerified: false }), '/signup');
 });
 
 test('verified via the OTP flag moves on even while verificationStatus lags', () => {
@@ -64,7 +66,7 @@ test('verified but passwordless sets the first password', () => {
 test('verification comes before the password step', () => {
   assert.equal(
     step({ ...onboarded, verificationStatus: 'UNVERIFIED', hasPassword: false, isProfileSetup: false }),
-    '/verify',
+    '/signup',
   );
 });
 
@@ -101,10 +103,12 @@ test('hasCollege treats either signal as "already chosen"', () => {
   assert.equal(hasCollege({ ...base, collegeId: undefined, college: COLLEGE }), true);
 });
 
-test('an account with a college is never routed to the college step again', () => {
-  const withCollege = { ...base, collegeId: 'c1', college: COLLEGE };
-  assert.equal(hasCollege(withCollege), true);
-  assert.notEqual(nextStep(withCollege), '/signup');
+test('a fully onboarded account is never routed into the wizard again', () => {
+  // The wizard is an onboarding surface: finished accounts must never be sent
+  // back into it. (An unverified account WITH a college belongs there — the
+  // OTP step lives inside it now.)
+  assert.equal(hasCollege({ ...base, collegeId: 'c1', college: COLLEGE }), true);
+  assert.notEqual(step(onboarded), '/signup');
 });
 
 test('no route is ever returned without a leading slash', () => {
@@ -134,8 +138,7 @@ const midFunnel: Partial<User> = {
 };
 
 test('a wizard-minted account (just created, unverified, passwordless) is NOT done', () => {
-  // PublicRoute must let it STAY on /signup — evicting it bounces
-  // /home → CollegeRoute → /verify, which re-asks for the email.
+  // PublicRoute must let it STAY on /signup — evicting it re-asks for the email.
   assert.equal(funnelDone({ ...base, ...midFunnel }), false);
 });
 

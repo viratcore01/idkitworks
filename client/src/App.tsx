@@ -12,7 +12,6 @@ const LandingPage = lazy(() => import('@/pages/LandingPage'));
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const SignupPage = lazy(() => import('@/pages/SignupPage'));
 const ProfileSetupPage = lazy(() => import('@/pages/ProfileSetupPage'));
-const VerificationPage = lazy(() => import('@/pages/VerificationPage'));
 const SetupPasswordPage = lazy(() => import('@/pages/SetupPasswordPage'));
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
 const AdminLayout = lazy(() => import('@/layouts/AdminLayout'));
@@ -54,22 +53,24 @@ function CollegeRoute({ children }: { children: React.ReactNode }) {
  if (!user?.college) return <Navigate to="/setup-profile" replace />;
  const isStaff = user.role === 'admin' || user.role === 'super_admin';
  if (!isStaff && user.verificationStatus !== 'VERIFIED') {
- return <Navigate to="/verify" replace />;
+ return <Navigate to="/signup" replace />;
  }
  return <>{children}</>;
 }
 
 /**
  * PRODUCT RULE: main app requires college-email verification (staff exempt).
+ * The OTP flow lives INSIDE the signup wizard (/signup resumes it); there is
+ * no standalone verification page anymore — unverified users belong in the
+ * wizard, at the code step, with the address they typed still on screen.
  */
 function VerifiedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore();
   const location = useLocation();
   if (isLoading) return <LoadingScreen />;
   const isStaff = user?.role === 'admin' || user?.role === 'super_admin';
-  // If user is on the verification page, don't redirect — they're already where they need to be
-  if (user && !isStaff && user.verificationStatus !== 'VERIFIED' && location.pathname !== '/verify') {
-    return <Navigate to="/verify" replace />;
+  if (user && !isStaff && user.verificationStatus !== 'VERIFIED' && location.pathname !== '/signup') {
+    return <Navigate to="/signup" replace />;
   }
   return <>{children}</>;
 }
@@ -83,13 +84,13 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
     if (funnelDone(user)) return <Navigate to="/home" />;
     // A MID-FUNNEL account stays on /signup: the wizard owns its next screens
     // (OTP → password → profile), and evicting it the instant "Send my code"
-    // creates the row bounces /home → CollegeRoute → /verify — where the pitch
+    // creates the row bounces /home → CollegeRoute → the old /verify page —
     // screen demands the same email the wizard already has. That redirect war
     // was the "why is it asking for my email again" bug. (A Google sign-in
     // from the login page also lands here mid-funnel; the same rule keeps the
     // wizard's college step reachable instead of looping /home → /setup-profile.)
     if (location.pathname === '/signup') return <>{children}</>;
-    // Mid-funnel on /login etc: let the app's gates place them (/verify,
+    // Mid-funnel on /login etc: let the app's gates place them (the wizard,
     // /setup-password, /setup-profile) instead of showing a sign-in form to
     // someone who is already signed in.
     return <Navigate to="/home" />;
@@ -212,15 +213,9 @@ export default function App() {
  <ProtectedRoute><SetupPasswordPage /></ProtectedRoute>
  } />
 
-  {/* College-email OTP verification: full-screen flow outside the app chrome.
-  VERIFIED users and staff don't need it. */}
- <Route path="/verify" element={
- <ProtectedRoute>
- {user && (user.verificationStatus === 'VERIFIED' || user.role === 'admin' || user.role === 'super_admin')
- ? <Navigate to="/home" replace />
- : <VerificationPage />}
- </ProtectedRoute>
- } />
+  {/* College-email OTP verification lives INSIDE the signup wizard now;
+      /verify is retired and lands in the wizard at the right step. */}
+ <Route path="/verify" element={<Navigate to="/signup" replace />} />
 
   {/* Ops command center: its own dark shell, not the student app */}
   <Route path="/admin" element={

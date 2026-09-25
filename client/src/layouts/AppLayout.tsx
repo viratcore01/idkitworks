@@ -54,9 +54,11 @@ export default function AppLayout() {
   }, [user, queryClient]);
 
   // Verified the instant the email code lands — no reload, no manual step.
+ // If the user is inside the wizard the OTP screen navigates itself; this
+ // callback only covers app pages (e.g. verified in another tab).
  useVerificationUnlock(() => {
  toast.success("You're verified — welcome to Zoclo!", { icon: '🎓', duration: 5000 });
- navigate('/home', { replace: true });
+ if (location.pathname !== '/signup') navigate('/home', { replace: true });
  });
 
  const isSetupNeeded = user && !user.college && !user.course && location.pathname !== '/setup-profile';
