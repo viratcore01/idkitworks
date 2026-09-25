@@ -156,6 +156,24 @@ export class AdminController {
     }
   }
 
+  /** Moderator console: past broadcasts with how many inbox rows remain. */
+  async listAnnouncements(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.listAnnouncements(req.user!.id, req.user!.role, req.query.collegeId as string));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Moderator console: recall broadcasts — pull them out of every inbox. */
+  async removeAnnouncements(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.removeAnnouncements(req.user!.id, req.user!.role, req.body?.ids));
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
   /** Moderator console: full inspect view for one user. */
   async userDetail(req: AuthRequest, res: Response) {
     try {

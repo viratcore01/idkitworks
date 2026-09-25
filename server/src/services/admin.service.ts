@@ -543,6 +543,122 @@ export class AdminService {
   }
 
   /**
+   * Past broadcasts, newest first — the recall list.
+   *
+   * A broadcast's identity is its audit-log row (action 'announce'); the
+   * inbox rows it created are identified by (type ANNOUNCEMENT + the
+   * sender + the exact send second). Super-admins see the network;
+   * college admins only broadcasts addressed to their campus.
+   */
+  async listAnnouncements(viewerId: string, role: string, requestedCollegeId?: string) {
+    const { isSuper, collegeIds } = await this.scope(viewerId, role, requestedCollegeId);
+    const where: any = { action: 'announce' };
+    if (!isSuper) {
+      if (!collegeIds.length) return { items: [] };
+      where.collegeId = collegeIds[0];
+    } else if (requestedCollegeId) {
+      where.collegeId = requestedCollegeId;
+    }
+
+    const logs = await prisma.moderationLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      include: { actor: { select: { id: true, username: true, displayName: true } } },
+    });
+    if (!logs.length) return { items: [] };
+
+    // Remaining rows per broadcast: an id stamp on creation would need a
+    // schema migration; (sender, sent second) is exact because one sender
+    // can broadcast at most once per 5-minute cooldown window.
+    const items = [];
+    for (const log of logs) {
+      const sentAt = new Date(log.createdAt);
+      const remaining = await prisma.notification.count({
+        where: {
+          type: 'ANNOUNCEMENT',
+          actorId: log.actorId,
+          createdAt: { gte: sentAt, lte: new Date(sentAt.getTime() + 1000) },
+        },
+      });
+      items.push({
+        id: log.id,
+        title: (log.metadata as any)?.title || log.reason || '(untitled)',
+        body: (log.metadata as any)?.body || '',
+        scope: log.targetId || 'ALL',
+        collegeId: log.collegeId,
+        sentAt: log.createdAt,
+        recipients: (log.metadata as any)?.recipients ?? null,
+        remaining,
+        removed: (log.metadata as any)?.recipients != null && remaining === 0,
+        actor: log.actor,
+      });
+    }
+    return { items };
+  }
+
+  /**
+   * Recall broadcasts: pull the rows out of every inbox in one go.
+   *
+   * Scope is enforced per-log against the LIVE audit row, not the request —
+   * a college admin can only ever touch broadcasts addressed to their own
+   * campus. Recalled rows are deleted (unread and read alike — a recall is
+   * a retraction), unread badges recompute, live sockets refresh, and the
+   * audit log records the recall with how many rows left inboxes.
+   */
+  async removeAnnouncements(viewerId: string, role: string, ids: string[]) {
+    const list = [...new Set((ids || []).filter(Boolean))].slice(0, 20);
+    if (!list.length) {
+      const e: any = new Error('No broadcasts selected'); e.status = 400; throw e;
+    }
+    const { isSuper, collegeIds } = await this.scope(viewerId, role);
+
+    let totalRemoved = 0;
+    const results: { id: string; removed: number; scope: string | null }[] = [];
+    for (const id of list) {
+      const log = await prisma.moderationLog.findUnique({
+        where: { id },
+        include: { actor: { select: { id: true } } },
+      });
+      // Missing, not a broadcast, or (for college admins) outside their
+      // campus: quietly skipped — the list never shows what you can't touch.
+      if (!log || log.action !== 'announce') continue;
+      if (!isSuper && !(collegeIds.length && log.collegeId === collegeIds[0])) continue;
+
+      const sentAt = new Date(log.createdAt);
+      const deleted = await prisma.notification.deleteMany({
+        where: {
+          type: 'ANNOUNCEMENT',
+          actorId: log.actorId,
+          createdAt: { gte: sentAt, lte: new Date(sentAt.getTime() + 1000) },
+        },
+      });
+      totalRemoved += deleted.count;
+      results.push({ id, removed: deleted.count, scope: log.collegeId });
+
+      await prisma.moderationLog.update({
+        where: { id },
+        data: { metadata: { ...((log.metadata as any) || {}), recalledAt: new Date().toISOString(), recalledRows: (log.metadata as any)?.recalledRows || 0 + deleted.count } },
+      }).catch(() => {}); // audit stamp is best-effort; the recall itself already happened
+      await this.log(viewerId, 'announce:remove', 'COLLEGE', id, log.collegeId, `Recalled broadcast: ${(log.metadata as any)?.title || 'untitled'}`, { removed: deleted.count });
+    }
+
+    if (totalRemoved > 0) {
+      // Badge caches for everyone who lost rows: recompute from the DB on
+      // their next poll instead of showing a stale unread count.
+      const affected = await prisma.notification.findMany({
+        where: { type: 'ANNOUNCEMENT', actorId: (await prisma.moderationLog.findUnique({ where: { id: list[0] }, select: { actorId: true } }))?.actorId },
+        select: { recipientId: true },
+        distinct: ['recipientId'],
+        take: 1000,
+      }).catch(() => [] as { recipientId: string }[]);
+      if (affected.length) invalidateUnreadCount(...affected.map((r) => r.recipientId));
+      publish('notification:new', { userIds: affected.map((r) => r.recipientId) });
+    }
+    return { removed: totalRemoved, results };
+  }
+
+  /**
    * Full inspect view for one user: identity, standing, recent content,
    * every report touching them, verification trail. Scoped like everything.
    */
