@@ -8,7 +8,7 @@ import { env } from '../config/env';
 import { JwtPayload } from '../types';
 import { invalidateUser } from '../utils/user-cache';
 import { isPasswordSet } from '../utils/password';
-import { isReservedUsername, USERNAME_PATTERN } from '../utils/username';
+import { isReservedUsername, USERNAME_PATTERN, checkUsernameLocally, normalizeUsername } from '../utils/username';
 
 /**
  * Google Sign-In, real verification — not dummy:
@@ -194,8 +194,71 @@ async function availableHandle(stem: string): Promise<string> {
   return `student${Date.now().toString().slice(-6)}`;
 }
 
-export interface GoogleAuthResult {
-  accessToken: string;
+/**
+ * Identity typed in the signup wizard (username + display name) before tapping
+ * "Continue with Google".
+ *
+ * The email funnel collects username + name up front and fails fast on them;
+ * Google signup must do the same instead of silently minting a random handle
+ * the user never chose (handles and names are locked for life). When supplied
+ * and non-empty, BOTH are validated with the exact same rules as typed signup
+ * and used for newly created accounts. When absent/empty (e.g. the login-page
+ * Google button, which has no identity form), the old auto-generation applies.
+ * Linking an existing account ignores this entirely — that row already owns
+ * its username and name.
+ */
+export interface GoogleSignupIdentity {
+  username?: string;
+  displayName?: string;
+}
+
+/** Explicit 409 for identity collisions (same contract as typed signup). */
+function identityConflict(message: string): never {
+  const e: any = new Error(message);
+  e.status = 409;
+  throw e;
+}
+
+/**
+ * Resolve the handle for a NEW Google-created account: the wizard-typed one
+ * when given (same shape + reserved + uniqueness gates as typed signup), else
+ * a generated one. Throws 400/409 — never creates a row on a bad identity.
+ */
+async function resolveGoogleUsername(raw: unknown): Promise<string | null> {
+  const username = normalizeUsername(raw);
+  if (!username) return null;
+  const local = checkUsernameLocally(username);
+  if (!local.available) {
+    const e: any = new Error(local.error!);
+    e.status = 400;
+    e.code = local.reason === 'reserved' ? 'USERNAME_RESERVED' : 'USERNAME_INVALID';
+    throw e;
+  }
+  const taken = await prisma.user.findFirst({
+    where: { username: { equals: username, mode: 'insensitive' } },
+    select: { id: true },
+  });
+  if (taken) identityConflict('Username already taken');
+  return username;
+}
+
+/**
+ * Resolve the display name for a NEW Google-created account: the wizard-typed
+ * one when given (same 2-50 rule as typed signup), else the Google claim.
+ * Throws 400 on a provided-but-invalid name; empty/missing falls back.
+ */
+function resolveGoogleDisplayName(raw: unknown, googleName: unknown): string {
+  const typed = String(raw ?? '').trim();
+  if (!typed) return sanitizeDisplayName(googleName);
+  if (typed.length < 2 || typed.length > 50) {
+    const e: any = new Error('Name must be 2-50 characters');
+    e.status = 400;
+    throw e;
+  }
+  return typed.slice(0, 50);
+}
+
+export interface GoogleAuthResult {  accessToken: string;
   refreshToken: string;
   created: boolean;
   user: {
@@ -227,8 +290,15 @@ export interface GoogleAuthResult {
  *   (email_verified), which is exactly what our OTP proves — so a match
  *   auto-verifies instantly, no code needed. A mismatch creates NOTHING (no
  *   junk rows): the user falls back to OTP or switches Google accounts.
+ *   The wizard-typed username + display name (identity) are honored for new
+ *   accounts — same validation as email signup — so Google never mints a
+ *   random handle the user didn't choose.
  */
-export async function googleAuth(idToken: string, collegeId?: string): Promise<GoogleAuthResult> {
+export async function googleAuth(
+  idToken: string,
+  collegeId?: string,
+  identity?: GoogleSignupIdentity,
+): Promise<GoogleAuthResult> {
   const g = await verifyGoogleIdToken(idToken);
 
   // Funnel college check FIRST — before any row exists or links. A personal
@@ -306,12 +376,14 @@ export async function googleAuth(idToken: string, collegeId?: string): Promise<G
   } else if (funnelCollege) {
     // New funnel account — verified from birth: Google proved the inbox and
     // the domain matches. Password comes later via setInitialPassword.
+    // Username/name come from the wizard when the user typed them (same rules
+    // as email signup); otherwise they are derived, exactly like before.
     created = true;
-    const username = await availableHandle(baseHandle(g.name, g.email));
-    const displayName = sanitizeDisplayName(g.name);
+    const typedUsername = await resolveGoogleUsername(identity?.username);
+    const username = typedUsername ?? await availableHandle(baseHandle(g.name, g.email));
+    const displayName = resolveGoogleDisplayName(identity?.displayName, g.name);
     // passwordHash is NOT NULL: park a random secret no one can guess or use.
-    user = await prisma.user.create({
-      data: {
+    let userData = {
         email: g.email,
         passwordHash: crypto.randomUUID() + crypto.randomUUID(),
         googleId: g.googleId,
@@ -324,27 +396,40 @@ export async function googleAuth(idToken: string, collegeId?: string): Promise<G
         collegeEmailVerifiedAt: new Date(),
         verificationStatus: 'VERIFIED',
         isVerified: true,
-      },
-    });
+      };
+    try {
+      user = await prisma.user.create({ data: userData });
+    } catch (err: any) {
+      // Two Google taps racing the same typed handle (or address): the DB's
+      // unique index is the truth — answer 409, never 500.
+      if (err?.code === 'P2002') identityConflict('Username or email already in use — try again');
+      throw err;
+    }
   } else {
     // New account — replicate exactly what funnel signup creates (minus the
     // college): passwordless, UNVERIFIED, no college yet.
     created = true;
-    const username = await availableHandle(baseHandle(g.name, g.email));
-    const displayName = sanitizeDisplayName(g.name);
+    const typedUsername = await resolveGoogleUsername(identity?.username);
+    const username = typedUsername ?? await availableHandle(baseHandle(g.name, g.email));
+    const displayName = resolveGoogleDisplayName(identity?.displayName, g.name);
     // passwordHash is NOT NULL: park a random secret no one can guess or use —
     // Google users keep signing in with Google; it exists to keep the shape.
-    user = await prisma.user.create({
-      data: {
-        email: g.email,
-        passwordHash: crypto.randomUUID() + crypto.randomUUID(),
-        googleId: g.googleId,
-        username,
-        displayName,
-        avatarUrl: g.picture || undefined,
-        verificationStatus: 'UNVERIFIED',
-      },
-    });
+    try {
+      user = await prisma.user.create({
+        data: {
+          email: g.email,
+          passwordHash: crypto.randomUUID() + crypto.randomUUID(),
+          googleId: g.googleId,
+          username,
+          displayName,
+          avatarUrl: g.picture || undefined,
+          verificationStatus: 'UNVERIFIED',
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2002') identityConflict('Username or email already in use — try again');
+      throw err;
+    }
   }
 
   const payload: JwtPayload = {

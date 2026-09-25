@@ -21,8 +21,9 @@ import { User } from '@/types';interface AuthState {
   setUser: (user: User | null) => void;
   toggleIncognito: () => void;
   login: (identifier: string, password: string) => Promise<void>;
-  /** Funnel college is optional: with it, Google auto-verifies on domain match. */
-  loginWithGoogle: (idToken: string, collegeId?: string) => Promise<boolean>;
+  /** Funnel college is optional: with it, Google auto-verifies on domain match.
+   *  Identity (wizard-typed username + name) is honored for new accounts. */
+  loginWithGoogle: (idToken: string, collegeId?: string, identity?: { username?: string; displayName?: string }) => Promise<boolean>;
   /** Funnel start: college + identity, no password (set post-verification). */
   signup: (data: { collegeId: string; email: string; username: string; displayName: string }) => Promise<void>;
   logout: () => Promise<void>;
@@ -70,9 +71,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   /** Google Sign-In: server verifies the ID token, links/creates the account.
    *  Returns true when a NEW account was created (for the welcome toast).
-   *  With a funnel collegeId, a matching-domain Google email auto-verifies. */
-  loginWithGoogle: async (idToken, collegeId) => {
-    const { data } = await api.post('/auth/google', { credential: idToken, ...(collegeId ? { collegeId } : {}) });
+   *  With a funnel collegeId, a matching-domain Google email auto-verifies.
+   *  With an identity (signup wizard), the typed username + name are used for
+   *  new accounts instead of generated ones. */
+  loginWithGoogle: async (idToken, collegeId, identity) => {
+    const { data } = await api.post('/auth/google', {
+      credential: idToken,
+      ...(collegeId ? { collegeId } : {}),
+      ...(identity?.username ? { username: identity.username } : {}),
+      ...(identity?.displayName ? { displayName: identity.displayName } : {}),
+    });
     safeLocalStorage.setItem('accessToken', data.accessToken);
     safeLocalStorage.setItem('refreshToken', data.refreshToken);
     set({ user: data.user, isAuthenticated: true });

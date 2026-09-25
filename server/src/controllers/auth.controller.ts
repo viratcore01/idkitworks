@@ -54,7 +54,16 @@ export class AuthController {
       const collegeId = typeof req.body?.collegeId === 'string' && req.body.collegeId
         ? req.body.collegeId
         : undefined;
-      const result = await googleAuth(idToken, collegeId);
+      // Wizard-typed identity (signup wizard only): the username + display name
+      // the user chose BEFORE tapping Google. Honored for new accounts with the
+      // same validation as email signup — never silently replaced by a random
+      // handle. Absent = legacy path (auto-generate, as the login button does).
+      const rawUsername = typeof req.body?.username === 'string' ? req.body.username : undefined;
+      const rawDisplayName = typeof req.body?.displayName === 'string' ? req.body.displayName : undefined;
+      const identity = rawUsername !== undefined || rawDisplayName !== undefined
+        ? { username: rawUsername, displayName: rawDisplayName }
+        : undefined;
+      const result = await googleAuth(idToken, collegeId, identity);
       res.json(result);
     } catch (error: any) {
       // Verification failures are the client's fault → 401; config/env issues → their status

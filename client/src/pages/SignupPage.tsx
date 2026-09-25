@@ -594,9 +594,26 @@ export default function SignupPage() {
             <span className="text-xs font-body text-gray-500">or</span>
             <div className="h-px flex-1 bg-gray-300" />
           </div>
-          <GoogleButton mode="signup" collegeId={college!.id} onSuccess={goApp} />
+          <GoogleButton
+            mode="signup"
+            collegeId={college!.id}
+            identity={{ username: formData.username.trim().toLowerCase(), displayName: formData.displayName.trim() }}
+            validateIdentity={() => {
+              // Same identity the email path requires: Google must never mint a
+              // random handle over values the user already chose (both lock for
+              // life). Invalid → abort with a message, stay on this form.
+              if (formData.displayName.trim().length < 2 || formData.displayName.trim().length > 50)
+                return 'Type your name above first — it is fixed for life once your account is created';
+              if (!usernameOk) {
+                const fb = usernameFeedback(usernameStatus, formData.username);
+                return fb?.text || 'Pick a valid username above first — it is fixed for life once your account is created';
+              }
+              return null;
+            }}
+            onSuccess={goApp}
+          />
           <p className="text-xs font-body text-gray-500 text-center">
-            Use your <span className="font-semibold">@{domain}</span> Google account and skip the code entirely.
+            Uses the username and name you typed above with your <span className="font-semibold">@{domain}</span> Google account — and skips the code entirely.
           </p>
         </div>
       )}

@@ -334,3 +334,67 @@ test('SECURITY: a generated handle can never be a reserved word', async () => {
   assert.equal(isReservedUsername(username), false, `generated handle must not be reserved: ${username}`);
   assert.match(username, /^[a-z0-9_]{3,20}$/);
 });
+
+// ─────────── wizard-typed identity (username + name) ────────────────────
+// The signup wizard collects username + name BEFORE the Google button; Google
+// signup must honor them (same rules as email signup) instead of minting a
+// random handle the user never chose. Both lock for life.
+
+test('Google signup uses the wizard-typed username and display name', async () => {
+  stubJwks();
+  const { db } = setup();
+  const result = await googleAuth(mintToken(), COLLEGE_ID, { username: 'chosenhandle', displayName: 'Chosen Name' });
+
+  assert.equal(result.created, true);
+  assert.equal(result.user.username, 'chosenhandle');
+  assert.equal(result.user.displayName, 'Chosen Name');
+  assert.equal(db.rows('user')[0].username, 'chosenhandle');
+  assert.equal(db.rows('user')[0].displayName, 'Chosen Name');
+});
+
+test('Google signup rejects a taken wizard username and creates nothing', async () => {
+  stubJwks();
+  const { db } = setup({
+    users: [makeUser({ id: 'other', email: 'other@ipec.org.in', username: 'takenhandle', collegeEmail: 'other@ipec.org.in' })],
+  });
+  await rejectsWithStatus(
+    () => googleAuth(mintToken(), COLLEGE_ID, { username: 'TakenHandle', displayName: 'New Name' }),
+    409,
+  );
+  assert.equal(db.rows('user').length, 1, 'a taken handle creates no junk row');
+});
+
+test('Google signup rejects a reserved or malformed wizard username', async () => {
+  stubJwks();
+  setup();
+  await rejectsWithStatus(
+    () => googleAuth(mintToken(), COLLEGE_ID, { username: 'admin', displayName: 'Admin User' }),
+    400,
+    'USERNAME_RESERVED',
+  );
+  await rejectsWithStatus(
+    () => googleAuth(mintToken(), COLLEGE_ID, { username: 'ab', displayName: 'Admin User' }),
+    400,
+    'USERNAME_INVALID',
+  );
+});
+
+test('Google signup rejects a wizard name outside 2-50 characters', async () => {
+  stubJwks();
+  setup();
+  await rejectsWithStatus(
+    () => googleAuth(mintToken(), COLLEGE_ID, { username: 'finehandle', displayName: 'x' }),
+    400,
+  );
+});
+
+test('linking an existing account ignores the wizard identity (it keeps its own handle)', async () => {
+  stubJwks();
+  const { db } = setup({ users: [makeUser({ id: 'u1', username: 'original', displayName: 'Original Name' })] });
+  const result = await googleAuth(mintToken(), undefined, { username: 'sneakyhandle', displayName: 'Sneaky Name' });
+
+  assert.equal(result.created, false);
+  assert.equal(result.user.username, 'original', 'a link never renames the account');
+  assert.equal(db.rows('user')[0].username, 'original');
+  assert.equal(db.rows('user')[0].displayName, 'Original Name');
+});
