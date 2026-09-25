@@ -1,3 +1,4 @@
+import { safeLocalStorage, safeSessionStorage } from '@/utils/safeStorage';
 /**
  * Photo URL resolution for <img> tags.
  *
@@ -6,7 +7,7 @@
  * as a query param made every photo in the app silently break 15 minutes
  * after login ("image not available"). Photos therefore use a dedicated
  * LONG-LIVED token (`skola_pt` (legacy key kept so users stay logged in), 30 days) fetched once after login and stored
- * in localStorage. If it's ever missing or rejected, we fetch a fresh one
+ * in safeLocalStorage. If it's ever missing or rejected, we fetch a fresh one
  * once and retry — never an infinite loop.
  */
 import { useEffect, useState } from 'react';
@@ -26,12 +27,12 @@ export function onPhotoTokenChange(cb: () => void): () => void {
 }
 
 export function getPhotoToken(): string {
-  return localStorage.getItem('skola_pt') || '';
+  return safeLocalStorage.getItem('skola_pt') || '';
 }
 
 export function setPhotoToken(t: string): void {
   if (t && t !== getPhotoToken()) {
-    localStorage.setItem('skola_pt', t);
+    safeLocalStorage.setItem('skola_pt', t);
     rotate();
   }
 }
@@ -45,7 +46,7 @@ export async function refreshTokenFor(url: string): Promise<boolean> {
     const base = import.meta.env.VITE_API_URL
       ? `${String(import.meta.env.VITE_API_URL).replace(/\/+$/, '')}/api`
       : '/api';
-    const token = localStorage.getItem('accessToken') || '';
+    const token = safeLocalStorage.getItem('accessToken') || '';
     if (!token) return false;
     const r = await fetch(`${base}/users/photo-token`, { headers: { Authorization: `Bearer ${token}` } });
     if (!r.ok) return false;

@@ -1,3 +1,4 @@
+import { safeLocalStorage, safeSessionStorage } from '@/utils/safeStorage';
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText } from 'lucide-react';
@@ -70,21 +71,21 @@ export default function HomePage() {
  const restoredRef = useRef(false);
  useEffect(() => {
  if (restoredRef.current || isLoading) return;
- const saved = sessionStorage.getItem('restore-scroll-y');
+ const saved = safeSessionStorage.getItem('restore-scroll-y');
  if (saved === null) {
  restoredRef.current = true;
  return;
  }
  const y = parseInt(saved, 10);
  if (!Number.isFinite(y)) {
- sessionStorage.removeItem('restore-scroll-y');
+ safeSessionStorage.removeItem('restore-scroll-y');
  restoredRef.current = true;
  return;
  }
  const canReach = document.documentElement.scrollHeight >= y + window.innerHeight;
  if (canReach || !hasNextPage) {
  window.scrollTo(0, y);
- sessionStorage.removeItem('restore-scroll-y');
+ safeSessionStorage.removeItem('restore-scroll-y');
  restoredRef.current = true;
  } else {
  fetchNextPage();

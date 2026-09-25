@@ -1,3 +1,4 @@
+import { safeLocalStorage, safeSessionStorage } from '@/utils/safeStorage';
 import { io, Socket } from 'socket.io-client';
 
 /**
@@ -9,7 +10,7 @@ let socket: Socket | null = null;
 
 export function getSocket(): Socket | null {
   if (socket) return socket;
-  const token = localStorage.getItem('accessToken');
+  const token = safeLocalStorage.getItem('accessToken');
   if (!token) return null;
 
   const url = import.meta.env.VITE_API_URL
@@ -30,7 +31,7 @@ export function getSocket(): Socket | null {
   // later getSocket() call builds a clean connection — no zombie session.
   socket.on('connect', () => {
     socket!.io.on('reconnect_attempt', () => {
-      socket!.auth = { token: localStorage.getItem('accessToken') };
+      socket!.auth = { token: safeLocalStorage.getItem('accessToken') };
     });
   });
   socket.on('connect_error', () => {

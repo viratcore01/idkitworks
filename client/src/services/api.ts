@@ -1,3 +1,4 @@
+import { safeLocalStorage, safeSessionStorage } from '@/utils/safeStorage';
 import axios from 'axios';
 
 // Production: VITE_API_URL is the bare API host (e.g. https://zoclo-api.onrender.com)
@@ -22,7 +23,7 @@ const api = axios.create({
 
 // Attach access token
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
+  const token = safeLocalStorage.getItem('accessToken');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -59,10 +60,10 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = localStorage.getItem('refreshToken');
+      const refreshToken = safeLocalStorage.getItem('refreshToken');
       const onAuthPage = /^\/(login|signup)$/.test(window.location.pathname);
       if (!refreshToken) {
-        localStorage.clear();
+        safeLocalStorage.clear();
         // Never bounce people off the auth pages themselves — signup makes
         // pre-auth calls (interests/colleges) and must stay usable.
         // NOTE: client-side navigation only (see 'auth:expired' in App).
@@ -75,8 +76,8 @@ api.interceptors.response.use(
       try {
         // Same base as everything else — a relative URL 404s on the SPA host in production
         const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken });
-        localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
+        safeLocalStorage.setItem('accessToken', data.accessToken);
+        safeLocalStorage.setItem('refreshToken', data.refreshToken);
         processQueue(null, data.accessToken);
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(originalRequest);
@@ -86,8 +87,8 @@ api.interceptors.response.use(
         // stored tokens changed while we were refreshing, ADOPT them and
         // retry — never rotate again, or the tabs will invalidate each
         // other forever (refresh ping-pong).
-        const latestAccess = localStorage.getItem('accessToken');
-        const latestRefresh = localStorage.getItem('refreshToken');
+        const latestAccess = safeLocalStorage.getItem('accessToken');
+        const latestRefresh = safeLocalStorage.getItem('refreshToken');
         if (
           refreshError?.response?.status === 401 &&
           latestRefresh && latestRefresh !== refreshToken &&
@@ -98,7 +99,7 @@ api.interceptors.response.use(
           return api(originalRequest);
         }
         processQueue(refreshError, null);
-        localStorage.clear();
+        safeLocalStorage.clear();
         if (!onAuthPage) window.dispatchEvent(new CustomEvent('auth:expired'));
         return Promise.reject(refreshError);
       } finally {

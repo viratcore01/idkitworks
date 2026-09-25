@@ -1,3 +1,4 @@
+import { safeLocalStorage, safeSessionStorage } from '@/utils/safeStorage';
 import { create } from 'zustand';
 import api from '@/services/api';
 import { ensurePhotoToken } from '@/utils/photo';
@@ -57,8 +58,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   login: async (identifier, password) => {
     const { data } = await api.post('/auth/login', { identifier, password });
-    localStorage.setItem('accessToken', data.accessToken);
-    localStorage.setItem('refreshToken', data.refreshToken);
+    safeLocalStorage.setItem('accessToken', data.accessToken);
+    safeLocalStorage.setItem('refreshToken', data.refreshToken);
     set({ user: data.user, isAuthenticated: true });
     // Login response carries only collegeId — fetch the full profile (with the
     // college object) so the college gate evaluates correctly immediately.
@@ -72,8 +73,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
    *  With a funnel collegeId, a matching-domain Google email auto-verifies. */
   loginWithGoogle: async (idToken, collegeId) => {
     const { data } = await api.post('/auth/google', { credential: idToken, ...(collegeId ? { collegeId } : {}) });
-    localStorage.setItem('accessToken', data.accessToken);
-    localStorage.setItem('refreshToken', data.refreshToken);
+    safeLocalStorage.setItem('accessToken', data.accessToken);
+    safeLocalStorage.setItem('refreshToken', data.refreshToken);
     set({ user: data.user, isAuthenticated: true });
     try { await get().fetchMe(); } catch {}
     ensurePhotoToken().catch(() => {});
@@ -82,8 +83,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signup: async (payload) => {
     const { data } = await api.post('/auth/signup', payload);
-    localStorage.setItem('accessToken', data.accessToken);
-    localStorage.setItem('refreshToken', data.refreshToken);
+    safeLocalStorage.setItem('accessToken', data.accessToken);
+    safeLocalStorage.setItem('refreshToken', data.refreshToken);
     set({ user: data.user, isAuthenticated: true });
     try { await get().fetchMe(); } catch {}
     // Same as login: photo <img> URLs need the long-lived token immediately —
@@ -92,11 +93,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
-    const refreshToken = localStorage.getItem('refreshToken');
+    const refreshToken = safeLocalStorage.getItem('refreshToken');
     try { await api.post('/auth/logout', { refreshToken }); } catch {}
     disconnectSocket();
     queryClient.clear();
-    localStorage.clear();
+    safeLocalStorage.clear();
     set({ user: null, isAuthenticated: false, isIncognito: false });
   },
 
@@ -105,7 +106,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Server kills ALL sessions — behave like a logout everywhere.
     disconnectSocket();
     queryClient.clear();
-    localStorage.clear();
+    safeLocalStorage.clear();
     set({ user: null, isAuthenticated: false, isIncognito: false });
   },
 
@@ -134,7 +135,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Server kills ALL sessions — behave like a logout everywhere.
     disconnectSocket();
     queryClient.clear();
-    localStorage.clear();
+    safeLocalStorage.clear();
     set({ user: null, isAuthenticated: false, isIncognito: false });
   },
 
@@ -142,12 +143,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await api.delete('/auth/account');
     disconnectSocket();
     queryClient.clear();
-    localStorage.clear();
+    safeLocalStorage.clear();
     set({ user: null, isAuthenticated: false, isIncognito: false });
   },
 
   fetchMe: async () => {
-    const token = localStorage.getItem('accessToken');
+    const token = safeLocalStorage.getItem('accessToken');
     if (!token) {
       // No backdoor: unauthenticated visitors go to login like a real app.
       set({ isLoading: false, bootStuck: false });
@@ -181,7 +182,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
     }
     if (lastError?.response) {
-      localStorage.clear();
+      safeLocalStorage.clear();
       set({ user: null, isAuthenticated: false, isLoading: false, bootStuck: false, isRefreshingSession: false });
     } else {
       // Server never answered. Keep the tokens — the session is probably

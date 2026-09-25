@@ -1,3 +1,4 @@
+import { safeLocalStorage, safeSessionStorage } from '@/utils/safeStorage';
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -51,17 +52,17 @@ const COLLEGE_KEYS = COLLEGE_STORAGE_KEYS;
 
 export default function SignupPage() {
   const [phase, setPhase] = useState<Phase>(() => {
-    const saved = sessionStorage.getItem('signup:phase');
+    const saved = safeSessionStorage.getItem('signup:phase');
     return saved === 'identity' || saved === 'otp' || saved === 'password' ? (saved as Phase) : 'college';
   });
   const [formData, setFormData] = useState({
-    email: sessionStorage.getItem('signup:email') || '',
-    username: sessionStorage.getItem('signup:username') || '',
-    displayName: sessionStorage.getItem('signup:displayName') || '',
+    email: safeSessionStorage.getItem('signup:email') || '',
+    username: safeSessionStorage.getItem('signup:username') || '',
+    displayName: safeSessionStorage.getItem('signup:displayName') || '',
   });
   const [college, setCollege] = useState<CollegeOption | null>(() => {
-    const id = sessionStorage.getItem('signup:collegeId');
-    const name = sessionStorage.getItem('signup:collegeName');
+    const id = safeSessionStorage.getItem('signup:collegeId');
+    const name = safeSessionStorage.getItem('signup:collegeName');
     // A pick we cannot DESCRIBE (an id with no name) is not a pick: only a
     // broken write can produce that shape, and rendering it means an empty
     // chip plus a scary "not onboarded" alert — worse than simply re-asking.
@@ -71,8 +72,8 @@ export default function SignupPage() {
     return {
       id,
       name,
-      shortName: sessionStorage.getItem('signup:collegeShort') || null,
-      emailDomain: sessionStorage.getItem('signup:collegeDomain') || null,
+      shortName: safeSessionStorage.getItem('signup:collegeShort') || null,
+      emailDomain: safeSessionStorage.getItem('signup:collegeDomain') || null,
     };
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -80,9 +81,9 @@ export default function SignupPage() {
   const [otp, setOtp] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>(() => localUsernameStatus(sessionStorage.getItem('signup:username') || ''));
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>(() => localUsernameStatus(safeSessionStorage.getItem('signup:username') || ''));
   const [cooldown, setCooldown] = useState(() => {
-    const until = Number(sessionStorage.getItem('signup:cooldownUntil') || 0);
+    const until = Number(safeSessionStorage.getItem('signup:cooldownUntil') || 0);
     return Math.max(0, Math.ceil((until - Date.now()) / 1000));
   });
   const submittingRef = useRef(false); // ref guard: double-taps beat React re-render
@@ -97,18 +98,18 @@ export default function SignupPage() {
   // Persist the flow so a reload mid-signup (deploy, refresh, misclick) never
   // throws the user back to square one with a code already in their inbox.
   // Deliberate backs bypass this by clearing storage (see handleBack).
-  useEffect(() => { sessionStorage.setItem('signup:phase', phase); }, [phase]);
-  useEffect(() => { sessionStorage.setItem('signup:email', formData.email); }, [formData.email]);
-  useEffect(() => { sessionStorage.setItem('signup:username', formData.username); }, [formData.username]);
-  useEffect(() => { sessionStorage.setItem('signup:displayName', formData.displayName); }, [formData.displayName]);
+  useEffect(() => { safeSessionStorage.setItem('signup:phase', phase); }, [phase]);
+  useEffect(() => { safeSessionStorage.setItem('signup:email', formData.email); }, [formData.email]);
+  useEffect(() => { safeSessionStorage.setItem('signup:username', formData.username); }, [formData.username]);
+  useEffect(() => { safeSessionStorage.setItem('signup:displayName', formData.displayName); }, [formData.displayName]);
   useEffect(() => {
     if (college) {
-      sessionStorage.setItem('signup:collegeId', college.id);
-      sessionStorage.setItem('signup:collegeName', college.name);
-      college.shortName ? sessionStorage.setItem('signup:collegeShort', college.shortName) : sessionStorage.removeItem('signup:collegeShort');
-      college.emailDomain ? sessionStorage.setItem('signup:collegeDomain', college.emailDomain) : sessionStorage.removeItem('signup:collegeDomain');
+      safeSessionStorage.setItem('signup:collegeId', college.id);
+      safeSessionStorage.setItem('signup:collegeName', college.name);
+      college.shortName ? safeSessionStorage.setItem('signup:collegeShort', college.shortName) : safeSessionStorage.removeItem('signup:collegeShort');
+      college.emailDomain ? safeSessionStorage.setItem('signup:collegeDomain', college.emailDomain) : safeSessionStorage.removeItem('signup:collegeDomain');
     } else {
-      for (const key of COLLEGE_KEYS) sessionStorage.removeItem(key);
+      for (const key of COLLEGE_KEYS) safeSessionStorage.removeItem(key);
     }
   }, [college]);
   useEffect(() => () => { if (cooldownTimer.current) clearInterval(cooldownTimer.current); }, []);
@@ -150,7 +151,7 @@ export default function SignupPage() {
 
   const startCooldown = () => {
     const until = Date.now() + RESEND_COOLDOWN_SEC * 1000;
-    sessionStorage.setItem('signup:cooldownUntil', String(until));
+    safeSessionStorage.setItem('signup:cooldownUntil', String(until));
     setCooldown(RESEND_COOLDOWN_SEC);
     if (cooldownTimer.current) clearInterval(cooldownTimer.current);
     cooldownTimer.current = setInterval(() => {

@@ -1,3 +1,4 @@
+import { safeLocalStorage, safeSessionStorage } from '@/utils/safeStorage';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -173,11 +174,11 @@ export default function PostDetailPage() {
  useEffect(() => {
  const saved = (window.history.state?.usr as { scrollY?: number } | undefined)?.scrollY;
  if (typeof saved === 'number') {
- sessionStorage.setItem('restore-scroll-y', String(saved));
+ safeSessionStorage.setItem('restore-scroll-y', String(saved));
  }
  window.scrollTo(0, 0);
  return () => {
- if (!goingBackRef.current) sessionStorage.removeItem('restore-scroll-y');
+ if (!goingBackRef.current) safeSessionStorage.removeItem('restore-scroll-y');
  if (highlightTimer.current) clearTimeout(highlightTimer.current);
  if (replyClickTimer.current) clearTimeout(replyClickTimer.current);
  };
