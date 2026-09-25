@@ -26,6 +26,12 @@ import { User } from '@/types';interface AuthState {
   signup: (data: { collegeId: string; email: string; username: string; displayName: string }) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  /** Forgotten password: ask the server to mail a reset code. The server
+   *  answers IDENTICALLY for unknown accounts, so the UI must never treat the
+   *  result as confirmation that the account exists. */
+  requestPasswordReset: (identifier: string) => Promise<void>;
+  /** Forgotten password: redeem the mailed code and set a new password. */
+  resetPassword: (identifier: string, code: string, newPassword: string) => Promise<void>;
   setPasswordViaGoogle: (idToken: string, newPassword: string) => Promise<void>;
   /** Funnel step: first password (verified + none set). Stays logged in. */
   setInitialPassword: (newPassword: string) => Promise<void>;
@@ -101,6 +107,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     queryClient.clear();
     localStorage.clear();
     set({ user: null, isAuthenticated: false, isIncognito: false });
+  },
+
+  requestPasswordReset: async (identifier: string) => {
+    await api.post('/auth/password/forgot', { identifier });
+  },
+
+  /** The server kills every session on success, so there is nothing to sign
+   *  out of locally — the user simply logs in again with the new password. */
+  resetPassword: async (identifier: string, code: string, newPassword: string) => {
+    await api.post('/auth/password/reset', { identifier, code, newPassword });
   },
 
   /** Funnel first password: server gates on verified + none-set. Unlike the

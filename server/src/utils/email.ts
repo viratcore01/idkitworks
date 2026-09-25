@@ -302,7 +302,13 @@ async function withRetry(
   throw e;
 }
 
-export async function sendOtpEmail(to: string, code: string, collegeName: string | null): Promise<void> {
+/**
+ * Deliver a one-time code, or log it in development when no transport is
+ * configured. Production without credentials must fail loudly (503) rather
+ * than pretend a code was sent — the caller only persists the OTP AFTER this
+ * resolves, so a thrown error means "no phantom code was ever stored".
+ */
+async function deliverCode(to: string, code: string, body: MailBody): Promise<void> {
   if (!isEmailConfigured()) {
     if (process.env.NODE_ENV === 'production') {
       const e: any = new Error('Email sending is not configured on this server');
@@ -312,12 +318,15 @@ export async function sendOtpEmail(to: string, code: string, collegeName: string
     console.log(`[OTP] (dev fallback, no mail creds) code for ${to}: ${code}`);
     return;
   }
+  return sendMail(body);
+}
 
-  const subject = `Your Zoclo verification code: ${code}`;
+/** College-email verification code ("prove you're a student"). */
+export async function sendOtpEmail(to: string, code: string, collegeName: string | null): Promise<void> {
   const collegeLine = collegeName ? ` for ${collegeName}` : '';
-  const body: MailBody = {
+  return deliverCode(to, code, {
     to,
-    subject,
+    subject: `Your Zoclo verification code: ${code}`,
     text:
       `Hi!\n\n` +
       `Your Zoclo student-verification code${collegeLine} is:\n\n` +
@@ -330,9 +339,36 @@ export async function sendOtpEmail(to: string, code: string, collegeName: string
       `<p style="font-size:28px;font-weight:bold;letter-spacing:8px;">${code}</p>` +
       `<p>It expires in 10 minutes. If you didn't ask for this, ignore this email.</p>` +
       `<p>— Team Zoclo</p>`,
-  };
+  });
+}
 
-  return sendMail(body);
+/**
+ * Forgotten-password code. Deliberately worded differently from the
+ * verification mail: it lands in an inbox that may be shared or forwarded, so
+ * the recipient must be able to tell instantly which flow they are in — and
+ * the note about an unrequested code is what tells them their password is
+ * still safe.
+ */
+export async function sendPasswordResetEmail(to: string, code: string, collegeName: string | null): Promise<void> {
+  const collegeLine = collegeName ? ` at ${collegeName}` : '';
+  return deliverCode(to, code, {
+    to,
+    subject: `Your Zoclo password reset code: ${code}`,
+    text:
+      `Hi!\n\n` +
+      `Someone asked to reset the password for your Zoclo account${collegeLine}.\n\n` +
+      `Your reset code is:\n\n` +
+      `    ${code}\n\n` +
+      `It expires in 10 minutes. If this wasn't you, ignore this email — your password stays unchanged.\n\n` +
+      `— Team Zoclo`,
+    html:
+      `<p>Hi!</p>` +
+      `<p>Someone asked to reset the password for your Zoclo account${collegeLine ? ` at <b>${collegeName}</b>` : ''}.</p>` +
+      `<p>Your reset code is:</p>` +
+      `<p style="font-size:28px;font-weight:bold;letter-spacing:8px;">${code}</p>` +
+      `<p>It expires in 10 minutes. If this wasn't you, ignore this email — your password stays unchanged.</p>` +
+      `<p>— Team Zoclo</p>`,
+  });
 }
 
 /**

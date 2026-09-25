@@ -1,11 +1,13 @@
-import { timingSafeEqual } from 'crypto';
 import { prisma } from '../config/prisma';
 import { publish } from '../config/bus';
 import { invalidateUser } from '../utils/user-cache';
 import { sendOtpEmail } from '../utils/email';
+import { codesMatch, generateOtpCode, OTP_PATTERN } from '../utils/otp';
 
 const OTP_TTL_MINUTES = 10;
 const MAX_OTP_ATTEMPTS = 5;
+/** Sends allowed per user inside one OTP_TTL_MINUTES window (resend included). */
+const MAX_OTP_SENDS_PER_WINDOW = 3;
 const MAX_EMAIL_LEN = 254;
 // Practical email shape check — the college-domain match below is the real gate.
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -18,13 +20,6 @@ function normalizeEmail(raw: string): string {
     throw e;
   }
   return email;
-}
-
-/** Constant-time 6-digit compare — never early-returns on first mismatch. */
-function codesMatch(a: string, b: string): boolean {
-  const ba = Buffer.from(a);
-  const bb = Buffer.from(b);
-  return ba.length === bb.length && timingSafeEqual(ba, bb);
 }
 
 export class EmailVerificationService {
@@ -72,15 +67,22 @@ export class EmailVerificationService {
       const e: any = new Error('This college email is already registered'); e.status = 409; throw e;
     }
 
-    // Rate limit: max 3 OTP requests per 10 minutes
+    // ── Rate limit: max 3 OTP requests per 10 minutes ──
+    //
+    // This counter is only meaningful because sends RETIRE the previous code
+    // instead of deleting it (see below). While the old code was deleted, the
+    // table could never hold more than one row per user, the count could never
+    // exceed 1, and the limit was dead code — a resend loop could mail an
+    // unlimited number of codes from one account (bounded only by the per-IP
+    // limiter) until the OTP row was retired on lockout or success.
     const recentOtps = await prisma.emailOtp.count({
       where: {
         userId,
         purpose: 'COLLEGE_EMAIL_VERIFY',
-        createdAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
+        createdAt: { gte: new Date(Date.now() - OTP_TTL_MINUTES * 60 * 1000) },
       },
     });
-    if (recentOtps >= 3) {
+    if (recentOtps >= MAX_OTP_SENDS_PER_WINDOW) {
       const e: any = new Error('Too many OTP requests. Please wait 10 minutes before trying again.'); e.status = 429; throw e;
     }
 
@@ -90,13 +92,18 @@ export class EmailVerificationService {
       where: { expiresAt: { lt: new Date() } },
     }).catch(() => {});
 
-    // Delete any existing unused OTPs for this user/purpose
-    await prisma.emailOtp.deleteMany({
+    // Retire any existing unused code for this user/purpose — marked used, NOT
+    // deleted, so the send-rate window above can actually count sends and the
+    // table keeps an auditable trail (how many codes went out, and when).
+    // redeemable() only ever looks at `usedAt: null`, so the newest code remains
+    // the only one that can be entered.
+    await prisma.emailOtp.updateMany({
       where: { userId, purpose: 'COLLEGE_EMAIL_VERIFY', usedAt: null },
+      data: { usedAt: new Date() },
     });
 
-    // Generate 6-digit OTP
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate 6-digit OTP (CSPRNG — see utils/otp.ts)
+    const code = generateOtpCode();
     const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
     // Send BEFORE persisting: if the mail fails, no phantom OTP is left
@@ -165,14 +172,22 @@ export class EmailVerificationService {
       const e: any = new Error('No valid OTP found. Request a new one.'); e.status = 400; throw e;
     }
 
+    // Shape before attempts: a malformed value is a client bug, not a guess, and
+    // must not spend one of the user's five attempts (the controller already
+    // screens length — this keeps the service honest when called directly, and
+    // guarantees codesMatch only ever sees equal-length inputs).
+    if (typeof code !== 'string' || !OTP_PATTERN.test(code.trim())) {
+      const e: any = new Error('Enter the 6-digit code from your email'); e.status = 400; throw e;
+    }
+
     // Track attempts
-    const attempts = (otpRecord as any).attempts || 0;
+    const attempts = otpRecord.attempts || 0;
     if (attempts >= MAX_OTP_ATTEMPTS) {
       await prisma.emailOtp.update({ where: { id: otpRecord.id }, data: { usedAt: new Date() } });
       const e: any = new Error('Too many failed attempts. Request a new OTP.'); e.status = 400; throw e;
     }
 
-    if (!/^\d{6}$/.test(code) || !codesMatch(otpRecord.code, code)) {
+    if (!codesMatch(otpRecord.code, code.trim())) {
       await prisma.emailOtp.update({ where: { id: otpRecord.id }, data: { attempts: attempts + 1 } });
       const e: any = new Error('Invalid OTP'); e.status = 400; throw e;
     }

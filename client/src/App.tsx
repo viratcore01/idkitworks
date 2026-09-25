@@ -13,6 +13,7 @@ const SignupPage = lazy(() => import('@/pages/SignupPage'));
 const ProfileSetupPage = lazy(() => import('@/pages/ProfileSetupPage'));
 const VerificationPage = lazy(() => import('@/pages/VerificationPage'));
 const SetupPasswordPage = lazy(() => import('@/pages/SetupPasswordPage'));
+const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
 const AdminLayout = lazy(() => import('@/layouts/AdminLayout'));
 const AdminOverview = lazy(() => import('@/pages/admin/AdminOverview'));
 const AdminIds = lazy(() => import('@/pages/admin/AdminIds'));
@@ -168,6 +169,7 @@ export default function App() {
  <Route element={<PublicRoute><AuthLayout /></PublicRoute>}>
  <Route path="/login" element={<LoginPage />} />
  <Route path="/signup" element={<SignupPage />} />
+ <Route path="/forgot-password" element={<ForgotPasswordPage />} />
  </Route>
 
  {/* Main app: protected AND college-gated */}

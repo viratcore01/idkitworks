@@ -5,7 +5,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { nextStep } from '@/utils/funnel';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
-import type { CollegeOption } from '@/components/common/CollegeSelect';
+import CollegeSelect, { type CollegeOption } from '@/components/common/CollegeSelect';
 import { photoSrc, usePhotoVersion } from '@/utils/photo';
 import ImageEditorModal from '@/components/common/ImageEditorModal';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
@@ -21,6 +21,15 @@ export default function ProfileSetupPage() {
  const college: CollegeOption | null = user?.college
    ? { id: user.college.id, name: user.college.name, shortName: user.college.shortName, city: user.college.city, state: user.college.state }
    : null;
+ // Accounts that arrive WITHOUT a college — "Sign in with Google" from the
+ // login page creates exactly that, and every app route is college-gated.
+ // They were previously trapped: this screen showed an empty, disabled college
+ // field and refused to save, so the user could never reach the feed (and the
+ // funnel kept routing them straight back here). They now pick their college
+ // ONCE, right here; the server locks it the moment the account has one.
+ const needsCollege = !user?.collegeId;
+ const [pickedCollege, setPickedCollege] = useState<CollegeOption | null>(null);
+ const chosenCollege = college ?? pickedCollege;
  const [formData, setFormData] = useState({
  collegeId: user?.college?.id || '',
  course: user?.course || '',
@@ -80,17 +89,19 @@ export default function ProfileSetupPage() {
 
  const handleSubmit = async (e: React.FormEvent) => {
  e.preventDefault();
- // PRODUCT RULE: college comes from signup (locked) — every gate below
- // depends on it, so setup simply cannot complete without one.
- if (!college) {
- toast.error('No college on your account — restart signup or contact support');
+ // PRODUCT RULE: every gate below depends on having a college, so setup
+ // cannot complete without one. Existing accounts can't change theirs
+ // (server-enforced); college-less accounts must choose one here.
+ if (needsCollege && !pickedCollege) {
+ toast.error('Pick your college to continue');
  return;
  }
  setIsLoading(true);
  try {
-  // No collegeId in the payload: it's locked and the server rejects
-  // attempts to move it post-verification anyway.
+  // collegeId is sent ONLY when the account has none — for everyone else it
+  // is locked, and the server answers a move attempt with a 403.
   await updateProfile({
+    ...(needsCollege && pickedCollege ? { collegeId: pickedCollege.id } : {}),
     course: formData.course,
     year: formData.year,
     bio: formData.bio,
@@ -127,6 +138,24 @@ export default function ProfileSetupPage() {
  </div>
 
   <form onSubmit={handleSubmit} className="nb-card p-4 sm:p-6 space-y-4 min-w-0">
+  {needsCollege ? (
+  <div>
+  <label htmlFor="setup-college" className="block font-display text-sm font-semibold mb-1.5">Your college *</label>
+  <CollegeSelect
+  value={pickedCollege}
+  onChange={(c) => setPickedCollege(c)}
+  placeholder="Search e.g. IIT Delhi, VIT, SRM…"
+  />
+  <p className="text-xs text-gray-500 mt-1">
+  Your college is your world here — everything you see stays inside it. Double-check the pick: it locks the moment you save.
+  </p>
+  {pickedCollege && !pickedCollege.emailDomain && (
+  <p role="alert" className="text-xs mt-2 font-semibold text-nb-pink">
+  {pickedCollege.name} isn&apos;t onboarded for verification yet — pick another campus or contact support.
+  </p>
+  )}
+  </div>
+  ) : (
   <div>
   <label htmlFor="setup-college" className="block font-display text-sm font-semibold mb-1.5">College (locked)</label>
   <input
@@ -134,13 +163,14 @@ export default function ProfileSetupPage() {
   type="text"
   className="nb-input bg-gray-50 text-gray-500"
   value={college ? `${college.name}${college.shortName ? ` (${college.shortName})` : ''}` : ''}
-  placeholder="Not set — go back to signup"
+  placeholder="Not set"
   readOnly
   disabled
   aria-readonly="true"
   />
   <p className="text-xs text-gray-500 mt-1">Your college is fixed for the life of the account — posts, matches and chats never cross campuses.</p>
   </div>
+  )}
 
   <div>
   <label htmlFor="setup-course" className="block font-display text-sm font-semibold mb-1.5">Course / Branch *</label>
@@ -303,7 +333,7 @@ export default function ProfileSetupPage() {
 
   <button
   type="submit"
-  disabled={isLoading}
+  disabled={isLoading || (needsCollege && !pickedCollege)}
   aria-busy={isLoading}
   className="nb-btn-primary w-full text-center disabled:opacity-50 disabled:cursor-not-allowed"
   >
@@ -313,6 +343,9 @@ export default function ProfileSetupPage() {
  <><PartyPopper size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Complete Setup</>
  )}
  </button>
+ {needsCollege && !pickedCollege && (
+ <p className="text-xs font-body text-gray-500 text-center">Search above and pick your college — Complete Setup unlocks once selected.</p>
+ )}
  </form>
  </div>
  {editing && (

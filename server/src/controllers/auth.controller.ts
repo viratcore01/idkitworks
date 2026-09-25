@@ -59,6 +59,31 @@ export class AuthController {
     }
   }
 
+  /**
+   * Forgotten password, step 1: mail a reset code.
+   * 202 + a generic body for every input (see AuthService.requestPasswordReset).
+   */
+  async forgotPassword(req: Request, res: Response) {
+    try {
+      const { identifier, email } = req.body ?? {};
+      const result = await authService.requestPasswordReset(String(identifier ?? email ?? ''));
+      res.status(202).json(result);
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
+  /** Forgotten password, step 2: redeem the code and set a new password. */
+  async resetPassword(req: Request, res: Response) {
+    try {
+      const { identifier, email, code, newPassword } = req.body ?? {};
+      await authService.resetPassword(identifier ?? email, code, newPassword);
+      res.json({ reset: true, message: 'Password updated — sign in with your new password.' });
+    } catch (error: any) {
+      sendError(res, error, error.status || 400);
+    }
+  }
+
   async login(req: Request, res: Response) {
     try {
       // `identifier` is email-or-username; legacy `email` still accepted so

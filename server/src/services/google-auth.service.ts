@@ -29,13 +29,38 @@ interface GoogleJwk { kid: string; kty: string; n: string; e: string; alg?: stri
 let jwksCache: { keys: GoogleJwk[]; fetchedAt: number } | null = null;
 const JWKS_TTL = 60 * 60 * 1000; // 1h hard refresh
 
+/**
+ * Google being unreachable is OUR outage, not the user's fault, so it must not
+ * be reported as "invalid credential" (401) or leak a raw `TypeError: fetch
+ * failed` to the browser. 503 + an actionable message, and the underlying
+ * transport error is attached as `cause` so the server log names the real
+ * reason (DNS, ECONNRESET, TLS).
+ */
+function googleUnavailable(cause?: unknown): Error {
+  const e: any = new Error('Google Sign-In is temporarily unavailable — try again in a moment');
+  e.status = 503;
+  e.code = 'GOOGLE_UNAVAILABLE';
+  e.expose = true;
+  if (cause) e.cause = cause;
+  return e;
+}
+
 async function fetchJwks(): Promise<GoogleJwk[]> {
-  const res = await fetch('https://www.googleapis.com/oauth2/v3/certs', {
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) throw new Error('Could not reach Google to verify sign-in');
-  const data: any = await res.json();
-  return (data.keys || []) as GoogleJwk[];
+  let res: any;
+  try {
+    res = await fetch('https://www.googleapis.com/oauth2/v3/certs', {
+      headers: { Accept: 'application/json' },
+    });
+  } catch (err) {
+    throw googleUnavailable(err);
+  }
+  if (!res.ok) throw googleUnavailable(new Error(`JWKS responded ${res.status}`));
+  try {
+    const data: any = await res.json();
+    return (data.keys || []) as GoogleJwk[];
+  } catch (err) {
+    throw googleUnavailable(err);
+  }
 }
 
 async function importKey(jwk: GoogleJwk): Promise<CryptoKeyLike> {
@@ -228,6 +253,13 @@ export async function googleAuth(idToken: string, collegeId?: string): Promise<G
         e.status = 403; throw e;
       }
       user = await prisma.user.update({ where: { id: user.id }, data: { googleId: g.googleId } });
+    } else if (user.googleId !== g.googleId) {
+      // The row was found by EMAIL but is already bound to a different Google
+      // identity. Google guarantees a verified email belongs to one account, so
+      // this can only mean stale/imported data — fail closed rather than let a
+      // second Google identity walk into a linked account.
+      const e: any = new Error('This account is linked to a different Google account — sign in with the one you linked');
+      e.status = 403; throw e;
     }
     if (funnelCollege) {
       // College lock respected: fill only when empty, refuse cross-college.

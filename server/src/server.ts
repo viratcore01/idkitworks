@@ -161,6 +161,21 @@ const googleLimiter = rateLimit({
 });
 app.use('/api/auth/google', googleLimiter);
 
+// ── Password-reset mail brake: 20 requests / 15 min per network ──
+// The reset endpoint answers identically whether or not an account exists, so
+// this limiter is deliberately IP-scoped (never account-scoped): a 429 here
+// says "this network is noisy", never "this email exists". It exists to stop a
+// script from turning the endpoint into a mail cannon against the Gmail quota.
+const passwordResetLimiter = rateLimit({
+  keyGenerator: realClientIpKey,
+  windowMs: 15 * 60 * 1000,
+  limit: process.env.NODE_ENV === 'production' ? 20 : 300,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many reset requests from this network. Try again in 15 minutes.' },
+});
+app.use('/api/auth/password/forgot', passwordResetLimiter);
+
 // ── Health checks ──
 // GET /api/health: EXTREMELY lightweight, NO DB calls. Safe to ping every
 // few minutes from cron-job.org / UptimeRobot / GitHub Actions to keep the

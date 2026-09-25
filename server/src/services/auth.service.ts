@@ -1,6 +1,8 @@
 import { prisma, TX_OPTIONS } from '../config/prisma';
 import { hashPassword, comparePassword, isPasswordSet } from '../utils/password';
 import { checkEmail } from '../utils/email-validation';
+import { sendPasswordResetEmail } from '../utils/email';
+import { codesMatch, generateOtpCode, OTP_PATTERN } from '../utils/otp';
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -32,8 +34,29 @@ interface SignupStartInput {
   displayName: string;
 }
 
+/**
+ * Explicit 409 for identity collisions.
+ *
+ * These used to be bare `Error('Email already in use')` and the controller
+ * recovered the status by substring-matching the message (`includes('already')`)
+ * — a fragile coupling where re-wording a message silently downgrades a 409 to
+ * a 400. The status is now part of the error, like every other actionable
+ * failure in this file.
+ */
+function conflict(message: string): never {
+  const e: any = new Error(message);
+  e.status = 409;
+  throw e;
+}
+
 /** Stale passwordless+unverified rows are junk (abandoned signups) — purged on every start. */
 const PENDING_PURGE_DAYS = 7;
+
+/** Forgotten-password codes: 10-minute life, 3 sends per window, 5 guesses. */
+const RESET_PURPOSE = 'PASSWORD_RESET';
+const RESET_TTL_MINUTES = 10;
+const MAX_RESET_SENDS_PER_WINDOW = 3;
+const MAX_RESET_ATTEMPTS = 5;
 
 async function purgeStalePendingSignups(): Promise<void> {
   try {
@@ -189,7 +212,7 @@ export class AuthService {
             where: { username: { equals: input.username, mode: 'insensitive' }, NOT: { id: existingUser.id } },
             select: { id: true },
           });
-          if (clash) throw new Error('Username already taken');
+          if (clash) conflict('Username already taken');
         }
         // Coming back through the signup wizard may come with a CORRECTED
         // email (step-2 "wrong address? fix it"). The new address already
@@ -206,9 +229,7 @@ export class AuthService {
             where: { OR: [{ email }, { collegeEmail: email }], NOT: { id: existingUser.id } },
             select: { id: true },
           });
-          if (emailClash) {
-            const e: any = new Error('Email already in use'); e.status = 409; throw e;
-          }
+          if (emailClash) conflict('Email already in use');
           updateData.email = email;
           updateData.collegeEmail = email;
         }
@@ -219,9 +240,9 @@ export class AuthService {
         return this.issueSession(user);
       }
       if (existingUser.email === email || (existingUser as any).collegeEmail === email) {
-        throw new Error('Email already in use');
+        conflict('Email already in use');
       }
-      throw new Error('Username already taken');
+      conflict('Username already taken');
     }
 
     // No password yet — parked placeholder (same shape as Google-created
@@ -246,7 +267,7 @@ export class AuthService {
       // (including case variants — UNIQUE (LOWER(username)) catches those):
       // the DB unique index is the truth — answer 409, never 500.
       if (err?.code === 'P2002') {
-        const e: any = new Error('Email or username already in use'); e.status = 409; throw e;
+        conflict('Email or username already in use');
       }
       throw err;
     }
@@ -304,6 +325,153 @@ export class AuthService {
     }
     await prisma.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(newPassword) } });
     invalidateUser(userId);
+  }
+
+  /**
+   * ── Step 1 of forgotten-password: mail a reset code ──
+   *
+   * DELIBERATE TRADE-OFF: every input produces the SAME successful response —
+   * known identifier, unknown identifier, Google-only account, or a throttled
+   * request. Any difference (404, 429, a distinct message) turns this endpoint
+   * into an account-existence oracle, which is precisely what login goes to
+   * lengths to avoid. The cost is that a throttled user isn't told why no mail
+   * arrived; the client's own 60-second resend cooldown covers the common case,
+   * and the per-IP limiter (which does not depend on the account) still answers
+   * 429 for outright abuse.
+   *
+   * The code goes to the account's LOGIN email — the address the person asking
+   * has on file and just typed (for funnel accounts that IS the verified college
+   * email; a Google-created row keeps its Google address). Sending it to some
+   * other proven inbox would be safe but baffling ("we mailed your other
+   * account"), and it is never taken from the request body.
+   */
+  async requestPasswordReset(identifier: string): Promise<{ sent: true; expiresIn: number }> {
+    const generic = { sent: true as const, expiresIn: RESET_TTL_MINUTES * 60 };
+    if (typeof identifier !== 'string' || !identifier.trim()) return generic;
+    const id = identifier.trim();
+
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: { equals: id, mode: 'insensitive' } },
+          { username: { equals: id, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, email: true, collegeEmail: true, passwordHash: true, isActive: true, collegeId: true },
+    });
+    if (!user || !user.isActive) return generic;
+
+    // Google-only accounts have no password to reset: minting a first password
+    // is a separate action that requires a FRESH Google ID token
+    // (setPasswordViaGoogle). Doing it from an email code would quietly open a
+    // second, weaker door into those accounts. Skipped — and, per the
+    // trade-off above, indistinguishable from a send.
+    if (!isPasswordSet(user.passwordHash)) return generic;
+
+    const windowStart = new Date(Date.now() - RESET_TTL_MINUTES * 60 * 1000);
+    const recent = await prisma.emailOtp.count({
+      where: { userId: user.id, purpose: RESET_PURPOSE, createdAt: { gte: windowStart } },
+    });
+    if (recent >= MAX_RESET_SENDS_PER_WINDOW) return generic;
+
+    // Housekeeping + retire any live reset code (marked used, not deleted, so
+    // the send counter above can see it — same reasoning as the verify flow).
+    await prisma.emailOtp.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(() => {});
+    await prisma.emailOtp.updateMany({
+      where: { userId: user.id, purpose: RESET_PURPOSE, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    const to = user.email;
+    const college = user.collegeId
+      ? await prisma.college.findUnique({ where: { id: user.collegeId }, select: { name: true } })
+      : null;
+
+    const code = generateOtpCode();
+    // Send BEFORE persisting: a failed send must not leave a "phantom" code the
+    // user can never receive (same guarantee as the verification flow).
+    //
+    // A send failure is LOGGED, not returned: surfacing it would tell the caller
+    // that this identifier has an account (the mail is only attempted for real
+    // ones), re-opening the enumeration oracle this endpoint is built to close.
+    try {
+      await sendPasswordResetEmail(to, code, college?.name ?? null);
+    } catch (err: any) {
+      console.error('[password-reset] mail send failed for user', user.id, err?.message || err);
+      return generic;
+    }
+
+    await prisma.emailOtp.create({
+      data: {
+        userId: user.id,
+        email: to,
+        code,
+        purpose: RESET_PURPOSE,
+        expiresAt: new Date(Date.now() + RESET_TTL_MINUTES * 60 * 1000),
+      },
+    });
+
+    return generic;
+  }
+
+  /**
+   * ── Step 2 of forgotten-password: redeem the code and set a new password ──
+   *
+   * One generic failure for every bad path (unknown identifier, missing/expired
+   * code, wrong code, attempt exhaustion) so nothing here reports whether an
+   * account exists. Success sets the password and kills EVERY session — a reset
+   * is exactly the moment you want a stolen device signed out.
+   */
+  async resetPassword(identifier: string, code: string, newPassword: string): Promise<void> {
+    if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 128) {
+      const e: any = new Error('Password must be 8-128 characters'); e.status = 400; throw e;
+    }
+    const invalid = (): never => {
+      const e: any = new Error('That code is invalid or has expired — request a new one');
+      e.status = 400; e.code = 'RESET_CODE_INVALID';
+      throw e;
+    };
+    // Shape check BEFORE any lookup: a malformed code is a client bug, not a
+    // guess, and must not spend one of the five attempts.
+    if (typeof identifier !== 'string' || !identifier.trim()) invalid();
+    if (typeof code !== 'string' || !OTP_PATTERN.test(code.trim())) invalid();
+
+    const id = identifier.trim();
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: { equals: id, mode: 'insensitive' } },
+          { username: { equals: id, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, isActive: true },
+    });
+    if (!user || !user.isActive) invalid();
+
+    const otp = await prisma.emailOtp.findFirst({
+      where: { userId: user!.id, purpose: RESET_PURPOSE, usedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!otp) invalid();
+
+    if (otp!.attempts >= MAX_RESET_ATTEMPTS) {
+      await prisma.emailOtp.update({ where: { id: otp!.id }, data: { usedAt: new Date() } });
+      invalid();
+    }
+    if (!codesMatch(otp!.code, code.trim())) {
+      await prisma.emailOtp.update({ where: { id: otp!.id }, data: { attempts: otp!.attempts + 1 } });
+      invalid();
+    }
+
+    // Redeem, rotate the secret, and end every session — atomically enough that
+    // an interrupted reset can never leave a used code beside an old password.
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.$transaction([
+      prisma.emailOtp.update({ where: { id: otp!.id }, data: { usedAt: new Date() } }),
+      prisma.user.update({ where: { id: user!.id }, data: { passwordHash } }),
+      prisma.refreshToken.deleteMany({ where: { userId: user!.id } }),
+    ]);
+    invalidateUser(user!.id);
   }
 
   /**
@@ -379,13 +547,19 @@ export class AuthService {
    * windows, no token-family explosion from multi-tab refresh bursts.
    */
   async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
+    // Type guard before the query: Prisma rejects malformed `where` values with
+    // a validation error, which surfaces as a misleading 400 instead of the
+    // 401 that "your session ended" deserves.
+    if (typeof refreshToken !== 'string' || !refreshToken) {
+      const e: any = new Error('Invalid or expired refresh token'); e.status = 401; throw e;
+    }
     const stored = await prisma.refreshToken.findUnique({
       where: { token: refreshToken },
       include: { user: { select: { id: true, email: true, username: true, role: true, isActive: true } } },
     });
 
     if (!stored || stored.expiresAt < new Date() || !stored.user?.isActive) {
-      throw new Error('Invalid or expired refresh token');
+      const e: any = new Error('Invalid or expired refresh token'); e.status = 401; throw e;
     }
 
     // Atomic claim: the winner deletes the row; concurrent losers' deleteMany
@@ -418,7 +592,13 @@ export class AuthService {
     return { accessToken: newAccessToken, refreshToken: newRefreshToken };
   }
 
-  async logout(refreshToken: string): Promise<void> {
+  /**
+   * Revoke one session. Idempotent by contract: a missing, empty, or already
+   * revoked token is a no-op, never an error — the client fires this on the way
+   * out and must not be greeted with a 400 for having already logged out.
+   */
+  async logout(refreshToken: unknown): Promise<void> {
+    if (typeof refreshToken !== 'string' || !refreshToken) return;
     await prisma.refreshToken.deleteMany({ where: { token: refreshToken } });
   }
 
@@ -653,6 +833,12 @@ export class AuthService {
   }) {
     // ── Server-side validation (real apps never trust the client) ──
     const update: any = {};
+
+    // An empty-string college means "no college" — normalize it to undefined so
+    // it behaves like an explicit null (a no-op) instead of tripping the
+    // locked-college guard with a scary 403 for what is really just a blank form
+    // field. A REAL id still goes through the lock check below.
+    if (data.collegeId === '') data.collegeId = undefined;
 
     // ── Identity lock (one true source: signup / Google auth) ──
     // Name comes from signup (or the Google profile) at account creation;

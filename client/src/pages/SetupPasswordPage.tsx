@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { KeyRound, PartyPopper, Hourglass } from 'lucide-react';
 import Logo from '@/components/common/Logo';
@@ -22,15 +22,27 @@ export default function SetupPasswordPage() {
  const [busy, setBusy] = useState(false);
  const [error, setError] = useState('');
 
- // Already has one (e.g. set in another tab) → move on.
- if (user && user.hasPassword !== false) {
- const dest = nextStep(user);
- if (dest !== '/setup-password') navigate(dest, { replace: true });
- }
- // Unverified users can't be here — the server would 403 anyway.
- if (user && user.verificationStatus !== 'VERIFIED' && !user.collegeEmailVerified) {
- navigate('/verify', { replace: true });
- }
+ // Redirects belong in an effect, not the render body: calling navigate()
+ // during render is a React anti-pattern that warns, re-renders, and can loop.
+ // A stray remount used to be able to bounce the user between screens forever.
+ const hasNothingToDoHere = !!user && user.hasPassword !== false;
+ const isUnverified = !!user && user.verificationStatus !== 'VERIFIED' && !user.collegeEmailVerified;
+
+ useEffect(() => {
+   if (!user) return;
+   if (isUnverified) {
+     navigate('/verify', { replace: true });
+     return;
+   }
+   if (hasNothingToDoHere) {
+     const dest = nextStep(user);
+     if (dest !== '/setup-password') navigate(dest, { replace: true });
+   }
+ }, [user, isUnverified, hasNothingToDoHere, navigate]);
+
+ // Render nothing while the redirect is in flight — avoids a flash of the
+ // password form for someone who already has one (or isn't verified yet).
+ if (isUnverified || hasNothingToDoHere) return null;
 
  const submit = async (e: React.FormEvent) => {
  e.preventDefault();
