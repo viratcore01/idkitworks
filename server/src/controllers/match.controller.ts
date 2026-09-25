@@ -76,23 +76,9 @@ export class MatchController {
 
   async getStats(req: AuthRequest, res: Response) {
     try {
-      // PERF: the deck chip needs both halves — fetch in ONE parallel wave,
-      // not two sequential awaits (each is 1-2 indexed queries).
-      const [stats, likesYou] = await Promise.all([
-        service.getStats(req.user!.id),
-        service.likesYouCount(req.user!.id),
-      ]);
-      // Merge the "likes you" count so the deck chip is one request.
-      res.json({ ...stats, ...likesYou });
-    } catch (error: any) {
-      sendError(res, error, 400);
-    }
-  }
-
-  async likesYou(req: AuthRequest, res: Response) {
-    try {
-      const limit = clampLimit(req.query.limit, 1, 50);
-      res.json(await service.likesYou(req.user!.id, limit));
+      // Blind likes: no waiting count is ever exposed — stats are the
+      // viewer's own counters only.
+      res.json(await service.getStats(req.user!.id));
     } catch (error: any) {
       sendError(res, error, 400);
     }

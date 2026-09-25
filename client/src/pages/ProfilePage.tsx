@@ -90,7 +90,6 @@ export default function ProfilePage() {
   else toast('Like sent');
   invalidateProfile();
   queryClient.invalidateQueries({ queryKey: ['match-discover'] });
-  queryClient.invalidateQueries({ queryKey: ['likes-you'] });
   queryClient.invalidateQueries({ queryKey: ['match-stats'] });
   },
   onError: (e: any) => toast.error(e.response?.data?.error || 'Could not like'),
@@ -108,7 +107,6 @@ export default function ProfilePage() {
   invalidateProfile();
   queryClient.invalidateQueries({ queryKey: ['matches'] });
   queryClient.invalidateQueries({ queryKey: ['match-discover'] });
-  queryClient.invalidateQueries({ queryKey: ['likes-you'] });
   },
   onError: (e: any) => toast.error(e.response?.data?.error || 'Could not unmatch'),
   });
@@ -303,25 +301,9 @@ export default function ProfilePage() {
   >
   <MessageSquare size={14} strokeWidth={2.5} /> Message
   </button>
- <span className="nb-badge bg-nb-pink text-white text-xs inline-flex items-center gap-1 px-3">
- <Heart size={12} strokeWidth={2.5} fill="currentColor" /> Matched
- </span>
- </>
-  ) : rel.theyLikedMe ? (
-  <>
-  <button
-  onClick={() => !likeMutation.isPending && likeMutation.mutate()}
-  disabled={likeMutation.isPending}
-  aria-busy={likeMutation.isPending}
-  className="nb-btn-pink flex-1 text-center text-sm inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-  >
-  <Heart size={14} strokeWidth={2.5} fill="currentColor" /> Like back — it's a match!
-  </button>
-  {rel.conversationId && (
-  <Link to={`/messages/${rel.conversationId}`} className="nb-btn-cyan text-center text-sm inline-flex items-center justify-center gap-1.5">
-  <MessageSquare size={14} strokeWidth={2.5} /> Open chat
-  </Link>
-  )}
+  <span className="nb-badge bg-nb-pink text-white text-xs inline-flex items-center gap-1 px-3">
+  <Heart size={12} strokeWidth={2.5} fill="currentColor" /> Matched
+  </span>
   </>
   ) : rel.conversationId ? (
   <>

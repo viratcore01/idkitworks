@@ -38,10 +38,9 @@ export default function AppLayout() {
   const onMatch = () => {
   queryClient.invalidateQueries({ queryKey: ['matches'] });
   queryClient.invalidateQueries({ queryKey: ['match-stats'] });
-  // A new match changes the deck too (matched cards leave it, waiting counts
-  // drop) — keep the deck and waiting list in sync without a manual refetch.
+  // A new match changes the deck too (matched cards leave it) — keep it in
+  // sync without a manual refetch.
   queryClient.invalidateQueries({ queryKey: ['match-discover'] });
-  queryClient.invalidateQueries({ queryKey: ['likes-you'] });
   };
   const offNotify = onDebouncedEvent(socket, 'notification-new', onNotify, 2000);
   const offMsg = onDebouncedEvent(socket, 'message-notify', onMsg, 2000);

@@ -173,7 +173,7 @@ test('REGRESSION: the recency boost applies (createdAt must reach the scorer)', 
   assert.deepEqual(deckIds(deck), ['b', 'a']);
 });
 
-test('people who liked you surface first with the instant-match flag', async () => {
+test('people who liked you surface first — silently, with no disclosure flag', async () => {
   const { svc } = setup({
     users: [
       person({ id: 'viewer', course: null, year: null }),
@@ -186,8 +186,10 @@ test('people who liked you surface first with the instant-match flag', async () 
   });
   const deck = await svc.discover('viewer');
   assert.deepEqual(deckIds(deck), ['admirer', 'stranger']);
-  assert.equal(deck.users[0].theyLikedMe, true);
-  assert.ok(!deck.users[1].theyLikedMe);
+  // Blind likes: the boost is ordering-only. No flag, badge, list entry or
+  // ping reveals the like — the card never says why it is first.
+  assert.ok(!('theyLikedMe' in deck.users[0]));
+  assert.ok(!('theyLikedMe' in deck.users[1]));
 });
 
 // ─────────────────── filters: age, goals, gender ────────────────────────
@@ -339,7 +341,7 @@ test('saving years immediately reshapes the deck (fingerprint + invalidation)', 
 
 // ───────────────────────────── actions ──────────────────────────────────
 
-test('one-sided like stores the row, notifies once, and reports no match', async () => {
+test('one-sided like stores the row, notifies NOBODY, and reports no match', async () => {
   const { db, svc } = setup({
     users: [person({ id: 'viewer' }), person({ id: 'them' })],
     userPhotos: [photo('viewer'), photo('them')],
@@ -347,8 +349,9 @@ test('one-sided like stores the row, notifies once, and reports no match', async
   const result: any = await svc.action('viewer', 'them', 'LIKE');
   assert.equal(result.matched, false);
   assert.equal(db.rows('matchLike').length, 1);
-  const pings = db.rows('notification').filter((n) => n.type === 'LIKE' && n.recipientId === 'them');
-  assert.equal(pings.length, 1, 'exactly one LIKE ping');
+  // Blind likes: a one-sided like is fully undisclosed — no LIKE ping, no
+  // badge, no list. Only a mutual like (the match) ever notifies.
+  assert.equal(db.rows('notification').length, 0, 'one-sided likes stay silent');
 });
 
 test('mutual like matches atomically with the strictly-common criteria', async () => {

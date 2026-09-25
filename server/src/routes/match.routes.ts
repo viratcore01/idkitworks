@@ -15,7 +15,6 @@ router.get('/stats', (req, res) => controller.getStats(req, res));
 router.post('/rewind', (req, res) => controller.rewind(req, res));
 
 router.get('/discover', (req, res) => controller.discover(req, res));
-router.get('/likes-you', (req, res) => controller.likesYou(req, res));
 router.post('/like', (req, res) => controller.like(req, res));
 router.post('/pass', (req, res) => controller.pass(req, res));
 router.get('/', (req, res) => controller.getMatches(req, res));

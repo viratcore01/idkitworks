@@ -143,42 +143,13 @@ function computeRelevanceScore(viewer: any, candidate: any, viewerInterestIds: S
 }
 
 /**
- * The waiting-list sender filter, shared by likesYou() and likesYouCount():
- * same-college, active, unblocked in both directions, no ACTIVE match with the
- * viewer, and no answer from the viewer yet (no LIKE *or* PASS row back).
- * STRICT AGE SEGREGATION: minors only see minors, adults only see adults.
- * Enforced in the DB so the count and the list can never disagree.
- */
-function waitingSenderFilter(userId: string, collegeId: string, viewerDOB: Date | null) {
-  const viewerMinor = isMinor(viewerDOB);
-  // Minors only see minors (dob > 18 years ago), adults only see adults (dob <= 18 years ago).
-  // Missing DOB = treated as adult (conservative default for safety): minors
-  // only ever see provable minors, while adults also see rows with no DOB.
-  const today = new Date();
-  const eighteenCutoff = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
-  const ageClause = viewerMinor
-    ? { dateOfBirth: { gt: eighteenCutoff } } // minor: only show people born AFTER cutoff (< 18)
-    : { OR: [{ dateOfBirth: { lte: eighteenCutoff } }, { dateOfBirth: null }] }; // adult: >= 18, or unknown
-
-  return {
-    isActive: true,
-    collegeId,
-    AND: [ageClause],
-    // Viewer hasn't answered this sender either way.
-    receivedLikes: { none: { senderId: userId } },
-    // No ACTIVE match between viewer and sender.
-    matchesA: { none: { userB: userId, status: 'ACTIVE' } },
-    matchesB: { none: { userA: userId, status: 'ACTIVE' } },
-    // No block wall either direction.
-    blockedUsers: { none: { blockedId: userId } },
-    blockedBy: { none: { blockerId: userId } },
-  };
-}
-
-/**
  * The ONE source of truth for "Looking for" (intent matching): the user's own
  * profile goals (User.relationshipGoals). Discovery filters, the deck and the
  * match-criteria snapshot all read it — there is no separate hidden preference.
+ *
+ * NOTE (blind likes): there is deliberately no "who liked me" list or count
+ * anywhere. The deck's silent front-boost is the only trace of a one-sided
+ * like; answering it (like back) is what creates the match.
  */
 export class MatchService {
   /**
@@ -196,7 +167,8 @@ export class MatchService {
     // PHASE 1 (fingerprint inputs only): viewer + photo count + interests.
     // These three decide the cache KEY, so they run BEFORE the cache lookup —
     // a cache hit then returns with zero further queries. The heavier
-    // exclusion sets (likes/passes/blocks/likes-you) only run on a miss.
+    // exclusion sets (likes/passes/blocks) plus the silent boost membership
+    // only run on a miss.
     const [viewer, viewerPhotoCount, viewerInterestRows] = await Promise.all([
       prisma.user.findUnique({
         where: { id: userId },
@@ -457,13 +429,15 @@ export class MatchService {
     let pageSlice: any[] = await fetchWindow(offset);
     const consumed = offset + take;
 
-    // "LIKES YOU" priority (Hinge/Tinder Gold pattern, free for everyone):
-    // people who already liked you surface at the FRONT of the current page —
-    // like back = instant match. REORDER-ONLY, deliberately: fetching boosted
-    // rows and PREPENDING them (displacing chain cards) broke pagination two
-    // ways — a boosted card in a LATER window appeared TWICE, and displaced
-    // chain cards were SKIPPED forever. Reordering within the window keeps
-    // every page an exact chain slice: no dupes, no skips.
+    // "LIKES YOU" priority, SILENT (blind likes): people who already liked
+    // you surface at the FRONT of the current page — like back = instant
+    // match — but NOTHING discloses the like (no badge, no flag, no list, no
+    // ping). One-sided stays one-sided until answered. REORDER-ONLY,
+    // deliberately: fetching boosted rows and PREPENDING them (displacing
+    // chain cards) broke pagination two ways — a boosted card in a LATER
+    // window appeared TWICE, and displaced chain cards were SKIPPED forever.
+    // Reordering within the window keeps every page an exact chain slice:
+    // no dupes, no skips.
     // PERF: membership is checked ONLY for ids on this page (one small
     // indexed query) instead of loading the viewer's entire inbound-like
     // history on every deck read — popular users paid the worst price before.
@@ -507,7 +481,9 @@ export class MatchService {
         // selections never leave the server. The common basis is revealed
         // AFTER a mutual match, via match.criteria.
         relationshipGoals: undefined,
-        theyLikedMe: likedMeSet.has(u.id),
+        // BLIND LIKES: no theyLikedMe flag leaves the server. The silent
+        // front-boost above is the only trace — the card never says why it
+        // is first.
         // Always sent when the viewer has interests to compare against —
         // powers the "N shared interests" relevance chip on every card, not
         // just when the shared-interest dealbreaker is switched on.
@@ -693,34 +669,17 @@ export class MatchService {
         return { matched: true, matchId: match.id, criteria };
       }
 
-      // One-sided like → notify the receiver exactly ONCE per like-lifecycle.
-      // First LIKE (a PASS→LIKE update counts — it's new information, the
-      // "second chance" ping when the other side passed first). Never on
-      // re-taps: without the firstLikeEver guard every double-tap minted a
-      // fresh LIKE notification (spam). A mutual LIKE means a match, handled
-      // above — reaching here with a mutual row means they PASSED, still
-      // worth exactly one ping. Fire-and-forget after the swipe transaction
-      // so a notification hiccup can never fail the like itself.
-      const firstLikeEver = !existing || existing.action !== 'LIKE';
-      if (mutual?.action !== 'LIKE' && firstLikeEver) {
-        prisma.notification.create({
-          data: { recipientId: receiverId, actorId: senderId, type: 'LIKE' } as any,
-        })
-          .then(() => {
-            invalidateUnreadCount(receiverId);
-            publish('notification:new', { userIds: [receiverId] });
-          })
-          .catch(() => {});
-      }
-
-      // Same-action re-swipe that didn't (re)match: report it as a duplicate
-      // so clients can show "already actioned" instead of counting it as new.
+      // One-sided like → nothing leaves the server for the receiver (blind
+      // likes): no ping, no badge, no list. The sender's card silently jumps
+      // to the front of the receiver's deck (boost + deck-bust below); a like
+      // back matches, anything else stays one-sided forever. Reaching here
+      // with a mutual row means they PASSED — still nothing visible.
       return { matched: false, duplicate: existing?.action === action };
     }, TX_OPTIONS);
 
     // CACHE: the exclusion set changed (new like/pass) without changing the
     // fingerprint — bust the actor's deck. On LIKE also bust the receiver's:
-    // their deck gains a likes-you boost/badge for the sender.
+    // their deck gains the silent front-boost for the sender.
     invalidateDeckForUser(senderId);
     if (action === 'LIKE') invalidateDeckForUser(receiverId);
     return result;
@@ -832,84 +791,16 @@ export class MatchService {
     return { unmatched: true };
   }
 
-  /** Small counters for the deck header: likes sent today, who liked you. */
+  /** Small counters for the deck header: likes sent today and total matches.
+   *  Blind likes: there is deliberately NO "who liked you" count anywhere —
+   *  one-sided stays one-sided and undisclosed until answered. */
   async getStats(userId: string) {
     const windowStart = new Date(Date.now() - LIKE_WINDOW_HOURS * 3600 * 1000);
-    const [likesSent, likesReceived, totalMatches] = await Promise.all([
+    const [likesSent, totalMatches] = await Promise.all([
       prisma.matchLike.count({ where: { senderId: userId, action: 'LIKE', createdAt: { gte: windowStart } } }),
-      prisma.matchLike.count({ where: { receiverId: userId, action: 'LIKE' } }),
       prisma.match.count({ where: { status: 'ACTIVE', OR: [{ userA: userId }, { userB: userId }] } }),
     ]);
-    return { likesSent, likeCap: LIKE_CAP, likesReceived, totalMatches };
-  }
-
-  /** How many waiting likes the viewer hasn't acted on — powers the deck chip.
-   * WAITING means exactly what likesYou() lists: one-sided LIKEs from
-   * same-college, active, unblocked people with no ACTIVE match and no answer
-   * from the viewer yet. (Counting raw inbound LIKE rows overcounted the chip
-   * the moment anyone matched, answered, or got blocked.)
-   * Single indexed COUNT — one round-trip, no row fetching. */
-  async likesYouCount(userId: string) {
-    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true, dateOfBirth: true } });
-    if (!viewer?.collegeId) return { likesYou: 0 };
-    const likesYou = await prisma.matchLike.count({
-      where: { receiverId: userId, action: 'LIKE', sender: waitingSenderFilter(userId, viewer.collegeId, viewer.dateOfBirth) },
-    });
-    return { likesYou };
-  }
-
-  /**
-   * WHO LIKES YOU (Hinge/Tinder-Gold pattern, free): the people whose LIKE is
-   * still waiting for an answer — newest first. Same-college, active, unblocked
-   * only; people already in an ACTIVE match live in the matches list instead.
-   * Powers the "N waiting" grid; liking back from here is an instant match.
-   */
-  async likesYou(userId: string, limit = 50) {
-    const take = Math.min(Math.max(limit, 1), 50);
-    const viewer = await prisma.user.findUnique({ where: { id: userId }, select: { collegeId: true, dateOfBirth: true } });
-    if (!viewer?.collegeId) return { users: [] };
-
-    // Waiting-list rules enforced in the DB (one indexed query, exact page —
-    // no over-fetch + in-JS filtering). Same filter as likesYouCount().
-    const rows = await prisma.matchLike.findMany({
-      where: { receiverId: userId, action: 'LIKE', sender: waitingSenderFilter(userId, viewer.collegeId, viewer.dateOfBirth) },
-      orderBy: { createdAt: 'desc' },
-      take,
-      include: {
-        sender: {
-          select: {
-            ...DECK_SELECT,
-            collegeId: true,
-            isActive: true,
-          },
-        },
-      },
-    });
-
-    const users = [];
-    for (const r of rows) {
-      const s: any = r.sender;
-      if (!s?.isActive || s.collegeId !== viewer.collegeId) continue; // belt-and-braces
-      users.push({
-        id: s.id,
-        username: s.username,
-        displayName: s.displayName,
-        avatarUrl: s.avatarUrl,
-        avatarPhotoId: s.avatarPhotoId ?? null,
-        photos: s.photos.map((p: any) => ({ id: p.id, slot: p.slot })),
-        bio: s.bio,
-        course: s.course,
-        year: s.year,
-        age: ageFrom(s.dateOfBirth),
-        college: s.college,
-        interests: s.interests.map((ui: any) => ui.interest),
-        isVerified: s.isVerified,
-        // PRIVACY: same rule as the deck — their goals stay on the server.
-        relationshipGoals: undefined,
-        likedAt: r.createdAt,
-      });
-    }
-    return { users };
+    return { likesSent, likeCap: LIKE_CAP, totalMatches };
   }
 
   /**

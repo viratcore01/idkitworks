@@ -159,43 +159,13 @@ years: Array.isArray(savedPrefs.years)
 });
 }, [savedPrefs]);
 
-  // Waiting likes — powers the "N waiting" chip on the deck header AND the
-  // honest total on the Matches tab badge (matches pages are capped at 50,
-  // so `matches.length` undercounts for power users — stats never lies).
+  // Match counters — the Matches tab badge needs a live total even before
+  // the tab is opened (matches pages are capped at 50, so `matches.length`
+  // undercounts for power users — stats never lies). Blind likes: no
+  // waiting counts exist anywhere; one-sided stays undisclosed.
   const { data: matchStats } = useQuery({
   queryKey: ['match-stats'],
   queryFn: () => api.get('/matches/stats').then((r) => r.data),
-  });
-
-  // WHO LIKED YOU (waiting list): fetched only for the Matches tab so the
-  // deck query stays lean. Liking back from here is an instant match.
-  const { data: likesYouData, isLoading: loadingLikesYou } = useQuery({
-  queryKey: ['likes-you'],
-  queryFn: () => api.get('/matches/likes-you').then((r) => r.data),
-  enabled: view === 'matches',
-  staleTime: 30_000,
-  });
-  const waiting = likesYouData?.users || [];
-  const [likeBackId, setLikeBackId] = useState<string | null>(null);
-
-  const likeBackMutation = useMutation({
-  mutationFn: (receiverId: string) => api.post('/matches/like', { receiverId }).then((r) => r.data),
-  onMutate: (receiverId) => setLikeBackId(receiverId),
-  onSuccess: (data, receiverId) => {
-  const u = waiting.find((w: any) => w.id === receiverId);
-  if (data?.matched) {
-  setMatchBanner({ name: u?.displayName || 'Someone', username: u?.username || '', criteria: data.criteria });
-  } else {
-  toast('Like sent');
-  }
-  // Remove the answered row optimistically; server state follows.
-queryClient.setQueryData(['likes-you'], (old: any) =>
-old ? { ...old, users: (old.users || []).filter((x: any) => x.id !== receiverId) } : old,
-);
-refreshAfterSwipe(!!data?.matched, true);
-},
-onError: (e: any) => toast.error(e.response?.data?.error || 'Could not like back'),
-  onSettled: () => setLikeBackId(null),
   });
 
   const users = deck?.users || [];
@@ -229,20 +199,17 @@ onError: (e: any) => toast.error(e.response?.data?.error || 'Could not like back
   queryClient.invalidateQueries({ queryKey: ['match-discover'] });
   queryClient.invalidateQueries({ queryKey: ['matches'] });
   queryClient.invalidateQueries({ queryKey: ['match-stats'] });
-  queryClient.invalidateQueries({ queryKey: ['likes-you'] });
   // Paginated matches list: restart from page 0 so appended pages can't go
-  // stale underneath a mutation (unmatch/like-back change list membership).
+  // stale underneath a mutation (unmatch changes list membership).
 setMatchPages([]);
 setMatchesPage(0);
 };
 // LIGHTWEIGHT refresh paths (the lag fix): the old code called refreshAll()
-// (4 query invalidations + matches-page reset) after EVERY swipe and every
-// filter save, so one tap refetched the deck, matches, stats and likes-you
-// at once. Swipes already update the deck optimistically — they only need
-// the counters; filter saves only need a fresh deck.
-const refreshAfterSwipe = (matched: boolean, liked: boolean) => {
+// after EVERY swipe, so one tap refetched everything at once. Swipes already
+// update the deck optimistically — they only need the counters; filter saves
+// only need a fresh deck.
+const refreshAfterSwipe = (matched: boolean) => {
 queryClient.invalidateQueries({ queryKey: ['match-stats'] });
-if (liked) queryClient.invalidateQueries({ queryKey: ['likes-you'] });
 if (matched) {
 queryClient.invalidateQueries({ queryKey: ['matches'] });
 setMatchPages([]);
@@ -277,7 +244,7 @@ queryClient.invalidateQueries({ queryKey: ['match-discover'] });
   });
   }
   // Move past the ACTIONED card by id (not blind slice(1) — safe under
-  // races, page wraps and likes-you boosts that reorder the deck).
+  // races, page wraps and silent boosts that reorder the deck).
   queryClient.setQueryData(['match-discover', deckPage], (old: any) =>
   old ? { ...old, users: (old.users || []).filter((u: any) => u.id !== variables.receiverId), totalRemaining: Math.max((old.totalRemaining ?? 1) - 1, 0) } : old,
   );
@@ -287,7 +254,7 @@ setDeckPage((p) => p + 1);
 }
 // Optimistic deck removal above already moved past the card — only the
 // counters (and the matches list on a real match) need refetching.
-refreshAfterSwipe(!!data?.matched, variables.action === 'like');
+refreshAfterSwipe(!!data?.matched);
 },
 onError: (e: any, variables) => {
   const msg = e.response?.data?.error || 'Something went wrong';
@@ -338,7 +305,7 @@ toast.success('Preferences saved');
 // deck page (they were fetched under the old filters — showing them while
 // the refetch lands reads as "filters did nothing") and restart from page 0
 // so the freshly filtered deck — and matches — show immediately.
-// Matches / likes-you / stats are untouched by filters.
+// Matches / stats are untouched by filters.
 if (saved) queryClient.setQueryData(['match-preferences'], saved);
 setShowPrefs(false);
 queryClient.removeQueries({ queryKey: ['match-discover'] });
@@ -739,11 +706,6 @@ setShowPrefs(true);
   <Sparkles size={10} strokeWidth={3} /> {currentUser.sharedInterests} shared interest{currentUser.sharedInterests === 1 ? '' : 's'}
   </span>
   )}
-  {currentUser.theyLikedMe && (
-  <span className="nb-badge bg-nb-pink text-white text-xs inline-flex items-center gap-1" title="They already liked you — like back to match instantly">
-  <Heart size={10} strokeWidth={3} fill="currentColor" /> likes you
-  </span>
-  )}
   {currentUser.recycled && (
   <span className="nb-badge bg-nb-peri text-ink text-xs inline-flex items-center gap-1" title="You passed on this profile earlier — it's back around in your loop">
   <RotateCcw size={10} strokeWidth={3} /> back in your loop
@@ -798,11 +760,8 @@ setShowPrefs(true);
   {deck && (
   <p className="mt-4 text-xs text-gray-500 font-body break-words">
   {deck.totalRemaining} student{deck.totalRemaining === 1 ? '' : 's'} in your deck
- {!!matchStats?.likesYou && (
- <span className="ml-1 text-nb-pink font-semibold">• {matchStats.likesYou} waiting to match with you</span>
- )}
- </p>
- )}
+  </p>
+  )}
  </div>
  </div>
  )}
@@ -811,44 +770,9 @@ setShowPrefs(true);
 
   {view === 'matches' && (
   <>
-  {/* Waiting for you — people who already liked you. Answering here is the
-      fastest path to a match; no need to wait for their card in the deck. */}
-  {loadingLikesYou ? (
-  <LoadingSpinner size="sm" />
-  ) : waiting.length > 0 ? (
-  <div className="mb-5">
-  <h2 className="font-display font-bold text-base mb-2 flex items-center gap-1.5">
-  <Heart size={16} strokeWidth={2.5} className="text-nb-pink fill-current" />
-  Waiting for you
-  <span className="px-1.5 py-0.5 text-xs font-display border-nb-2 border-ink bg-nb-yellow text-ink">{waiting.length}</span>
-  </h2>
-  <div className="flex gap-3 overflow-x-auto overscroll-x-contain pb-2 -mx-1 px-1">
-  {waiting.map((w: any) => (
-  <div key={w.id} className="nb-card p-3 w-44 shrink-0 text-center">
-  <Avatar src={w.avatarUrl} photoId={w.avatarPhotoId ?? w.photos?.[0]?.id} name={w.displayName} className="mx-auto" />
-  <p className="font-display font-semibold text-sm mt-2 truncate">{w.displayName}{w.age ? `, ${w.age}` : ''}</p>
-  <p className="text-xs text-gray-500 truncate">{[w.course, w.college?.shortName || w.college?.name].filter(Boolean).join(' • ') || `@${w.username}`}</p>
-  {w.isVerified && <p className="text-xs text-nb-mint font-semibold mt-0.5">✓ Verified</p>}
-  <div className="flex gap-1.5 mt-2">
-  <Link to={`/profile/${w.username}`} className="nb-btn bg-white text-xs flex-1 text-center px-2 py-1.5">View</Link>
-  <button
-  onClick={() => !likeBackId && likeBackMutation.mutate(w.id)}
-  disabled={likeBackId === w.id}
-  aria-busy={likeBackId === w.id}
-  aria-label={`Like ${w.displayName} back`}
-  className="nb-btn-pink text-xs flex-1 px-2 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-  >
-  {likeBackId === w.id ? '…' : 'Like back'}
-  </button>
-  </div>
-  </div>
-  ))}
-  </div>
-  </div>
-  ) : null}
   {loadingMatches ? (
   <LoadingSpinner />
-  ) : !matches.length && waiting.length === 0 ? (
+  ) : !matches.length ? (
  <EmptyState
  icon={<HeartCrack strokeWidth={2.5} />}
  title="No matches yet"

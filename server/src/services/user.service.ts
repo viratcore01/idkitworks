@@ -14,7 +14,9 @@ const ANON_AUTHOR = {
   avatarPhotoId: null as string | null,
 };
 
-/** What the viewer's relationship to this profile is — powers the action buttons. */
+/** What the viewer's relationship to this profile is — powers the action buttons.
+ *  Blind likes: there is no theyLikedMe — a one-sided like is undisclosed
+ *  until answered, so profiles never reveal it. */
 export interface RelationshipContext {
   isOwn: boolean;
   isMatched: boolean;
@@ -22,7 +24,6 @@ export interface RelationshipContext {
   hasConversation: boolean;
   conversationId: string | null;
   iLikedThem: boolean;
-  theyLikedMe: boolean;
   iBlockedThem: boolean;
   theyBlockedMe: boolean;
   canMessage: boolean;
@@ -97,7 +98,7 @@ export class UserService {
 
     const isOwn = viewerId === user.id;
 
-    const [match, conversation, myLike, theirLike] = await Promise.all([
+    const [match, conversation, myLike] = await Promise.all([
       prisma.match.findFirst({
         where: {
           status: 'ACTIVE',
@@ -117,9 +118,6 @@ export class UserService {
       prisma.matchLike.findUnique({
         where: { senderId_receiverId: { senderId: viewerId, receiverId: user.id } },
       }),
-      prisma.matchLike.findUnique({
-        where: { senderId_receiverId: { senderId: user.id, receiverId: viewerId } },
-      }),
     ]);
 
     const isMatched = !!match;
@@ -131,7 +129,6 @@ export class UserService {
       hasConversation: !!conversation,
       conversationId: conversation?.conversationId || null,
       iLikedThem: myLike?.action === 'LIKE',
-      theyLikedMe: theirLike?.action === 'LIKE',
       iBlockedThem: false,
       theyBlockedMe: false,
       // Real apps (Bumble/Tinder/Hinge) open chat only for matches; messaging
