@@ -262,6 +262,23 @@ test('gender preference narrows the deck', async () => {
   assert.deepEqual(deckIds(await svc.discover('viewer')), ['her']);
 });
 
+test('PREFERENCE WALL: a liker outside my filters never enters the deck, boost or not', async () => {
+  // Female-only preference; a guy likes the viewer. The silent front-boost
+  // only REORDERS cards already inside the filtered window — it can never
+  // smuggle a filtered-out profile in. Answer: no, he never shows.
+  const { svc } = setup({
+    users: [
+      person({ id: 'viewer' }),
+      person({ id: 'him', gender: 'MALE', createdAt: daysAgo(1) }),
+      person({ id: 'her', gender: 'FEMALE', createdAt: daysAgo(2) }),
+    ],
+    userPhotos: [photo('viewer'), photo('him'), photo('her')],
+    matchPreferences: [{ userId: 'viewer', genderPreference: 'FEMALE' }],
+    matchLikes: [likeRow('him', 'viewer', 'LIKE', new Date())],
+  });
+  assert.deepEqual(deckIds(await svc.discover('viewer')), ['her']);
+});
+
 // ─────────────────── year dealbreaker (multi-select) ────────────────────
 
 test('years filter: only picked years enter the deck; year-less rows need Any', async () => {
