@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { AdminController } from '../controllers/admin.controller';
-import { authMiddleware, adminMiddleware, verificationRequired } from '../middleware/auth';
+import { authMiddleware, adminMiddleware, verificationRequired, passwordRequired } from '../middleware/auth';
 
 const router = Router();
 const controller = new AdminController();
@@ -10,7 +10,7 @@ router.use(authMiddleware);
 // Report creation: verified only. Unverified sessions can see nothing
 // reportable (every content read gates on verification), so this only
 // stops junk-report spam from throwaway pre-verification sessions.
-router.post('/reports', verificationRequired, (req, res) => controller.createReport(req, res));
+router.post('/reports', verificationRequired, passwordRequired, (req, res) => controller.createReport(req, res));
 
   // Admin-only routes
   router.get('/overview', adminMiddleware, (req, res) => controller.overview(req, res));

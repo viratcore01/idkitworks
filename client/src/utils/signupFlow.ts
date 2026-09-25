@@ -183,11 +183,11 @@ export function isVerifiedIdentity(
 /**
  * Can this account be signed out without being locked out of itself?
  *
- * A verified account with no password and no Google link has NO way back in —
- * signing out would strand it permanently (nothing can authenticate it, and the
- * reset flow deliberately refuses to mint a first password from an email code).
- * Such an account is sent to the password step instead of the exit.
+ * Password is compulsory for EVERYONE (Google included): the only safe way
+ * back in is a password. A passwordless account — even with Google linked —
+ * is sent to the password step instead of the exit, so the password can
+ * never be skipped by signing out and returning via Google.
  */
 export function canSignOut(user: { hasPassword?: boolean | null; hasGoogle?: boolean | null } | null | undefined): boolean {
-  return !!user && (user.hasPassword === true || user.hasGoogle === true);
+  return !!user && user.hasPassword === true;
 }

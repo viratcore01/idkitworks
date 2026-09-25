@@ -127,9 +127,10 @@ test('isVerifiedIdentity: a different college, a different address or an unprove
 
 // ─────────────────────────── signing out safely ─────────────────────────────
 
-test('canSignOut: an account with neither a password nor Google is never signed out mid-funnel', () => {
+test('canSignOut: only an account with a password can sign out (password compulsory, Google alone is not enough)', () => {
   assert.equal(canSignOut({ hasPassword: true, hasGoogle: false }), true);
-  assert.equal(canSignOut({ hasPassword: false, hasGoogle: true }), true);
+  assert.equal(canSignOut({ hasPassword: true, hasGoogle: true }), true);
+  assert.equal(canSignOut({ hasPassword: false, hasGoogle: true }), false, 'Google alone must not skip the password');
   assert.equal(canSignOut({ hasPassword: false, hasGoogle: false }), false, 'would be stranded forever');
   assert.equal(canSignOut({ hasPassword: false }), false);
   assert.equal(canSignOut({}), false);

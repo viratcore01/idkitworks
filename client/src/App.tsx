@@ -4,7 +4,7 @@ import { recordNavigation, cycleTripped } from '@/utils/redirectGuard';
 import BrandLoader from '@/components/common/BrandLoader';
 import Logo from '@/components/common/Logo';
 import { useAuthStore } from '@/store/auth.store';
-import { funnelDone } from '@/utils/funnel';
+import { funnelDone, nextStep } from '@/utils/funnel';
 import AuthLayout from '@/layouts/AuthLayout';
 import AppLayout from '@/layouts/AppLayout';
 // PERF: every page is a separate chunk — first paint ships the shell only,
@@ -77,6 +77,28 @@ function VerifiedRoute({ children }: { children: React.ReactNode }) {
   if (user && !isStaff && user.verificationStatus !== 'VERIFIED' && location.pathname !== '/signup') {
     if (cycleTripped()) return <CycleDeadEnd />;
     return <Navigate to="/signup" replace />;
+  }
+  return <>{children}</>;
+}
+
+/**
+ * PRODUCT RULE: password is compulsory for EVERYONE — Google sign-in
+ * included, same bar as the normal email funnel. A verified but passwordless
+ * session belongs on /setup-password, full stop — no skipping into the app
+ * or the profile screen. Staff exempt (console must stay reachable).
+ * Uses nextStep so the order (college → verification → password → profile)
+ * can never drift from the funnel router.
+ */
+function PasswordRoute({ children }: { children: React.ReactNode }) {
+  const { user, isAuthenticated, isLoading } = useAuthStore();
+  const location = useLocation();
+  if (isLoading) return <LoadingScreen />;
+  if (cycleTripped()) return <CycleDeadEnd />;
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  const isStaff = user?.role === 'admin' || user?.role === 'super_admin';
+  if (!isStaff && user && nextStep(user) === '/setup-password' && location.pathname !== '/setup-password') {
+    if (cycleTripped()) return <CycleDeadEnd />;
+    return <Navigate to="/setup-password" replace />;
   }
   return <>{children}</>;
 }
@@ -247,8 +269,8 @@ export default function App() {
  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
  </Route>
 
- {/* Main app: protected AND college-gated */}
- <Route element={<CollegeRoute><AppLayout /></CollegeRoute>}>
+  {/* Main app: protected AND college-gated AND password-gated (no skipping) */}
+  <Route element={<CollegeRoute><PasswordRoute><AppLayout /></PasswordRoute></CollegeRoute>}>
  <Route path="/home" element={<HomePage />} />
  <Route path="/saved" element={<SavedPage />} />
  <Route path="/post/:postId" element={<PostDetailPage />} />
@@ -260,15 +282,15 @@ export default function App() {
  <Route path="/search" element={<SearchPage />} />
  </Route>
 
-  {/* Profile setup: authenticated users only (works with or without college) */}
- <Route path="/setup-profile" element={
- <ProtectedRoute><ProfileSetupPage /></ProtectedRoute>
- } />
+   {/* Profile setup: authenticated + password-gated (password comes before profile) */}
+  <Route path="/setup-profile" element={
+  <ProtectedRoute><PasswordRoute><ProfileSetupPage /></PasswordRoute></ProtectedRoute>
+  } />
 
- {/* Funnel: first password, after verification (skippable for Google users) */}
- <Route path="/setup-password" element={
- <ProtectedRoute><SetupPasswordPage /></ProtectedRoute>
- } />
+  {/* Funnel: first password, after verification — COMPULSORY for everyone including Google */}
+  <Route path="/setup-password" element={
+  <ProtectedRoute><SetupPasswordPage /></ProtectedRoute>
+  } />
 
   {/* College-email OTP verification lives INSIDE the signup wizard now;
       /verify is retired and lands in the wizard at the right step. */}

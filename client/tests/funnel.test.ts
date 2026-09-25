@@ -82,8 +82,8 @@ test('fully onboarded goes to the feed', () => {
   assert.equal(step(onboarded), '/home');
 });
 
-test('an absent hasPassword flag does not bounce the user (Google-only accounts)', () => {
-  assert.equal(step({ ...onboarded, hasPassword: undefined }), '/home');
+test('a missing hasPassword flag bounces to the password step (fail closed)', () => {
+  assert.equal(step({ ...onboarded, hasPassword: undefined }), '/setup-password');
 });
 
 test('an absent isProfileSetup flag errs toward showing the setup screen', () => {
@@ -156,7 +156,11 @@ test('no way back in (no password, no Google) means never "done"', () => {
 
 test('a fully onboarded account is done and gets bounced off auth pages', () => {
   assert.equal(funnelDone({ ...base, ...onboarded, hasGoogle: false }), true);
-  assert.equal(funnelDone({ ...base, ...onboarded, hasPassword: false, hasGoogle: true }), true);
+  assert.equal(funnelDone({ ...base, ...onboarded, hasGoogle: true }), true);
+});
+
+test('a Google-linked account without a password is NOT done (password compulsory)', () => {
+  assert.equal(funnelDone({ ...base, ...onboarded, hasPassword: false, hasGoogle: true }), false);
 });
 
 // ── The redirect-loop regression: the guards must never disagree ──

@@ -51,7 +51,10 @@ export function hasCollege(user: User | null | undefined): boolean {
  */
 export function funnelDone(user: User | null | undefined): boolean {
   if (!user) return false;
-  const hasWayIn = user.hasPassword === true || user.hasGoogle === true;
+  // Password is compulsory for EVERYONE — Google sign-in included. A Google
+  // link is a way back in, never a substitute for the password: same bar as
+  // the normal email funnel (college → verification → password → profile).
+  const hasWayIn = user.hasPassword === true;
   if (!hasCollege(user) || !hasWayIn || !user.isProfileSetup) return false;
   const verified = user.verificationStatus === 'VERIFIED' || user.collegeEmailVerified === true;
   return verified;
@@ -64,9 +67,11 @@ export function nextStep(user: User | null | undefined): string {
   // Not verified → the signup wizard, which resumes straight at its OTP step
   // (the standalone verification page no longer exists).
   if (user.verificationStatus !== 'VERIFIED' && !user.collegeEmailVerified) return '/signup';
-  // Verified but passwordless → set the first password (skippable for
-  // Google users — nothing here is a wall, the server gates the real actions).
-  if (user.hasPassword === false) return '/setup-password';
+  // Verified but passwordless → set the first password. COMPULSORY, no
+  // skipping — Google users go through the exact same step as email users.
+  // Anything but an explicit true bounces (fail closed: a missing flag must
+  // never read as "has a password").
+  if (user.hasPassword !== true) return '/setup-password';
   // Profile details incomplete (course/year/etc).
   if (!user.isProfileSetup) return '/setup-profile';
   return '/home';

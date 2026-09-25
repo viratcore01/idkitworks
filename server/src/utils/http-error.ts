@@ -58,7 +58,7 @@ export function sendError(res: Response, error: any, fallbackStatus = 400): void
   }
   // Machine-readable safety codes the client branches on (verification gate,
   // blocked walls, photo gates) — safe to expose, never sensitive.
-  if (code === 'BLOCKED' || code === 'VERIFICATION_REQUIRED' || code === 'PROFILE_PHOTO_REQUIRED' || code === 'COLLEGE_REQUIRED') {
+  if (code === 'BLOCKED' || code === 'VERIFICATION_REQUIRED' || code === 'PASSWORD_REQUIRED' || code === 'PROFILE_PHOTO_REQUIRED' || code === 'COLLEGE_REQUIRED') {
     res.status(status).json({ error: raw, code });
     return;
   }

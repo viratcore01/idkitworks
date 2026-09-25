@@ -3,6 +3,7 @@ import { verifyAccessToken } from '../utils/jwt';
 import { prisma } from '../config/prisma';
 import { AuthRequest, AuthUser } from '../types';
 import { cachedLiveUser } from '../utils/user-cache';
+import { isPasswordSet } from '../utils/password';
 
 /**
  * Auth for image-serving routes: <img> tags can't send Authorization headers,
@@ -180,5 +181,31 @@ export async function verificationRequired(req: AuthRequest, res: Response, next
   return res.status(403).json({
     error: 'Verify your college email first — check /verify for the code',
     code: 'VERIFICATION_REQUIRED',
+  });
+}
+
+/**
+ * PRODUCT RULE: password is compulsory for EVERYONE — Google sign-in included.
+ * Same bar as the normal email funnel: verified → password → profile → feed.
+ * Google proves the inbox, never the right to skip the password. No skipping:
+ * every feed/match/chat/search/profile read sits behind this wall (alongside
+ * college + verification), so a passwordless session can call the funnel
+ * endpoints (/auth/*, /verify, /users/me/photos, profile setup) but nothing
+ * else. Admins are exempt (they must reach the console regardless).
+ */
+export async function passwordRequired(req: AuthRequest, res: Response, next: NextFunction) {
+  if (req.user?.role === 'admin' || req.user?.role === 'super_admin') return next();
+  try {
+    const live = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { passwordHash: true },
+    });
+    if (live && isPasswordSet(live.passwordHash)) return next();
+  } catch {
+    /* fall through to the 403 below */
+  }
+  return res.status(403).json({
+    error: 'Set a password first — it is required for every account, including Google sign-in',
+    code: 'PASSWORD_REQUIRED',
   });
 }

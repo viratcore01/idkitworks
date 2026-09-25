@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { MatchController } from '../controllers/match.controller';
-import { authMiddleware, collegeRequired, verificationRequired } from '../middleware/auth';
+import { authMiddleware, collegeRequired, verificationRequired, passwordRequired } from '../middleware/auth';
 
 const router = Router();
 const controller = new MatchController();
 
 // PRODUCT RULE: matching is verified-students only — the deck, likes, passes, matches.
-router.use(authMiddleware, collegeRequired, verificationRequired);
+router.use(authMiddleware, collegeRequired, verificationRequired, passwordRequired);
 
 // Preferences before /:param-style routes
 router.get('/preferences', (req, res) => controller.getPreference(req, res));

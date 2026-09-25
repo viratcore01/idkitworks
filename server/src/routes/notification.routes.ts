@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { NotificationController } from '../controllers/notification.controller';
-import { authMiddleware, collegeRequired, verificationRequired } from '../middleware/auth';
+import { authMiddleware, collegeRequired, verificationRequired, passwordRequired } from '../middleware/auth';
 
 const router = Router();
 const controller = new NotificationController();
@@ -8,7 +8,7 @@ const controller = new NotificationController();
 // Verified-only: the OTP unlock flow reads /verification status + socket
 // pings, never this inbox — so gating here costs the funnel nothing while
 // keeping unverified (college merely claimed) sessions out of the inbox.
-router.use(authMiddleware, collegeRequired, verificationRequired);
+router.use(authMiddleware, collegeRequired, verificationRequired, passwordRequired);
 
 router.get('/', (req, res) => controller.getNotifications(req, res));
 router.get('/unread-count', (req, res) => controller.getUnreadCount(req, res));

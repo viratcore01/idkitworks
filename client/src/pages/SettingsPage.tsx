@@ -17,7 +17,7 @@ export default function SettingsPage() {
   // Passwordless accounts (funnel/Google) have no password to change — they
   // SET their first one. The server gates it on verified + none-set, and the
   // session survives (unlike change, which kills every session).
-  const needsFirstPassword = user?.hasPassword === false;
+  const needsFirstPassword = user?.hasPassword !== true;
   const [setPw, setSetPw] = useState('');
   const [showDelete, setShowDelete] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');

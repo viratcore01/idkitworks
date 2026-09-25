@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { KeyRound, PartyPopper, Hourglass } from 'lucide-react';
 import Logo from '@/components/common/Logo';
 import PasswordInput from '@/components/common/PasswordInput';
@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
  * Funnel step: first password, AFTER college-email verification.
  * The server allows this exactly once (verified + no password yet) and keeps
  * the session — the owner sails straight into profile setup.
- * Google users may skip: they can always sign in with Google.
+ * COMPULSORY for everyone, Google sign-in included — no skipping.
  */
 export default function SetupPasswordPage() {
  const navigate = useNavigate();
@@ -22,10 +22,10 @@ export default function SetupPasswordPage() {
  const [busy, setBusy] = useState(false);
  const [error, setError] = useState('');
 
- // Redirects belong in an effect, not the render body: calling navigate()
- // during render is a React anti-pattern that warns, re-renders, and can loop.
- // A stray remount used to be able to bounce the user between screens forever.
- const hasNothingToDoHere = !!user && user.hasPassword !== false;
+  // Redirects belong in an effect, not the render body: calling navigate()
+  // during render is a React anti-pattern that warns, re-renders, and can loop.
+  // A stray remount used to be able to bounce the user between screens forever.
+  const hasNothingToDoHere = !!user && user.hasPassword === true;
  const isUnverified = !!user && user.verificationStatus !== 'VERIFIED' && !user.collegeEmailVerified;
 
  useEffect(() => {
@@ -97,15 +97,8 @@ export default function SetupPasswordPage() {
  <><PartyPopper size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Set password & continue</>
  )}
  </button>
- </form>
- {user?.hasGoogle && (
- <p className="text-sm mt-4">
- <Link to="/setup-profile" className="opacity-60 hover:opacity-100 hover:underline">
- Skip for now — I&apos;ll keep signing in with Google
- </Link>
- </p>
- )}
- </div>
- </div>
- );
+  </form>
+  </div>
+  </div>
+  );
 }
