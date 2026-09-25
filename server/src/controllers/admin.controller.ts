@@ -143,13 +143,14 @@ export class AdminController {
     }
   }
 
-  /** Moderator console: campus announcement broadcast. */
+  /** Moderator console: campus broadcast OR direct one-user announcement. */
   async announce(req: AuthRequest, res: Response) {
     try {
       res.json(await adminService.announce(req.user!.id, req.user!.role, {
         collegeId: req.body?.collegeId,
         title: req.body?.title,
         body: req.body?.body,
+        userId: req.body?.userId,
       }));
     } catch (error: any) {
       sendError(res, error, error.status || 400);

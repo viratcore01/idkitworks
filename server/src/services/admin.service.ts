@@ -386,14 +386,34 @@ export class AdminService {
   }
 
   /** Append-only audit entry. Logging must never break the action it records. */
-  async log(actorId: string, action: string, targetType?: string, targetId?: string, collegeId?: string | null, reason?: string, metadata?: any) {
+  async log(actorId: string, action: string, targetType?: string, targetId?: string, collegeId?: string | null, reason?: string, metadata?: any, at?: Date) {
     try {
       await prisma.moderationLog.create({
-        data: { actorId, action, targetType, targetId, collegeId: collegeId || null, reason, metadata },
+        data: { actorId, action, targetType, targetId, collegeId: collegeId || null, reason, metadata, ...(at ? { createdAt: at } : {}) },
       });
     } catch {
       /* audit is best-effort — the moderation action already succeeded */
     }
+  }
+
+  /**
+   * One announcement (blast OR direct) per sender per second, enforced by
+   * spacing the recorded send time. Recall identifies a broadcast's inbox
+   * rows by (type, sender, sent second) — two sends in the SAME second would
+   * be indistinguishable and a recall of one would eat both. The audit row
+   * and the notification rows are written with the SAME explicit timestamp,
+   * so the window always contains exactly one announcement's rows.
+   */
+  private async nextAnnounceSecond(actorId: string): Promise<Date> {
+    const last = await prisma.moderationLog.findFirst({
+      where: { actorId, action: 'announce' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    const now = Date.now();
+    return last && now - last.createdAt.getTime() < 1000
+      ? new Date(last.createdAt.getTime() + 1000)
+      : new Date(now);
   }
 
   /** Activity feed: who did what, scoped to your moderation world. */
@@ -505,20 +525,59 @@ export class AdminService {
    * 5 minutes per scope prevents an accidental double-tap from spamming
    * thousands of inboxes.
    */
-  async announce(viewerId: string, role: string, input: { collegeId?: string; title: string; body: string }) {
+  async announce(viewerId: string, role: string, input: { collegeId?: string; title: string; body: string; userId?: string }) {
     const title = String(input.title || '').trim().slice(0, 120);
     const body = String(input.body || '').trim().slice(0, 500);
     if (!title || !body) {
       const e: any = new Error('Title and body are required'); e.status = 400; throw e;
     }
     const { isSuper, collegeIds } = await this.scope(viewerId, role, input.collegeId);
+
+    // ── DIRECT announcement: one named inbox, not a blast ──
+    //
+    // Same type (ANNOUNCEMENT) so the inbox renders it identically, but the
+    // audit row carries targetType USER + the recipient's college, which is
+    // what keeps recall scoping exact later. No 5-minute cooldown here — that
+    // brake exists to stop inbox-flooding BLASTS; a direct message needs its
+    // own, lighter cap so a blast never blocks one, and vice versa (the blast
+    // cooldown below only counts COLLEGE rows).
+    if (input.userId) {
+      const target = await prisma.user.findUnique({
+        where: { id: String(input.userId) },
+        select: { id: true, username: true, displayName: true, collegeId: true, isActive: true },
+      });
+      if (!target || !target.isActive) {
+        const e: any = new Error('User not found'); e.status = 404; throw e;
+      }
+      if (!isSuper && !(collegeIds.length && target.collegeId === collegeIds[0])) {
+        const e: any = new Error('Not authorized'); e.status = 403; throw e;
+      }
+      // Scripted-send brake: 20 direct announcements / 10 min per staffer.
+      const recentDirects = await prisma.moderationLog.count({
+        where: { actorId: viewerId, action: 'announce', targetType: 'USER', createdAt: { gte: new Date(Date.now() - 10 * 60 * 1000) } },
+      });
+      if (recentDirects >= 20) {
+        const e: any = new Error('Too many direct announcements — wait a few minutes'); e.status = 429; throw e;
+      }
+      const sentAt = await this.nextAnnounceSecond(viewerId);
+      await prisma.notification.create({
+        data: { recipientId: target.id, actorId: viewerId, type: 'ANNOUNCEMENT', metadata: { title, body, direct: true }, createdAt: sentAt } as any,
+      });
+      invalidateUnreadCount(target.id);
+      publish('notification:new', { userIds: [target.id] });
+      await this.log(viewerId, 'announce', 'USER', target.id, target.collegeId, title, { recipients: 1, direct: true, username: target.username }, sentAt);
+      return { recipients: 1, direct: true };
+    }
+
     const targetCollegeId = !isSuper ? collegeIds[0] : input.collegeId || null;
     if (!isSuper && !targetCollegeId) {
       const e: any = new Error('Not authorized'); e.status = 403; throw e;
     }
 
+    // Blast cooldown counts only blast rows: a direct announcement (USER row)
+    // must neither trigger it nor be blocked by it.
     const cooldown = await prisma.moderationLog.findFirst({
-      where: { action: 'announce', collegeId: targetCollegeId, createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) } },
+      where: { action: 'announce', targetType: 'COLLEGE', collegeId: targetCollegeId, createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) } },
       select: { id: true },
     });
     if (cooldown) {
@@ -529,16 +588,17 @@ export class AdminService {
       where: { isActive: true, ...(targetCollegeId ? { collegeId: targetCollegeId } : {}) },
       select: { id: true },
     });
+    const sentAt = await this.nextAnnounceSecond(viewerId);
     const metadata = { title, body };
     for (let i = 0; i < recipients.length; i += 500) {
       const chunk = recipients.slice(i, i + 500);
       await prisma.notification.createMany({
-        data: chunk.map((r) => ({ recipientId: r.id, actorId: viewerId, type: 'ANNOUNCEMENT', metadata } as any)),
+        data: chunk.map((r) => ({ recipientId: r.id, actorId: viewerId, type: 'ANNOUNCEMENT', metadata, createdAt: sentAt } as any)),
       });
     }
     invalidateUnreadCount(...recipients.map((r) => r.id));
     publish('notification:new', { userIds: recipients.map((r) => r.id) });
-    await this.log(viewerId, 'announce', 'COLLEGE', targetCollegeId || 'ALL', targetCollegeId, title, { recipients: recipients.length });
+    await this.log(viewerId, 'announce', 'COLLEGE', targetCollegeId || 'ALL', targetCollegeId, title, { recipients: recipients.length }, sentAt);
     return { recipients: recipients.length };
   }
 
@@ -578,7 +638,11 @@ export class AdminService {
         where: {
           type: 'ANNOUNCEMENT',
           actorId: log.actorId,
-          createdAt: { gte: sentAt, lte: new Date(sentAt.getTime() + 1000) },
+          // Half-open window [sentAt, sentAt+1s): nextAnnounceSecond() spaces
+          // consecutive announcements exactly 1000ms apart, so the END must
+          // stay exclusive — an inclusive +1000 would swallow the NEXT
+          // announcement's rows when one lands exactly a second later.
+          createdAt: { gte: sentAt, lt: new Date(sentAt.getTime() + 1000) },
         },
       });
       items.push({
@@ -587,6 +651,8 @@ export class AdminService {
         body: (log.metadata as any)?.body || '',
         scope: log.targetId || 'ALL',
         collegeId: log.collegeId,
+        direct: log.targetType === 'USER',
+        directTo: (log.metadata as any)?.username || null,
         sentAt: log.createdAt,
         recipients: (log.metadata as any)?.recipients ?? null,
         remaining,
@@ -615,6 +681,7 @@ export class AdminService {
 
     let totalRemoved = 0;
     const results: { id: string; removed: number; scope: string | null }[] = [];
+    const touchedActorIds = new Set<string>();
     for (const id of list) {
       const log = await prisma.moderationLog.findUnique({
         where: { id },
@@ -630,10 +697,15 @@ export class AdminService {
         where: {
           type: 'ANNOUNCEMENT',
           actorId: log.actorId,
-          createdAt: { gte: sentAt, lte: new Date(sentAt.getTime() + 1000) },
+          // Half-open window [sentAt, sentAt+1s): nextAnnounceSecond() spaces
+          // consecutive announcements exactly 1000ms apart, so the END must
+          // stay exclusive — an inclusive +1000 would swallow the NEXT
+          // announcement's rows when one lands exactly a second later.
+          createdAt: { gte: sentAt, lt: new Date(sentAt.getTime() + 1000) },
         },
       });
       totalRemoved += deleted.count;
+      touchedActorIds.add(log.actorId);
       results.push({ id, removed: deleted.count, scope: log.collegeId });
 
       await prisma.moderationLog.update({
@@ -643,11 +715,11 @@ export class AdminService {
       await this.log(viewerId, 'announce:remove', 'COLLEGE', id, log.collegeId, `Recalled broadcast: ${(log.metadata as any)?.title || 'untitled'}`, { removed: deleted.count });
     }
 
-    if (totalRemoved > 0) {
+    if (totalRemoved > 0 && touchedActorIds.size) {
       // Badge caches for everyone who lost rows: recompute from the DB on
       // their next poll instead of showing a stale unread count.
       const affected = await prisma.notification.findMany({
-        where: { type: 'ANNOUNCEMENT', actorId: (await prisma.moderationLog.findUnique({ where: { id: list[0] }, select: { actorId: true } }))?.actorId },
+        where: { type: 'ANNOUNCEMENT', actorId: { in: [...touchedActorIds] } },
         select: { recipientId: true },
         distinct: ['recipientId'],
         take: 1000,

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { prisma } from '../src/config/prisma';
 import { AdminService } from '../src/services/admin.service';
 import { invalidateUnreadCount } from '../src/services/notification.service';
-import { FakeDb, install, makeUser, makeCollege, FakeDbOptions } from './helpers/fake-db';
+import { FakeDb, install, makeUser, makeCollege, rejectsWithStatus, FakeDbOptions } from './helpers/fake-db';
 
 /**
  * The announce/recall pair. The recall's inbox match is (type, actorId,
@@ -108,6 +108,58 @@ test('a college admin cannot recall a broadcast addressed to another campus', as
 
   const before = db.rows('notification').length;
   assert.equal(before, 2, 'inbox rows untouched');
+});
+
+test('direct announcements: one named inbox, scoped, and separable from blasts in the same second', async () => {
+  const db = setup({
+    users: [superAdmin, collegeAdmin, makeUser({ id: 'student-1' }), makeUser({ id: 'student-2', email: 's2@ipec.org.in', collegeId: 'college-2' })],
+  });
+
+  // Direct send reaches exactly one inbox.
+  const sent = await svc.announce('admin-1', 'super_admin', { title: 'PSA', body: 'Check your settings', userId: 'student-1' });
+  assert.equal(sent.recipients, 1);
+  assert.equal(sent.direct, true);
+
+  const rows = db.rows('notification');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].recipientId, 'student-1');
+  assert.equal(rows[0].type, 'ANNOUNCEMENT');
+
+  // A direct send must not trip (or eat) the BLAST cooldown — different counter.
+  const blast = await svc.announce('admin-1', 'super_admin', { title: 'Blast', body: 'Campus news' });
+  assert.equal(blast.direct, undefined);
+
+  // Direct + blast from the same sender in the same second stay SEPARATE:
+  // each audit row got its own second, so recalling one never eats the other.
+  const logs = db.rows('moderationLog').filter((l) => l.action === 'announce').sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  assert.equal(logs.length, 2);
+  assert.notEqual(logs[0].createdAt.getTime(), logs[1].createdAt.getTime(), 'send seconds must differ');
+
+  const direct = await svc.listAnnouncements('admin-1', 'super_admin');
+  const directRow = direct.items.find((b: any) => b.direct);
+  assert.ok(directRow, 'the direct send appears in the past list');
+  assert.equal(directRow.directTo, 'student');
+
+  // Recall ONLY the direct one; the blast rows must survive. The blast goes
+  // to EVERY active user — the two admins included — so it created 4 rows.
+  const directItem = direct.items.find((b: any) => b.direct);
+  assert.ok(directItem, 'the direct announcement must be recallable');
+  const recall = await svc.removeAnnouncements('admin-1', 'super_admin', [directItem.id]);
+  assert.equal(recall.removed, 1, 'exactly the direct row left the inbox');
+  const after = db.rows('notification');
+  assert.equal(after.length, 4, 'every blast row survives a direct recall');
+  assert.ok(after.every((n) => n.metadata?.title === 'Blast'));
+});
+
+test('a college admin cannot direct-announce a user on another campus', async () => {
+  const db = setup({
+    users: [collegeAdmin, makeUser({ id: 'student-2', email: 's2@ipec.org.in', collegeId: 'college-2' })],
+  });
+  await rejectsWithStatus(
+    () => svc.announce('mod-1', 'admin', { title: 'Hi', body: 'Cross-campus direct', userId: 'student-2' }),
+    403,
+  );
+  assert.equal(db.rows('notification').length, 0, 'nothing was sent');
 });
 
 test('recall marks unread-count caches dirty so badges recompute', async () => {
