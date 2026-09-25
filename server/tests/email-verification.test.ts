@@ -91,27 +91,65 @@ test('sendOtp mails a 6-digit code, remembers the address, and expires it in 10 
   assert.equal(db.rows('user')[0].collegeEmailVerified, false, 'sending a code does NOT verify anyone');
 });
 
-test('sendOtp keeps exactly one usable code at a time — the newest wins', async () => {
+test('sendOtp keeps exactly one usable code at a time — and REUSES it for the same address', async () => {
+  const { db, svc } = setup({ users: [makeUser()] });
+  const first = await svc.sendOtp('user-1', EMAIL);
+  const firstCode = liveCode(db);
+
+  const second = await svc.sendOtp('user-1', EMAIL);
+
+  // Stepping back and forth through the wizard used to mail a fresh code every
+  // time and spend one of the three sends — a user could rate-limit THEMSELVES
+  // out of the flow with a perfectly good code already in their inbox.
+  assert.equal(second.reused, true, 'a live code for the same address is reused');
+  assert.equal(liveCode(db), firstCode, 'the code already in the inbox is still the valid one');
+  assert.equal(db.rows('emailOtp').length, 1, 'no duplicate mail, no duplicate row');
+  assert.equal(db.rows('emailOtp').filter((o) => !o.usedAt).length, 1, 'only one code is ever redeemable');
+  assert.ok(first.expiresIn >= 590 && first.expiresIn <= 600, `TTL reported as ${first.expiresIn}s`);
+  assert.ok(second.expiresIn <= first.expiresIn, 'the reuse reports the REMAINING time');
+});
+
+test('REUSE is scoped to the address: a different inbox always gets a genuine send', async () => {
+  const OTHER = 'someone.else@ipec.org.in';
   const { db, svc } = setup({ users: [makeUser()] });
   await svc.sendOtp('user-1', EMAIL);
-  const first = liveCode(db);
-  await svc.sendOtp('user-1', EMAIL);
+  const firstCode = liveCode(db);
 
-  assert.equal(liveCode(db) !== first || db.rows('emailOtp').length === 2, true);
-  assert.equal(
-    db.rows('emailOtp').filter((o) => !o.usedAt).length,
-    1,
-    'only the newest code can be redeemed',
-  );
+  const moved = await svc.sendOtp('user-1', OTHER);
+
+  assert.equal(moved.reused, undefined, 'a new address is a new claim → a new code');
+  assert.equal(db.rows('emailOtp').length, 2);
+  assert.notEqual(liveCode(db), firstCode);
+  assert.equal(db.rows('emailOtp').filter((o) => !o.usedAt).length, 1, 'the old code is retired');
+  assert.equal(db.rows('user')[0].collegeEmail, OTHER, 'the pending address follows the send');
+});
+
+test('REUSE never resurrects an EXPIRED code', async () => {
+  const { db, svc } = setup({ users: [makeUser()] });
+  await svc.sendOtp('user-1', EMAIL);
+  const expired = liveCode(db);
+  db.rows('emailOtp')[0].expiresAt = new Date(Date.now() - 1000);
+
+  const again = await svc.sendOtp('user-1', EMAIL);
+
+  assert.equal(again.reused, undefined);
+  assert.notEqual(liveCode(db), expired, 'a dead code is not a code');
 });
 
 test('RATE LIMIT: sends are capped per user, not just per IP', async () => {
+  const OTHER = 'other.student@ipec.org.in';
   const { db, svc } = setup({ users: [makeUser()] });
 
-  for (let i = 0; i < 3; i++) await svc.sendOtp('user-1', EMAIL);
-  const err = await rejectsWithStatus(() => svc.sendOtp('user-1', EMAIL), 429);
+  // Alternating addresses forces three REAL sends (each switch has no live code
+  // for the address being addressed) — the honest route to the cap now that
+  // repeating an address reuses its live code instead of spending a send.
+  await svc.sendOtp('user-1', EMAIL);
+  await svc.sendOtp('user-1', OTHER);
+  await svc.sendOtp('user-1', EMAIL);
+
+  const err = await rejectsWithStatus(() => svc.sendOtp('user-1', OTHER), 429);
   assert.match(err.message, /10 minutes/);
-  // The old code must still work — a throttled request changes nothing.
+  // The live code must still work — a throttled request changes nothing.
   assert.equal(db.rows('emailOtp').filter((o) => !o.usedAt).length, 1);
 });
 
@@ -253,8 +291,12 @@ test('resendOtp needs a pending verification and re-sends to the remembered addr
 
   await svc.sendOtp('user-1', EMAIL);
   const first = liveCode(db);
-  await svc.resendOtp('user-1');
-  assert.equal(liveCode(db) !== first || db.rows('emailOtp').length === 2, true);
+  const resent = await svc.resendOtp('user-1');
+  // Resending to the SAME address keeps the live code instead of mailing a
+  // duplicate: the user is never made to wait for a second email.
+  assert.equal(resent.reused, true);
+  assert.equal(liveCode(db), first);
+  assert.equal(db.rows('emailOtp').length, 1);
 
   db.rows('user')[0].collegeEmailVerified = true;
   await rejectsWithStatus(() => svc.resendOtp('user-1'), 400);

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, PartyPopper, Hourglass, Camera, Plus, X, GraduationCap, ArrowLeft } from 'lucide-react';
+import { Sparkles, PartyPopper, Hourglass, Camera, Plus, X, GraduationCap, ArrowLeft, Lock } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { nextStep, hasCollege } from '@/utils/funnel';
+import { canSignOut, clearWizardDraft } from '@/utils/signupFlow';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
 import { type CollegeOption } from '@/components/common/CollegeSelect';
@@ -31,56 +32,106 @@ export default function ProfileSetupPage() {
  // page creates exactly that) does not get a picker either: it goes back to the
  // wizard and redoes the college step — see the blocked screen below.
  const needsCollege = !hasCollege(user);
+ // PRODUCT RULE: what the account already HAS is locked; what it is MISSING is
+ // filled exactly once, here. nameLocked matters most — a Google token with no
+ // `name` claim now parks an empty string (no invented "viratcore01"), and this
+ // is the one screen where that gap can be filled.
+ const nameLocked = !!(user?.displayName && user.displayName.trim().length > 0);
+ const dobLocked = !!user?.dateOfBirth;
+ const genderLocked = !!user?.gender && user.gender !== 'UNKNOWN';
  const [formData, setFormData] = useState({
  collegeId: user?.college?.id || '',
+ displayName: user?.displayName || '',
  course: user?.course || '',
  year: user?.year || 1,
  bio: user?.bio || '',
- gender: (user as any)?.gender || 'UNKNOWN',
- dateOfBirth: '',
+ gender: (user?.gender || 'UNKNOWN') as string,
+ // Prefilled when already set: the field is then read-only, and an empty
+ // required box for data we already hold forced a retype that the write-once
+ // lock answered with "Birth date is locked once set".
+ dateOfBirth: user?.dateOfBirth ? String(user.dateOfBirth).slice(0, 10) : '',
  interestIds: user?.interests?.map((i) => i.id) || [],
  });
  const [isLoading, setIsLoading] = useState(false);
  const [slots, setSlots] = useState<{ id: string; slot: number }[]>(
- ((user as any)?.photos as any) || [],
+ (user?.photos as any) || [],
  );
+ const [staged, setStaged] = useState<{ slot: number; file: File; url: string }[]>([]);
+ const stagedRef = useRef(staged);
+ stagedRef.current = staged;
  const [busySlot, setBusySlot] = useState<number | null>(null);
  const [editing, setEditing] = useState<{ slot: number; file: File } | null>(null);
+ const [confirmLeave, setConfirmLeave] = useState(false);
 
- /** Photos unlock matching — upload right here so new users aren't gated later. */
- const handleUpload = async (slot: number, file: File | undefined) => {
+ // One tile per slot: a STAGED pick overrides the saved photo in the same slot.
+ const tiles = new Map<number, { slot: number; id?: string; src: string; staged: boolean }>();
+ for (const p of slots) tiles.set(p.slot, { slot: p.slot, id: p.id, src: photoSrc(p.id) + `&v=${photoVersion}`, staged: false });
+ for (const s of staged) tiles.set(s.slot, { slot: s.slot, src: s.url, staged: true });
+
+ /**
+ * Photos unlock matching — so they are STAGED here and uploaded on save.
+ *
+ * Uploading on pick meant "leave without saving" still left pictures on the
+ * account, which quietly broke the rule that leaving this screen discards
+ * everything. Staging also means a wrong pick costs one tap, not an upload
+ * plus a delete. Removing a photo that IS saved stays immediate: that is a
+ * deliberate act on stored data, not an unsaved form field.
+ */
+ const stage = (slot: number, file: File | undefined) => {
  if (!file) return;
  if (!file.type.startsWith('image/')) return toast.error('Pick an image file');
  if (file.size > 5 * 1024 * 1024) return toast.error('Image must be under 5 MB');
- setBusySlot(slot);
- try {
- const fd = new FormData();
- fd.append('photo', file);
- fd.append('slot', String(slot));
- await api.post('/users/me/photos', fd);
- const { data } = await api.get('/auth/me');
- setSlots(data.photos || []);
- // New avatar propagates to Topbar/Sidebar/MobileNav immediately.
- await refreshUser();
- toast.success(slot === 0 ? 'Profile picture set' : 'Photo added');
- } catch (e: any) {
- toast.error(e.response?.data?.error || 'Upload failed');
- } finally {
- setBusySlot(null);
- }
+ setStaged((prev) => {
+ const replaced = prev.find((s) => s.slot === slot);
+ if (replaced) URL.revokeObjectURL(replaced.url);
+ return [...prev.filter((s) => s.slot !== slot), { slot, file, url: URL.createObjectURL(file) }];
+ });
  };
 
- const handleRemove = async (photo: { id: string; slot: number }) => {
- setBusySlot(photo.slot);
+ const handleRemove = async (tile: { slot: number; id?: string }) => {
+ // A staged pick is only state — dropping it IS the removal.
+ if (!tile.id) {
+ setStaged((prev) => {
+ const hit = prev.find((s) => s.slot === tile.slot);
+ if (hit) URL.revokeObjectURL(hit.url);
+ return prev.filter((s) => s.slot !== tile.slot);
+ });
+ return;
+ }
+ setBusySlot(tile.slot);
  try {
- await api.delete(`/users/me/photos/${photo.id}`);
- setSlots((s) => s.filter((p) => p.id !== photo.id));
+ await api.delete(`/users/me/photos/${tile.id}`);
+ setSlots((s) => s.filter((p) => p.id !== tile.id));
  await refreshUser(); // keep the shell avatar in sync with the removal
  } catch {
  /* non-fatal */
  } finally {
  setBusySlot(null);
  }
+ };
+
+ // Preview URLs are memory: release them when the screen goes away.
+ useEffect(() => () => { for (const s of stagedRef.current) URL.revokeObjectURL(s.url); }, []);
+
+ /**
+ * Leave the profile form. Nothing on it is written — staged picks are dropped
+ * with their previews and the wizard's remembered draft goes with them.
+ *
+ * Signing out is only safe when something else can sign the account back IN (a
+ * password, or Google): a verified account with neither would be stranded
+ * forever, so that case is sent to the password step instead of the exit.
+ */
+ const leaveSetup = async () => {
+ for (const s of staged) URL.revokeObjectURL(s.url);
+ setStaged([]);
+ clearWizardDraft(sessionStorage);
+ if (!canSignOut(user)) {
+ toast.error("Set a password first — it's the only way back into your account", { duration: 6000 });
+ navigate('/setup-password', { replace: true });
+ return;
+ }
+ await logout();
+ navigate('/login', { replace: true });
  };
 
  const { data: interests } = useQuery({
@@ -94,17 +145,29 @@ export default function ProfileSetupPage() {
  if (needsCollege) return;
  setIsLoading(true);
  try {
-  // No collegeId is ever sent from here: the college was locked at signup and
-  // the server refuses a move (403) — it can only be set by the wizard, which
-  // is why the no-college case sends the user back there.
+  // 1. Upload the staged picks first (slot order — slot 0 is the avatar), so a
+  //    failure here aborts before any profile field is written.
+  const pending = [...staged].sort((a, b) => a.slot - b.slot);
+  for (const item of pending) {
+    const fd = new FormData();
+    fd.append('photo', item.file);
+    fd.append('slot', String(item.slot));
+    await api.post('/users/me/photos', fd);
+  }
+  // 2. The profile itself. Locked fields are NOT sent: the server refuses any
+  //    change to them (403), so echoing them back is at best a no-op and at
+  //    worst a confusing failure. No collegeId either — the wizard owns that.
   await updateProfile({
     course: formData.course,
     year: formData.year,
     bio: formData.bio,
-    gender: formData.gender,
-    dateOfBirth: formData.dateOfBirth,
+    ...(genderLocked ? {} : { gender: formData.gender }),
+    ...(dobLocked ? {} : { dateOfBirth: formData.dateOfBirth }),
+    ...(nameLocked ? {} : { displayName: formData.displayName.trim() }),
     interestIds: formData.interestIds,
   });
+  for (const item of pending) URL.revokeObjectURL(item.url);
+  setStaged([]);
   // Refresh the user so the gates re-evaluate immediately
   await fetchMe();
   toast.success('Profile updated!');
@@ -164,6 +227,44 @@ export default function ProfileSetupPage() {
  return (
  <div className="min-h-screen nb-canvas-surface flex items-center justify-center p-4">
  <div className="w-full max-w-lg">
+ {/* Leaving is ONE tap and it is honest about it — but it asks first,
+ because this screen is a full page of work with nothing saved yet. */}
+ <div className="flex items-center justify-between mb-3">
+ <button
+ type="button"
+ onClick={() => setConfirmLeave(true)}
+ className="text-sm font-body opacity-60 hover:opacity-100 inline-flex items-center gap-1"
+ >
+ <ArrowLeft size={14} /> Back to start
+ </button>
+ <span className="text-xs font-body text-gray-400">Step 4 of 4</span>
+ </div>
+
+ {confirmLeave && (
+ <div role="dialog" aria-modal="true" aria-labelledby="leave-setup-title" className="nb-card p-4 mb-4">
+ <h2 id="leave-setup-title" className="font-display font-bold text-lg">Leave setup?</h2>
+ <p className="font-body text-sm text-gray-500 mt-1">
+ Nothing typed here is saved — the form and any photos you picked are discarded. Your account, verified
+ college email and password stay exactly as they are.
+ </p>
+ {!canSignOut(user) && (
+ <p className="font-body text-xs text-nb-pink font-semibold mt-2 flex items-start gap-1.5">
+ <Lock size={12} className="mt-0.5 shrink-0" />
+ You haven&apos;t set a password yet, so we&apos;ll take you to set one first — otherwise there&apos;d be no way back into
+ your account.
+ </p>
+ )}
+ <div className="flex flex-col sm:flex-row gap-2 mt-4">
+ <button type="button" onClick={leaveSetup} className="nb-btn-primary flex-1 text-center">
+ Leave without saving
+ </button>
+ <button type="button" onClick={() => setConfirmLeave(false)} className="nb-btn-ghost flex-1 text-center">
+ Keep editing
+ </button>
+ </div>
+ </div>
+ )}
+
  <div className="text-center mb-6">
  <h1 className="text-3xl font-display font-bold text-ink">
  <span className="inline-flex items-center gap-2">
@@ -190,6 +291,29 @@ export default function ProfileSetupPage() {
   />
   <p className="text-xs text-gray-500 mt-1">
   Chosen in step 1 of signup and fixed for the life of the account — posts, matches and chats never cross campuses.
+  </p>
+  </div>
+
+  <div>
+  <label htmlFor="setup-name" className="block font-display text-sm font-semibold mb-1.5">
+  {nameLocked ? 'Name (locked)' : 'Display name *'}
+  </label>
+  <input
+  id="setup-name"
+  type="text"
+  className={`nb-input ${nameLocked ? 'bg-gray-50 text-gray-500' : ''}`}
+  value={formData.displayName}
+  onChange={(e) => setFormData((d) => ({ ...d, displayName: e.target.value }))}
+  readOnly={nameLocked}
+  disabled={nameLocked}
+  required={!nameLocked}
+  maxLength={50}
+  autoComplete="off"
+  />
+  <p className="text-xs text-gray-500 mt-1">
+  {nameLocked
+  ? 'Fixed for the life of the account.'
+  : 'You get to set this once — it is fixed the moment you save.'}
   </p>
   </div>
 
@@ -240,24 +364,33 @@ export default function ProfileSetupPage() {
 
   <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3 min-w-0">
  <div>
-  <label htmlFor="setup-dob" className="block font-display text-sm font-semibold mb-1.5">Birth date *</label>
+  <label htmlFor="setup-dob" className="block font-display text-sm font-semibold mb-1.5">
+  {dobLocked ? 'Birth date (locked)' : 'Birth date *'}
+  </label>
   <input
   id="setup-dob"
   type="date"
-  className="nb-input text-sm"
-  required
+  className={`nb-input text-sm ${dobLocked ? 'bg-gray-50 text-gray-500' : ''}`}
+  required={!dobLocked}
+  readOnly={dobLocked}
+  disabled={dobLocked}
   max={new Date(Date.now() - 16 * 365.25 * 24 * 3600 * 1000).toISOString().slice(0, 10)}
   value={formData.dateOfBirth}
   onChange={(e) => setFormData((d) => ({ ...d, dateOfBirth: e.target.value }))}
   />
-  <p className="text-xs text-gray-500 mt-1">Must be 16+. Only your age is shown.</p>
+  <p className="text-xs text-gray-500 mt-1">
+  {dobLocked ? 'Locked once saved. Only your age is shown.' : 'Must be 16+. Only your age is shown.'}
+  </p>
   </div>
   <div>
-  <label htmlFor="setup-gender" className="block font-display text-sm font-semibold mb-1.5">Gender *</label>
+  <label htmlFor="setup-gender" className="block font-display text-sm font-semibold mb-1.5">
+  {genderLocked ? 'Gender (locked)' : 'Gender *'}
+  </label>
   <select
   id="setup-gender"
-  className="nb-input text-sm"
-  required
+  className={`nb-input text-sm ${genderLocked ? 'bg-gray-50 text-gray-500' : ''}`}
+  required={!genderLocked}
+  disabled={genderLocked}
   value={formData.gender}
   onChange={(e) => setFormData((d) => ({ ...d, gender: e.target.value }))}
   >
@@ -275,14 +408,14 @@ export default function ProfileSetupPage() {
  </label>
  <div className="grid grid-cols-4 gap-2 mb-1">
  {Array.from({ length: 4 }).map((_, slot) => {
- const photo = slots.find((s) => s.slot === slot) || null;
- const src = photo ? photoSrc(photo.id) + `&v=${photoVersion}` : null;
+ const tile = tiles.get(slot) || null;
+ const src = tile?.src || null;
  return (
  <div key={slot} className="relative">
-  {photo && (
+  {tile && (
   <button
   type="button"
-  onClick={() => handleRemove(photo)}
+  onClick={() => handleRemove(tile)}
   aria-label={`Remove photo ${slot + 1}`}
   className="absolute -top-1 -right-1 z-10 w-7 h-7 bg-nb-pink text-white border-nb-2 border-ink flex items-center justify-center"
   title="Remove"
@@ -315,7 +448,10 @@ export default function ProfileSetupPage() {
  );
  })}
   </div>
-  <p className="text-xs text-gray-500 font-body mb-1">JPG / PNG / WebP · max 5 MB each.</p>
+  <p className="text-xs text-gray-500 font-body mb-1">
+  JPG / PNG / WebP · max 5 MB each.{' '}
+  {staged.length > 0 && <span className="font-semibold text-nb-violet">New picks upload when you save.</span>}
+  </p>
   </div>
 
   <fieldset>
@@ -376,11 +512,10 @@ export default function ProfileSetupPage() {
  { label: '4:5', value: 4 / 5 },
  ]}
   maxOutputPx={1080}
- onCancel={() => setEditing(null)}
- onDone={(f) => {
+ onCancel={() => setEditing(null)}  onDone={(f) => {
  const slot = editing.slot;
  setEditing(null);
- handleUpload(slot, f);
+ stage(slot, f);
  }}
  />
  )}

@@ -161,6 +161,21 @@ const googleLimiter = rateLimit({
 });
 app.use('/api/auth/google', googleLimiter);
 
+// ── Handle lookup brake: the one pre-auth route designed to be called WHILE
+// TYPING. It must tolerate a burst from one student (the client debounces and
+// caches answers) without becoming a bulk harvester of which handles exist.
+// 300 / 15 min per IP keeps a NAT'd campus working and still caps a script.
+// Answers are advisory — the DB's unique index is the real gate.
+const usernameLookupLimiter = rateLimit({
+  keyGenerator: realClientIpKey,
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many username checks. Slow down.' },
+});
+app.use('/api/auth/username-available', usernameLookupLimiter);
+
 // ── Password-reset mail brake: 20 requests / 15 min per network ──
 // The reset endpoint answers identically whether or not an account exists, so
 // this limiter is deliberately IP-scoped (never account-scoped): a 429 here

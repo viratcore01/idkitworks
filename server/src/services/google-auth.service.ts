@@ -8,6 +8,7 @@ import { env } from '../config/env';
 import { JwtPayload } from '../types';
 import { invalidateUser } from '../utils/user-cache';
 import { isPasswordSet } from '../utils/password';
+import { isReservedUsername, USERNAME_PATTERN } from '../utils/username';
 
 /**
  * Google Sign-In, real verification — not dummy:
@@ -148,8 +149,17 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GooglePayloa
   };
 }
 
-// Reserved usernames can never be claimed by auto-generated handles
-const RESERVED = new Set(['admin', 'skola', 'support', 'root', 'moderator', 'official', 'team', 'help', 'security']);
+/**
+ * Google's `name` claim, or an empty string.
+ *
+ * NO FALLBACK to the email local part: a token without a `name` used to yield
+ * "viratcore01@gmail.com" → "viratcore01", and because the name is locked for
+ * life that placeholder became a permanent support ticket. An empty name is
+ * honest — the profile screen asks for it once and then locks it.
+ */
+function sanitizeDisplayName(name: unknown): string {
+  return String(name ?? '').trim().slice(0, 50);
+}
 
 function baseHandle(fullName: string | undefined, email: string): string {
   const fromName = (fullName || email.split('@')[0])
@@ -157,24 +167,31 @@ function baseHandle(fullName: string | undefined, email: string): string {
     .replace(/[^a-z0-9_]/g, '')
     .slice(0, 14);
   const stem = fromName.length >= 3 ? fromName : 'student';
-  return stem;
+  // A reserved stem would fail EVERY suffixed candidate below (the rule ignores
+  // trailing digits, so "admin123" is still reserved) and only ever come out of
+  // the last-resort fallback — so swap it for a neutral stem up front instead
+  // of burning 30 lookups to reach the same answer.
+  return isReservedUsername(stem) ? 'student' : stem;
 }
 
 async function availableHandle(stem: string): Promise<string> {
   // Case-insensitive claims: a stem colliding with an existing username in
   // ANY case (e.g. stem "virat" vs account "Virat") must not be handed out.
-  if (!RESERVED.has(stem) && /^[a-z0-9_]{3,20}$/.test(stem)) {
+  // Same reserved list as typed signup and the live availability check — one
+  // definition, so a generated handle can never claim what a typed one can't.
+  if (!isReservedUsername(stem) && USERNAME_PATTERN.test(stem)) {
     const taken = await prisma.user.findFirst({ where: { username: { equals: stem, mode: 'insensitive' } }, select: { id: true } });
     if (!taken) return stem;
   }
   for (let i = 0; i < 30; i++) {
     const candidate = `${stem}${Math.floor(100 + Math.random() * 900)}`;
-    if (RESERVED.has(candidate)) continue;
+    if (isReservedUsername(candidate)) continue;
     const taken = await prisma.user.findFirst({ where: { username: { equals: candidate, mode: 'insensitive' } }, select: { id: true } });
     if (!taken) return candidate;
   }
-  // Practically unreachable; final fallback
-  return `${stem}${Date.now().toString().slice(-6)}`;
+  // Practically unreachable; final fallback. Built from a non-reserved stem so
+  // the answer is always a claimable handle, never a reserved-looking one.
+  return `student${Date.now().toString().slice(-6)}`;
 }
 
 export interface GoogleAuthResult {
@@ -290,7 +307,7 @@ export async function googleAuth(idToken: string, collegeId?: string): Promise<G
     // the domain matches. Password comes later via setInitialPassword.
     created = true;
     const username = await availableHandle(baseHandle(g.name, g.email));
-    const displayName = (g.name || g.email.split('@')[0]).slice(0, 50);
+    const displayName = sanitizeDisplayName(g.name);
     // passwordHash is NOT NULL: park a random secret no one can guess or use.
     user = await prisma.user.create({
       data: {
@@ -313,7 +330,7 @@ export async function googleAuth(idToken: string, collegeId?: string): Promise<G
     // college): passwordless, UNVERIFIED, no college yet.
     created = true;
     const username = await availableHandle(baseHandle(g.name, g.email));
-    const displayName = (g.name || g.email.split('@')[0]).slice(0, 50);
+    const displayName = sanitizeDisplayName(g.name);
     // passwordHash is NOT NULL: park a random secret no one can guess or use —
     // Google users keep signing in with Google; it exists to keep the shape.
     user = await prisma.user.create({

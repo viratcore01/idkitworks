@@ -20,6 +20,20 @@ export class AuthController {
     }
   }
 
+  /**
+   * Live "is this handle free?" for the wizard's identity step.
+   * Advisory only — see AuthService.isUsernameAvailable: the unique index is
+   * still the authoritative gate at insert time, and a check reserves nothing.
+   */
+  async usernameAvailable(req: Request, res: Response) {
+    try {
+      const result = await authService.isUsernameAvailable(req.query.username ?? req.query.u);
+      res.json(result);
+    } catch (error: any) {
+      sendError(res, error, 400);
+    }
+  }
+
   async checkEmail(req: Request, res: Response) {
     try {
       const result = checkEmail(String(req.body?.email || ''));

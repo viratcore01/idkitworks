@@ -67,6 +67,33 @@ export class EmailVerificationService {
       const e: any = new Error('This college email is already registered'); e.status = 409; throw e;
     }
 
+    // ── Reuse a LIVE code for this exact address ──
+    //
+    // The wizard lets people step back — to fix a typo, or all the way to the
+    // college step to start over — and every return used to mail a brand-new
+    // code and spend one of the three sends allowed in the window. A user
+    // bouncing between steps could therefore rate-limit THEMSELVES out of the
+    // flow for ten minutes, with a code already sitting in their inbox.
+    //
+    // A code that is still live for the same address IS the answer to "send me
+    // a code": same mail, no new row, no spend, no duplicated message. Only a
+    // genuine address change costs a send (and re-verifying a different inbox
+    // genuinely is a new send).
+    const live = await prisma.emailOtp.findFirst({
+      where: {
+        userId,
+        purpose: 'COLLEGE_EMAIL_VERIFY',
+        email,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (live) {
+      const secondsLeft = Math.max(1, Math.ceil((live.expiresAt.getTime() - Date.now()) / 1000));
+      return { sent: true as const, expiresIn: secondsLeft, reused: true as const };
+    }
+
     // ── Rate limit: max 3 OTP requests per 10 minutes ──
     //
     // This counter is only meaningful because sends RETIRE the previous code

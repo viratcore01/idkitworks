@@ -176,12 +176,33 @@ test('RESUME: a corrected email re-points the pending account (pre-verification 
   assert.equal(db.rows('user').length, 1);
 });
 
-test('RESUME: refuses when the pending row belongs to a different college', async () => {
-  const { svc } = setup({
+test('RESUME: a DRAFT may move to another college — the "wrong college, start over" path', async () => {
+  // Nothing about a draft is proven and no college-scoped row exists for it
+  // yet (no posts, matches or chats), so the wizard may redo step 1. The new
+  // college and address passed the same domain + hygiene gates as a fresh
+  // signup, and the row stays UNVERIFIED — a fresh code is still required.
+  const { db, svc } = setup({
     colleges: [makeCollege(), makeCollege({ id: 'college-2', name: 'Other College', emailDomain: 'other.edu' })],
     users: [makeUser({ email: DOMAIN_EMAIL, username: 'student', collegeId: 'college-2', collegeEmail: DOMAIN_EMAIL, passwordHash: PLACEHOLDER })],
   });
-  await rejectsWithStatus(() => svc.signup(validSignup), 409);
+  const result = await svc.signup({ ...validSignup, collegeId: 'college-2', email: 'student@other.edu' });
+
+  assert.equal(result.user.collegeId, 'college-2');
+  assert.equal(db.rows('user').length, 1, 'a move never creates a second row');
+  assert.equal(db.rows('user')[0].collegeEmailVerified, false, 'the move still needs a fresh code');
+  assert.equal(db.rows('user')[0].collegeEmail, 'student@other.edu');
+});
+
+test('RESUME: a move is refused once the inbox is PROVEN (that is not a wizard action)', async () => {
+  const { db, svc } = setup({
+    colleges: [makeCollege(), makeCollege({ id: 'college-2', name: 'Other College', emailDomain: 'other.edu' })],
+    users: [makeUser({
+      id: 'verified', email: DOMAIN_EMAIL, username: 'student', collegeId: COLLEGE_ID, collegeEmail: DOMAIN_EMAIL,
+      collegeEmailVerified: true, verificationStatus: 'VERIFIED', passwordHash: PLACEHOLDER,
+    })],
+  });
+  await rejectsWithStatus(() => svc.signup({ ...validSignup, collegeId: 'college-2', email: 'student@other.edu' }), 409);
+  assert.equal(db.rows('user')[0].collegeId, COLLEGE_ID, 'the proven boundary never moves');
 });
 
 test('RESUME: a college-LESS account adopts the college the wizard collected (redo the college step)', async () => {
@@ -199,12 +220,13 @@ test('RESUME: a college-LESS account adopts the college the wizard collected (re
   assert.equal(result.user.collegeId, COLLEGE_ID, 'the wizard pick is adopted');
   assert.equal(db.rows('user').length, 1, 'still one account, never a duplicate');
 
-  // And it locks from there: redoing the wizard for another campus is refused.
-  await rejectsWithStatus(
-    () => svc.signup({ ...validSignup, collegeId: 'college-2', email: 'student@other.edu' }),
-    409,
-  );
-  assert.equal(db.rows('user')[0].collegeId, COLLEGE_ID);
+  // And it STAYS movable while nothing is proven: redoing the wizard for another
+  // campus adopts the new pick (still no session for a stranger, still one
+  // account, still a fresh code required).
+  await svc.signup({ ...validSignup, collegeId: 'college-2', email: 'student@other.edu' });
+  assert.equal(db.rows('user').length, 1);
+  assert.equal(db.rows('user')[0].collegeId, 'college-2');
+  assert.equal(db.rows('user')[0].collegeEmailVerified, false);
 });
 
 test('RESUME: a verified account can never be resumed (no session for an existing secret)', async () => {
@@ -212,6 +234,25 @@ test('RESUME: a verified account can never be resumed (no session for an existin
     users: [makeUser({ email: DOMAIN_EMAIL, username: 'student', collegeEmailVerified: true, verificationStatus: 'VERIFIED', passwordHash: PLACEHOLDER })],
   });
   await rejectsWithStatus(() => svc.signup(validSignup), 409);
+});
+
+test('SECURITY: a VERIFIED but passwordless account is never re-claimed by a fresh signup', async () => {
+  // The dangerous case: the row exists, its inbox is proven, and no password
+  // was set yet — so if signup handed out a session here, anyone who merely
+  // KNOWS the address would get a session AND (being verified) the right to
+  // set the initial password. Starting a signup requires no secret, so this
+  // must fail, with a code that lets the honest client continue instead of
+  // showing a dead-end "already in use".
+  const { db, svc } = setup({
+    users: [makeUser({
+      email: DOMAIN_EMAIL, username: 'student', collegeEmail: DOMAIN_EMAIL,
+      collegeEmailVerified: true, verificationStatus: 'VERIFIED', passwordHash: PLACEHOLDER,
+    })],
+  });
+  const err = await rejectsWithStatus(() => svc.signup(validSignup), 409, 'ALREADY_VERIFIED');
+  assert.match(err.message, /continue where you left off/i);
+  assert.equal(db.rows('refreshToken').length, 0, 'no session is minted for a proven account');
+  assert.equal(db.rows('user').length, 1);
 });
 
 test('RESUME: a Google-created passwordless account is not silently re-pointed by a fresh signup', async () => {
@@ -472,6 +513,17 @@ test('getMe maps relations and exposes auth-method flags, never the hash', async
   assert.equal(me.isProfileSetup, false, 'no course yet');
 });
 
+test('getMe returns the OWNER its own DOB and gender so locked fields can render read-only', async () => {
+  // Only ever /auth/me (the owner). Without these the setup screen could not
+  // tell "already set" from "never captured" and re-asked for both.
+  const dob = new Date('2005-06-15T00:00:00Z');
+  const { svc } = setup({ users: [makeUser({ gender: 'FEMALE', dateOfBirth: dob })] });
+  const me: any = await svc.getMe('user-1');
+  assert.equal(me.gender, 'FEMALE');
+  assert.equal(me.dateOfBirth, dob);
+  assert.equal(typeof me.age, 'number', 'age is still computed from the DOB (see its own test)');
+});
+
 // ───────────────────────── updateProfile: locks ────────────────────────────
 
 test('LOCK: the display name is fixed to what the account was created with', async () => {
@@ -480,6 +532,30 @@ test('LOCK: the display name is fixed to what the account was created with', asy
   // Resubmitting the same name (whitespace differences are fine) is allowed.
   await svc.updateProfile('user-1', { displayName: '  Test Student  ' });
   assert.equal(db.rows('user')[0].displayName, 'Test Student');
+});
+
+test('LOCK: a name that was NEVER captured can be filled exactly once, then locks', async () => {
+  // A Google token with no `name` claim parks an empty name (no more invented
+  // "viratcore01"), so the setup screen asks once — and this is that one time.
+  const { db, svc } = setup({ users: [makeUser({ displayName: '', googleId: 'g-1' })] });
+
+  await svc.updateProfile('user-1', { displayName: 'Virat Sisodia' });
+  assert.equal(db.rows('user')[0].displayName, 'Virat Sisodia');
+
+  // …and from there it is locked like any other name.
+  await rejectsWithStatus(() => svc.updateProfile('user-1', { displayName: 'Someone Else' }), 403);
+  assert.equal(db.rows('user')[0].displayName, 'Virat Sisodia');
+
+  // Whitespace-only counts as never captured, so a row cannot be locked to blank.
+  const blank = setup({ users: [makeUser({ id: 'blank', displayName: '   ' })] });
+  await blank.svc.updateProfile('blank', { displayName: 'A Real Name' });
+  assert.equal(blank.db.rows('user')[0].displayName, 'A Real Name');
+});
+
+test('a name that is still empty must satisfy the 2-50 rule when it is filled', async () => {
+  const { svc } = setup({ users: [makeUser({ displayName: '' })] });
+  await assert.rejects(() => svc.updateProfile('user-1', { displayName: 'x' }), /2-50/);
+  await assert.rejects(() => svc.updateProfile('user-1', { displayName: 'a'.repeat(51) }), /2-50/);
 });
 
 test('LOCK: date of birth is write-once', async () => {

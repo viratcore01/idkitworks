@@ -7,6 +7,7 @@ import { env } from '../src/config/env';
 import { verifyGoogleIdToken, googleAuth } from '../src/services/google-auth.service';
 import { FakeDb, install, makeUser, makeCollege, rejectsWithStatus, FakeDbOptions } from './helpers/fake-db';
 import { isPasswordSet } from '../src/utils/password';
+import { isReservedUsername } from '../src/utils/username';
 
 const COLLEGE_ID = 'college-1';
 const DOMAIN_EMAIL = 'student@ipec.org.in';
@@ -290,4 +291,46 @@ test('a Google-created account can never be entered through the password form', 
   const row = db.rows('user')[0];
   assert.equal(isPasswordSet(row.passwordHash), false);
   assert.equal(await import('../src/utils/password').then((m) => m.comparePassword('anything', row.passwordHash)), false);
+});
+
+// ────────────────────── the name the account is created with ────────────────
+
+test('NAME: a token with no `name` claim parks an EMPTY name instead of inventing one', async () => {
+  stubJwks();
+  const { db } = setup();
+  const result = await googleAuth(mintToken({ email: 'viratcore01@ipec.org.in', name: undefined }), COLLEGE_ID);
+
+  // The old behaviour derived "viratcore01" from the address and — because the
+  // name is locked for life — turned that placeholder into a support ticket.
+  assert.equal(result.user.displayName, '');
+  assert.equal(db.rows('user')[0].displayName, '');
+  // The HANDLE is still derived from the address (a handle is not a name), and
+  // it is still a legal, claimable one.
+  assert.match(String(db.rows('user')[0].username), /^viratcore01/);
+});
+
+test('NAME: a blank or whitespace name claim counts as missing', async () => {
+  stubJwks();
+  const { db } = setup();
+  await googleAuth(mintToken({ name: '   ' }), COLLEGE_ID);
+  assert.equal(db.rows('user')[0].displayName, '');
+});
+
+test('NAME: a real name is trimmed and capped at the 50-character profile limit', async () => {
+  stubJwks();
+  const { db } = setup();
+  await googleAuth(mintToken({ name: `  ${'a'.repeat(60)}  ` }), COLLEGE_ID);
+  const stored = String(db.rows('user')[0].displayName);
+  assert.equal(stored.length, 50);
+  assert.doesNotMatch(stored, /^\s/);
+});
+
+test('SECURITY: a generated handle can never be a reserved word', async () => {
+  stubJwks();
+  const { db } = setup();
+  await googleAuth(mintToken({ email: 'admin@ipec.org.in', name: 'Admin' }), COLLEGE_ID);
+
+  const username = String(db.rows('user')[0].username);
+  assert.equal(isReservedUsername(username), false, `generated handle must not be reserved: ${username}`);
+  assert.match(username, /^[a-z0-9_]{3,20}$/);
 });

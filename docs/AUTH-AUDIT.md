@@ -211,7 +211,60 @@ domain mismatch); a college-scoped signup only ever fills an empty college.
 
 ---
 
-## 5. Accepted risks (documented, not fixed)
+## 5. Onboarding reversibility: back, locks and handles
+
+Added after walking every "can I undo this?" path end to end.
+
+**The back chain (wizard).** `password → step 1 → blank entry → out`, implemented as a pure
+reducer (`client/src/utils/signupFlow.ts`) and unit-tested press by press. Two rules make it
+useful rather than merely symmetric: one step back is an **edit** (the code screen reopens the
+identity form with the values still in it — you cannot fix an address you can no longer see),
+while the jump from the password screen is a **restart** (the typed identity is wiped, so a redo
+asks for the address again instead of silently reusing it).
+
+**Reload keeps, back erases.** The step and its values live in `sessionStorage` so a refresh or
+a deploy landing mid-flow never strands a code that is already in the inbox; `clearWizardDraft`
+forgets all of those keys on a deliberate back, and when leaving onboarding from the profile
+screen.
+
+**A back never deletes the account.** It is a UI navigation, not a cancellation: the draft row
+stays (so the OTP send limits keep their history), and the college is movable **only while the
+row is unverified** — that is the "wrong college, start over" path. Once the inbox is proven,
+the college and the address are fixed for life.
+
+**A proven-but-passwordless row is never re-claimable.** `POST /auth/signup` against a row whose
+inbox is already verified answers `409 ALREADY_VERIFIED` and mints **no** session. This is the
+sharp edge: starting a signup requires no secret, so "claim the row" would have handed a session
+— and, because the row is verified, initial-password rights — to anyone who knows the address.
+The client's own fast path for the same case (same college + same proven address) skips the round
+trip entirely and lands on the password step: no second email, no second code.
+
+**Signing out mid-onboarding is conditional.** An account with neither a password nor a Google
+link cannot be authenticated again (the reset flow deliberately refuses to mint a first password
+from an email code), so leaving onboarding signs out only when another door exists; otherwise it
+routes to the password step and says why.
+
+**Locks are enforced as a pair.** The server refuses a change to name / DOB / gender / college,
+and the setup screen now *renders* a set field read-only instead of offering an edit that 403s.
+A field that was never captured (a Google token with no `name` claim parks an empty string — no
+more invented `viratcore01`) is filled exactly once, then locks.
+
+**Handles are checked live, and reserved words are refused at both doors.**
+`GET /api/auth/username-available` answers shape and reserved words locally on the client and
+"is it claimed?" from the DB — debounced, rate-limited, and **advisory only**: the unique index
+is still the truth at insert, so a race ends in a clean 409. `server/src/utils/username.ts` is
+the single definition, which closed a real hole: the Google generator avoided reserved words
+while typed signup checked only the character shape, so `admin` was claimable — permanently,
+because handles are immutable. Trailing digits don't launder a reserved word either (`admin1`,
+`admin_007`).
+
+**Photos are staged, not uploaded on pick.** "Leave without saving" now really leaves nothing
+behind; removing an already-saved photo stays immediate (a deliberate act on stored data, not an
+unsaved field).
+
+---
+
+## 6. Accepted risks (documented, not fixed)
 
 1. **An access token stays valid for its remaining TTL (up to 60 min) after a password
    change or reset.** Refresh tokens are revoked immediately, and bans/verification take
@@ -219,11 +272,20 @@ domain mismatch); a college-scoped signup only ever fills an empty college.
    30-second cache), so the exposure is limited to a stolen *access* token acting for under an
    hour. Tightening this needs a token-version claim (`passwordChangedAt` vs `iat`) — worth
    doing if the threat model hardens; not worth the extra per-request check today.
-2. **An abandoned, passwordless signup can be re-pointed at a new email** while returning to
-   the wizard. The row is worthless pre-verification (the only thing a session unlocks is
-   requesting an OTP to that same inbox), so a claimant cannot obtain access to anything —
-   the worst case is squatting a username on a row that never becomes usable. Verification is
-   what locks an identity, and it requires inbox control.
+2. **An abandoned, passwordless signup can be claimed, and re-pointed at a new email or
+   college, by anyone who submits it through the wizard.** The row is worthless pre-verification
+   (the only thing a session unlocks is requesting an OTP to that same inbox), so a claimant
+   cannot obtain access to anything that matters — no PII moves to them, and the college email
+   still has to be verified in an inbox they control. What is reachable is *handle squatting*:
+   submitting a handle that an in-progress draft already holds re-points that draft to the
+   claimant's address (the row's `displayName`/`username` are overwritten with what the claimant
+   typed, so no name is inherited), which costs the original claimant the handle and nothing
+   else. Impact is low because a draft handle is not selectable anywhere yet and the app is
+   college-scoped — but the tighter rule is known: require the caller to present the draft's own
+   session token to re-point an address (the honest "I typed the wrong address" path always
+   carries it), and fall back to a username clash when it is absent. Not implemented because the
+   failure mode it introduces — a stranded user whose access token expired an hour into a
+   typo'd draft — is worse than the squatting it prevents.
 3. **The unauthenticated reset endpoint can be used to send mail to a known address**
    (3 codes / 10 min / account, 20 requests / 15 min / IP). That is inherent to any
    forgot-password flow; the limits keep it from being useful as a spam vector.
@@ -236,7 +298,7 @@ domain mismatch); a college-scoped signup only ever fills an empty college.
 
 ---
 
-## 6. Conventions for new auth code
+## 7. Conventions for new auth code
 
 - Put new flows behind the funnel router (`client/src/utils/funnel.ts`) — it is the single
   answer to "where does this person go next", and it is covered by tests.

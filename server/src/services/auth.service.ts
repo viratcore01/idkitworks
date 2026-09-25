@@ -1,6 +1,7 @@
 import { prisma, TX_OPTIONS } from '../config/prisma';
 import { hashPassword, comparePassword, isPasswordSet } from '../utils/password';
 import { checkEmail } from '../utils/email-validation';
+import { checkUsernameLocally, UsernameAvailability } from '../utils/username';
 import { sendPasswordResetEmail } from '../utils/email';
 import { codesMatch, generateOtpCode, OTP_PATTERN } from '../utils/otp';
 import {
@@ -139,6 +140,17 @@ export class AuthService {
     }
     const email = input.email.trim().toLowerCase();
 
+    // Reserved handles are refused on this door too — not just by the Google
+    // generator. Handles are permanent and public, so `admin` being claimable
+    // here (the shape check alone allowed it) was a lasting impersonation.
+    const handleCheck = checkUsernameLocally(input.username);
+    if (!handleCheck.available) {
+      const e: any = new Error(handleCheck.error!);
+      e.status = 400;
+      e.code = handleCheck.reason === 'reserved' ? 'USERNAME_RESERVED' : 'USERNAME_INVALID';
+      throw e;
+    }
+
     // College anchors the whole funnel: it must exist AND be onboarded for
     // verification (have a student-mail domain). Fail fast here — creating an
     // account that can never verify would strand the user mid-funnel.
@@ -195,22 +207,44 @@ export class AuthService {
     if (existingUser) {
       const hasPw = isPasswordSet(existingUser.passwordHash);
       const verified = existingUser.collegeEmailVerified || existingUser.verificationStatus === 'VERIFIED';
-      if (!hasPw && !verified) {
+      /** Which of the three OR-checks above actually matched (email / collegeEmail / username). */
+      const sameInbox = existingUser.email === email || (existingUser as any).collegeEmail === email;
+
+      // ── PROVEN account: verification is the ownership event ──
+      //
+      // Once the college inbox is verified, this row is not a draft any more,
+      // and the wizard must never re-claim it: starting a signup needs no
+      // secret, so "claim the row" would hand a session — and, while no
+      // password exists, initial-password rights — to anyone who merely knows
+      // the address. The wizard can only CONTINUE such an account, which it
+      // does with the session it already holds. The distinct code lets the
+      // client put the user back exactly where they stopped instead of showing
+      // a dead-end "already in use".
+      if (verified) {
+        if (!hasPw && sameInbox) {
+          const e: any = new Error('This college email is already verified — continue where you left off');
+          e.status = 409; e.code = 'ALREADY_VERIFIED'; throw e;
+        }
+        if (sameInbox) conflict('Email already in use');
+        conflict('Username already taken');
+      }
+
+      if (!hasPw) {
+        // ── DRAFT (unverified, passwordless): a wizard-owned row ──
+        //
         // RESUME, not 409: this claimant started signup and never finished —
         // no secret exists yet, so re-issuing a session leaks nothing (the
         // only thing it unlocks is requesting an OTP to this same inbox).
-        // Same-college only: moving a pending row across colleges happens via
-        // the pre-verification college change, not by restarting here.
-        // A MOVE between colleges is never a restart — that is the locked
-        // boundary and needs the explicit support path. An EMPTY college is the
-        // opposite: it is precisely what the wizard's college step exists to
-        // fill ("Sign in with Google" on the login page creates such a row), so
-        // redoing the wizard adopts the pick instead of 409-ing the user out of
-        // the only screen that can fix them.
-        if (existingUser.collegeId && existingUser.collegeId !== input.collegeId) {
-          const e: any = new Error('This email already started signup for another college — log in to continue it');
-          e.status = 409; throw e;
-        }
+        //
+        // COLLEGE MAY MOVE here, and only here. Nothing about a draft is
+        // proven, so the wizard's step-1 "wrong college, start over" is the one
+        // self-serve fix that exists; the move re-runs the same domain +
+        // onboarded-campus gates above, and re-pointing the address means a
+        // fresh OTP anyway (verification is what locks the boundary, which is
+        // why a verified row is handled above and never gets here). An EMPTY
+        // college is the same story from the other direction: it is exactly
+        // what the wizard's college step exists to fill ("Sign in with Google"
+        // on the login page creates such a row).
         // Refresh the claimed identity (re-check the username — someone else
         // may have taken it since). Same 409s as a fresh start.
         if (existingUser.username.toLowerCase() !== input.username.toLowerCase()) {
@@ -230,7 +264,7 @@ export class AuthService {
           username: input.username,
           displayName: input.displayName.trim(),
         };
-        if (!existingUser.collegeId) updateData.collegeId = input.collegeId;
+        if (existingUser.collegeId !== input.collegeId) updateData.collegeId = input.collegeId;
         if (existingUser.email !== email) {
           const emailClash = await prisma.user.findFirst({
             where: { OR: [{ email }, { collegeEmail: email }], NOT: { id: existingUser.id } },
@@ -238,7 +272,10 @@ export class AuthService {
           });
           if (emailClash) conflict('Email already in use');
           updateData.email = email;
-          updateData.collegeEmail = email;
+          // The pending college address follows the login address: an
+          // unverified collegeEmail is a memory of where the last code went,
+          // and the wizard is about to send a new one.
+          if (!(existingUser as any).collegeEmailVerified) updateData.collegeEmail = email;
         }
         const user = await prisma.user.update({
           where: { id: existingUser.id },
@@ -246,9 +283,10 @@ export class AuthService {
         });
         return this.issueSession(user);
       }
-      if (existingUser.email === email || (existingUser as any).collegeEmail === email) {
-        conflict('Email already in use');
-      }
+
+      // A password exists but the inbox was never proven (legacy row): a real
+      // account — the password, not this request, owns it.
+      if (sameInbox) conflict('Email already in use');
       conflict('Username already taken');
     }
 
@@ -280,6 +318,36 @@ export class AuthService {
     }
 
     return this.issueSession(user);
+  }
+
+  /**
+   * Live "is this handle free?" check behind the wizard's identity step.
+   *
+   * ADVISORY ONLY. It exists so the user isn't told "taken" only after they
+   * spend an OTP on it — the authoritative gate stays the DB's
+   * UNIQUE (LOWER(username)) at insert time, so a race still ends in a clean
+   * 409 rather than a two-people-one-handle mistake. Checking never reserves
+   * anything: a handle is only claimed by the INSERT that succeeds.
+   *
+   * Shape and reserved words are answered without touching the database.
+   */
+  async isUsernameAvailable(raw: unknown): Promise<UsernameAvailability> {
+    const local = checkUsernameLocally(raw);
+    if (!local.available) return local;
+
+    const taken = await prisma.user.findFirst({
+      where: { username: { equals: local.username, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (taken) {
+      return {
+        username: local.username,
+        available: false,
+        reason: 'taken',
+        error: 'That username is already taken',
+      };
+    }
+    return local;
   }
 
   /** Mint a fresh session pair for a user row (signup start/resume). */
@@ -815,6 +883,11 @@ export class AuthService {
       age: user.dateOfBirth
         ? Math.floor((Date.now() - user.dateOfBirth.getTime()) / (365.25 * 24 * 3600 * 1000))
         : null,
+      // Identity the OWNER already has (this endpoint is /auth/me only, never
+      // a public profile): the setup screen renders these read-only once set
+      // instead of demanding a retype the lock would then 403.
+      gender: user.gender,
+      dateOfBirth: user.dateOfBirth,
       createdAt: user.createdAt,
       // Auth-method flags: the Settings screen shows "Change password" only
       // when a real password exists, and "Set a password" for Google-only
@@ -861,7 +934,15 @@ export class AuthService {
       const e: any = new Error('User not found'); e.status = 404; throw e;
     }
     if (data.displayName !== undefined && data.displayName.trim() !== current.displayName) {
-      const e: any = new Error('Your name is locked to what you signed up with'); e.status = 403; throw e;
+      // A name that was never captured is filled ONCE here and locked from then
+      // on. This matters because Google tokens without a `name` claim no longer
+      // get an invented one from the email local part ("viratcore01") — that
+      // placeholder used to be permanent, which made it a support ticket.
+      // Filling the gap is the user's one and only chance to name themselves.
+      const hasName = !!current.displayName && current.displayName.trim().length > 0;
+      if (hasName) {
+        const e: any = new Error('Your name is locked to what you signed up with'); e.status = 403; throw e;
+      }
     }
     if (data.dateOfBirth !== undefined && data.dateOfBirth !== null && data.dateOfBirth !== '') {
       if (current.dateOfBirth) {

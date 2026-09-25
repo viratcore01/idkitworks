@@ -7,6 +7,9 @@ const controller = new AuthController();
 
 router.post('/signup', (req, res) => controller.signup(req, res));
 router.post('/check-email', (req, res) => controller.checkEmail(req, res));
+// Public on purpose: the wizard must know a handle is free BEFORE it spends an
+// OTP on it. Rate-limited in server.ts; answers are advisory (see the service).
+router.get('/username-available', (req, res) => controller.usernameAvailable(req, res));
 router.post('/login', (req, res) => controller.login(req, res));
 router.post('/google', (req, res) => controller.google(req, res));
 router.post('/refresh', (req, res) => controller.refresh(req, res));

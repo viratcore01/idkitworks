@@ -7,6 +7,13 @@ export interface User {
   avatarPhotoId?: string | null;
   /** Shown on profiles; exact DOB never leaves the server. */
   age?: number | null;
+  /**
+   * The OWNER's identity fields (/auth/me only — never a public profile).
+   * Present so the setup screen can render a field that is already set as
+   * read-only instead of demanding a retype the write-once lock then refuses.
+   */
+  gender?: 'MALE' | 'FEMALE' | 'OTHER' | 'UNKNOWN' | null;
+  dateOfBirth?: string | null;
   photos?: { id: string; slot: number }[];
   bio: string | null;
   college: College | null;
