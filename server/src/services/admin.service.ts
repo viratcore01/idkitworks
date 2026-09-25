@@ -106,7 +106,15 @@ export class AdminService {
       users, banned, posts, posts24h, activeMatches,
       pendingVerifications: pendingIds.length, pendingReports: pendingReports.length,
     };
-    return { isSuper, totals, colleges: [], attention: { verifications: pendingIds, reports: pendingReports }, biggest };
+    // Client contract (AdminOverview.tsx): each row is { user, ...meta } —
+    // the pending USER rows must be nested under `user` (matching how reports
+    // already carry `reporter`). Sending bare user rows here used to crash
+    // the console's Overview tab ("v.user.displayName of undefined").
+    const attention = {
+      verifications: pendingIds.map((u) => ({ id: u.id, createdAt: u.createdAt, user: u })),
+      reports: pendingReports.map((r) => ({ id: r.id, createdAt: r.createdAt, targetType: r.targetType, reason: r.reason, reporter: r.reporter })),
+    };
+    return { isSuper, totals, colleges: [], attention, biggest };
   }
 
   private async collegeCard(collegeId: string) {

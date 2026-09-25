@@ -239,8 +239,8 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
                 {(u.displayName || u.username || '?').slice(0, 1).toUpperCase()}
               </span>
               <span className="min-w-0">
-                <span className="block font-semibold truncate">{u.displayName} <span className="font-normal opacity-50">@{u.username}</span></span>
-                <span className="block text-xs text-slate-400 truncate">{u.college?.shortName || ''} · {u.isActive ? u.verificationStatus : 'BANNED'}</span>
+                <span className="block font-semibold truncate">{u.displayName || u.username || 'User'} <span className="font-normal opacity-50">@{u.username || '?'}</span></span>
+                <span className="block text-xs text-slate-400 truncate">{u.college?.shortName || ''} · {u.isActive ? u.verificationStatus || 'UNKNOWN' : 'BANNED'}</span>
               </span>
             </button>
           ))}

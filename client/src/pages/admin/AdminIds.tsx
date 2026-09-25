@@ -38,9 +38,9 @@ export default function AdminIds() {
         <div className="space-y-2">
           {items.map((u: any) => (
             <div key={u.id} className="bg-[#151D31] border border-white/10 p-3.5 flex flex-wrap items-center gap-2.5">
-              <InitialAvatar name={u.displayName} size="sm" />
+              <InitialAvatar name={u.displayName || u.username} size="sm" />
               <span className="flex-1 min-w-[160px]">
-                <span className="block font-semibold text-sm truncate text-white">{u.displayName} <span className="opacity-50 font-normal">@{u.username}</span></span>
+                <span className="block font-semibold text-sm truncate text-white">{u.displayName || u.username || 'User'} <span className="opacity-50 font-normal">@{u.username || '?'}</span></span>
                 <span className="block text-xs text-slate-400 truncate">{u.college?.shortName || u.college?.name || 'no college'} · joined {new Date(u.createdAt).toLocaleDateString()}</span>
               </span>
               <span className={`text-[11px] font-bold px-2 py-0.5 ${u.collegeEmailVerified ? 'bg-[#10B981] text-[#0F172A]' : 'bg-white/10 text-slate-200'}`}>

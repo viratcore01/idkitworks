@@ -95,10 +95,10 @@ export default function AdminOverview() {
           <h2 className="font-display font-bold mb-3 text-white">Needs attention anywhere</h2>
           <div className="space-y-2 text-sm text-slate-300">
             {(data.attention.verifications || []).slice(0, 5).map((v: any) => (
-              <p key={v.id}>🪪 <b className="text-white">{v.user.displayName}</b> (@{v.user.username}) · {v.user.college?.shortName || v.user.college?.name}</p>
+              <p key={v.id || v.user?.id}>🪪 <b className="text-white">{v.user?.displayName || 'Student'}</b> (@{v.user?.username || '?'}) · {v.user?.college?.shortName || v.user?.college?.name || 'no college'}</p>
             ))}
             {(data.attention.reports || []).slice(0, 5).map((r: any) => (
-              <p key={r.id}>🚩 {r.targetType} reported ({r.reason}) · {r.reporter.college?.shortName || r.reporter.college?.name}</p>
+              <p key={r.id}>🚩 {r.targetType || 'content'} reported ({r.reason || 'no reason'}) · @{r.reporter?.username || '?'} · {r.reporter?.college?.shortName || r.reporter?.college?.name || 'no college'}</p>
             ))}
           </div>
         </OpsCard>
