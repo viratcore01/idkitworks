@@ -1,7 +1,7 @@
 import { prisma, TX_OPTIONS } from '../config/prisma';
 import { hashPassword, comparePassword, isPasswordSet } from '../utils/password';
 import { checkEmail } from '../utils/email-validation';
-import { checkUsernameLocally, UsernameAvailability } from '../utils/username';
+import { checkUsernameLocally, normalizeUsername, UsernameAvailability } from '../utils/username';
 import { sendPasswordResetEmail } from '../utils/email';
 import { codesMatch, generateOtpCode, OTP_PATTERN } from '../utils/otp';
 import {
@@ -12,7 +12,7 @@ import {
 import { env } from '../config/env';
 import { JwtPayload } from '../types';
 import { invalidateUser } from '../utils/user-cache';
-import { verifyGoogleIdToken } from './google-auth.service';
+import { verifyGoogleIdToken, availableHandle, baseHandle } from './google-auth.service';
 
 /**
  * Constant dummy hash for the login timing-oracle fix: when the email does
@@ -24,14 +24,15 @@ const DUMMY_HASH = '$2a$12$C6UzMDM.H6dfI/f/IKcEeO7tAUFnOnV0Co7f3OSJ8X6VzX2rZC0Ny
 /**
  * Funnel step 1+2 (college → identity). The account is created WITHOUT a
  * password — the password is set later via setInitialPassword, which the
- * server allows ONLY after college-email verification. Identity (email,
- * username, name) is collected up front so uniqueness fails fast, before
- * the user spends a one-time code.
+ * server allows ONLY after college-email verification. Identity (email, name)
+ * is collected up front so uniqueness fails fast, before the user spends a
+ * one-time code. The USERNAME is deliberately not collected here: every path
+ * mints a generated placeholder and the owner picks the real handle once, in
+ * profile setup (usernameChosen flips there, profile setup completes).
  */
 interface SignupStartInput {
   collegeId: string;
   email: string;
-  username: string;
   displayName: string;
 }
 
@@ -98,6 +99,7 @@ interface AuthTokens {
     collegeEmailVerified: boolean;
     verificationStatus: string;
     hasPassword: boolean;
+    usernameChosen: boolean;
   };
 }
 
@@ -118,7 +120,10 @@ function createAuthResponse(user: any, accessToken: string, refreshToken: string
       avatarPhotoId: user.avatarPhotoId ?? null,
       // College gate key: the client needs it immediately after login
       collegeId: user.collegeId ?? null,
-      isProfileSetup: !!(user.collegeId && user.course),
+      isProfileSetup: !!(user.collegeId && user.course && user.usernameChosen),
+      // A generated placeholder handle is not "setup": the owner still owes
+      // profile setup its one-time username choice.
+      usernameChosen: user.usernameChosen ?? true,
       // The verified/being-verified inbox: /verify uses it to open straight on
       // the OTP form (no intro re-asking for the email the wizard has) and the
       // wizard's fast path matches it against a re-submitted identity.
@@ -133,28 +138,16 @@ function createAuthResponse(user: any, accessToken: string, refreshToken: string
 }
 
 export class AuthService {
-  async signup(input: SignupStartInput): Promise<AuthTokens> {
+  async signup(input: SignupStartInput, resumeUserId?: string): Promise<AuthTokens> {
     // Type guards: malformed JSON bodies must never reach Prisma (engine errors leak paths).
     if (
       typeof input?.collegeId !== 'string' || !input.collegeId ||
       typeof input?.email !== 'string' || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email.trim()) ||
-      typeof input?.username !== 'string' || !/^[a-zA-Z0-9_]{3,20}$/.test(input.username) ||
       typeof input?.displayName !== 'string' || input.displayName.trim().length < 2 || input.displayName.trim().length > 50
     ) {
       const e: any = new Error('Invalid signup details'); e.status = 400; throw e;
     }
     const email = input.email.trim().toLowerCase();
-
-    // Reserved handles are refused on this door too — not just by the Google
-    // generator. Handles are permanent and public, so `admin` being claimable
-    // here (the shape check alone allowed it) was a lasting impersonation.
-    const handleCheck = checkUsernameLocally(input.username);
-    if (!handleCheck.available) {
-      const e: any = new Error(handleCheck.error!);
-      e.status = 400;
-      e.code = handleCheck.reason === 'reserved' ? 'USERNAME_RESERVED' : 'USERNAME_INVALID';
-      throw e;
-    }
 
     // College anchors the whole funnel: it must exist AND be onboarded for
     // verification (have a student-mail domain). Fail fast here — creating an
@@ -194,17 +187,38 @@ export class AuthService {
     // Free squatted identities from signups abandoned a week ago.
     await purgeStalePendingSignups();
 
-    // USERNAME + EMAIL UNIQUENESS (email case-insensitive by convention,
-    // username case-insensitively unique by product rule — the DB's UNIQUE
-    // (LOWER(username)) is the race-proof backstop; pre-checks give the
-    // friendly 409 instead of a raw P2002). collegeEmail is checked too so a
-    // legacy personal-email account holding this college address blocks reuse.
-    const existingUser = await prisma.user.findFirst({
+    // Returning wizard? The caller still holds the session minted when the
+    // draft was created (the client attaches it automatically). When it
+    // identifies an UNFINISHED draft of its own — no password, inbox unproven
+    // — the signup continues THAT row, so a corrected email or a redone
+    // college step resumes instead of orphaning the draft and minting a
+    // second row. (The handle used to be this link; it lives in profile setup
+    // now, so the session is the link.) Proven or password-bearing rows never
+    // resume — they fall through to the stranger path below with all its
+    // 409s. A missing/invalid session behaves exactly like a logged-out call.
+    let existingUser: any = null;
+    if (typeof resumeUserId === 'string' && resumeUserId) {
+      const mine = await prisma.user.findUnique({ where: { id: resumeUserId } });
+      if (
+        mine &&
+        !isPasswordSet(mine.passwordHash) &&
+        !mine.collegeEmailVerified &&
+        mine.verificationStatus !== 'VERIFIED'
+      ) {
+        existingUser = mine;
+      }
+    }
+
+    // USERNAME is not collected at signup (the handle is generated below and
+    // chosen once in profile setup), so uniqueness here is email-only: the
+    // login address plus collegeEmail, so a legacy personal-email account
+    // holding this college address blocks reuse. The DB's UNIQUE
+    // (LOWER(username)) stays the race-proof backstop for the generator.
+    existingUser ??= await prisma.user.findFirst({
       where: {
         OR: [
           { email },
           { collegeEmail: email },
-          { username: { equals: input.username, mode: 'insensitive' } },
         ],
       },
     });
@@ -212,7 +226,7 @@ export class AuthService {
     if (existingUser) {
       const hasPw = isPasswordSet(existingUser.passwordHash);
       const verified = existingUser.collegeEmailVerified || existingUser.verificationStatus === 'VERIFIED';
-      /** Which of the three OR-checks above actually matched (email / collegeEmail / username). */
+      /** Whether the matched row holds this inbox (always true — email is the only match now). */
       const sameInbox = existingUser.email === email || (existingUser as any).collegeEmail === email;
 
       // ── PROVEN account: verification is the ownership event ──
@@ -230,8 +244,7 @@ export class AuthService {
           const e: any = new Error('This college email is already verified — continue where you left off');
           e.status = 409; e.code = 'ALREADY_VERIFIED'; throw e;
         }
-        if (sameInbox) conflict('Email already in use');
-        conflict('Username already taken');
+        conflict('Email already in use');
       }
 
       if (!hasPw) {
@@ -250,23 +263,16 @@ export class AuthService {
         // college is the same story from the other direction: it is exactly
         // what the wizard's college step exists to fill ("Sign in with Google"
         // on the login page creates such a row).
-        // Refresh the claimed identity (re-check the username — someone else
-        // may have taken it since). Same 409s as a fresh start.
-        if (existingUser.username.toLowerCase() !== input.username.toLowerCase()) {
-          const clash = await prisma.user.findFirst({
-            where: { username: { equals: input.username, mode: 'insensitive' }, NOT: { id: existingUser.id } },
-            select: { id: true },
-          });
-          if (clash) conflict('Username already taken');
-        }
+        // Refresh the claimed name (the handle is generated once at creation
+        // and never re-rolled here — the owner picks the real one in profile
+        // setup).
         // Coming back through the signup wizard may come with a CORRECTED
         // email (step-2 "wrong address? fix it"). The new address already
         // passed the same domain + hygiene gates above; re-point the pending
         // account at it after a dedicated clash check. Pre-verification the
         // account is worth exactly one OTP to its own inbox, so re-pointing
         // = re-owning — verification (an inbox-proof event) is what locks it.
-        const updateData: { username: string; displayName: string; email?: string; collegeEmail?: string; collegeId?: string } = {
-          username: input.username,
+        const updateData: { displayName: string; email?: string; collegeEmail?: string; collegeId?: string } = {
           displayName: input.displayName.trim(),
         };
         if (existingUser.collegeId !== input.collegeId) updateData.collegeId = input.collegeId;
@@ -291,14 +297,16 @@ export class AuthService {
 
       // A password exists but the inbox was never proven (legacy row): a real
       // account — the password, not this request, owns it.
-      if (sameInbox) conflict('Email already in use');
-      conflict('Username already taken');
+      conflict('Email already in use');
     }
 
     // No password yet — parked placeholder (same shape as Google-created
     // accounts). The real password is set post-verification via
     // setInitialPassword, which the server gates on collegeEmailVerified.
+    // The handle is a generated placeholder too — the owner picks the real
+    // one once, in profile setup (usernameChosen flips there).
     const placeholderHash = crypto.randomUUID() + crypto.randomUUID();
+    const username = await availableHandle(baseHandle(input.displayName, email));
 
     let user: any;
     try {
@@ -306,18 +314,18 @@ export class AuthService {
         data: {
           email,
           passwordHash: placeholderHash,
-          username: input.username,
+          username,
+          usernameChosen: false,
           displayName: input.displayName.trim(),
           collegeId: input.collegeId,
           collegeEmail: email,
         },
       });
     } catch (err: any) {
-      // Two people submitting the same email/username in the same second
-      // (including case variants — UNIQUE (LOWER(username)) catches those):
-      // the DB unique index is the truth — answer 409, never 500.
+      // Two people submitting the same email in the same second: the DB
+      // unique index is the truth — answer 409, never 500.
       if (err?.code === 'P2002') {
-        conflict('Email or username already in use');
+        conflict('Email already in use');
       }
       throw err;
     }
@@ -820,6 +828,7 @@ export class AuthService {
         data: {
           email: `${tag}@deleted.local`,
           username: tag,
+          usernameChosen: true,
           displayName: 'Deleted User',
           bio: null,
           avatarUrl: null,
@@ -863,6 +872,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       username: user.username,
+      usernameChosen: (user as any).usernameChosen ?? true,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       avatarPhotoId: (user as any).avatarPhotoId ?? null,
@@ -882,7 +892,7 @@ export class AuthService {
       moderatedCollegeId: (user as any).moderatedCollegeId || null,
       interests: user.interests.map((ui) => ui.interest),
       postCount: user._count.posts,
-      isProfileSetup: !!(user.collegeId && user.course),
+      isProfileSetup: !!(user.collegeId && user.course && (user as any).usernameChosen),
       // Computed fresh on every read — never stored — so it ticks over on the
       // user's birthday without any data change (profiles show "21 yrs").
       age: user.dateOfBirth
@@ -909,6 +919,9 @@ export class AuthService {
     collegeId?: string;
     // NOTE: no collegeEmail — the OTP flow owns it end-to-end (the body
     // rejects it, typed as any below so forged JS payloads still hit the 403).
+    // username is the ONE handle choice: allowed exactly once, while the
+    // account still holds its generated placeholder (usernameChosen false).
+    username?: string;
     course?: string;
     year?: number;
     gender?: string;
@@ -933,7 +946,7 @@ export class AuthService {
     // feeds age-segregation (DOB) and matching (gender).
     const current = await prisma.user.findUnique({
       where: { id: userId },
-      select: { displayName: true, dateOfBirth: true, gender: true },
+      select: { displayName: true, dateOfBirth: true, gender: true, username: true, usernameChosen: true },
     });
     if (!current) {
       const e: any = new Error('User not found'); e.status = 404; throw e;
@@ -970,6 +983,35 @@ export class AuthService {
       const name = data.displayName.trim();
       if (name.length < 2 || name.length > 50) throw new Error('Name must be 2-50 characters');
       update.displayName = name;
+    }
+    // ── Handle lock (one true source: profile setup, once) ──
+    // The handle is generated at signup and chosen ONCE here — it feeds
+    // profile URLs and login, so after the choice it locks exactly like the
+    // name. Resubmitting the already-chosen handle is a harmless no-op (stale
+    // forms, double taps); anything else on a locked account is refused.
+    if (data.username !== undefined) {
+      const picked = normalizeUsername(data.username);
+      if (current.usernameChosen) {
+        if (picked !== normalizeUsername(current.username)) {
+          const e: any = new Error('Your username is locked — it was chosen once, in profile setup'); e.status = 403; throw e;
+        }
+      } else {
+        const check = checkUsernameLocally(picked);
+        if (!check.available) {
+          const e: any = new Error(check.error!);
+          e.status = 400;
+          e.code = check.reason === 'reserved' ? 'USERNAME_RESERVED' : 'USERNAME_INVALID';
+          throw e;
+        }
+        const clash = await prisma.user.findFirst({
+          where: { username: { equals: picked, mode: 'insensitive' }, NOT: { id: userId } },
+          select: { id: true },
+        });
+        if (clash) conflict('Username already taken');
+        update.username = picked;
+        update.usernameChosen = true;
+        invalidateUser(userId);
+      }
     }
     if (data.bio !== undefined) {
       const bio = data.bio.trim();
@@ -1074,6 +1116,7 @@ export class AuthService {
     return {
       id: user.id,
       username: user.username,
+      usernameChosen: (user as any).usernameChosen ?? true,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       avatarPhotoId: (user as any).avatarPhotoId ?? null,

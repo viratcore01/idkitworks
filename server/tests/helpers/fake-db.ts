@@ -397,6 +397,9 @@ export function makeUser(over: Partial<Row> = {}): Row {
     googleId: null,
     username: 'student',
     displayName: 'Test Student',
+    // Pre-existing accounts chose their handle in the old wizard (mirrors the
+    // migration 0006 backfill); tests for fresh signups opt out explicitly.
+    usernameChosen: true,
     avatarUrl: null,
     avatarPhotoId: null,
     bio: null,

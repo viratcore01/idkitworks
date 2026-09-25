@@ -19,7 +19,6 @@ export interface WizardState {
   /** The college picked in step 1, or null when nothing is picked. */
   collegeId: string | null;
   email: string;
-  username: string;
   displayName: string;
 }
 
@@ -63,7 +62,6 @@ export function goBack(state: WizardState): BackResult {
           phase: 'college',
           // The layers above step 1 are gone: restart, not resume.
           email: '',
-          username: '',
           displayName: '',
         },
       };
@@ -82,7 +80,7 @@ export function goBack(state: WizardState): BackResult {
         // confusing mismatch.
         return {
           kind: 'state',
-          state: { ...state, phase: 'college', collegeId: null, email: '', username: '', displayName: '' },
+          state: { ...state, phase: 'college', collegeId: null, email: '', displayName: '' },
         };
       }
       return { kind: 'exit' };
@@ -103,7 +101,7 @@ export const COLLEGE_STORAGE_KEYS = [
 ] as const;
 
 export const WIZARD_STORAGE_KEYS = [
-  'signup:phase', 'signup:email', 'signup:username', 'signup:displayName',
+  'signup:phase', 'signup:email', 'signup:displayName',
   ...COLLEGE_STORAGE_KEYS,
   'signup:cooldownUntil',
 ] as const;
@@ -140,7 +138,6 @@ export function saveWizardDraft(
 ): void {
   storage.setItem('signup:phase', state.phase);
   storage.setItem('signup:email', state.email);
-  storage.setItem('signup:username', state.username);
   storage.setItem('signup:displayName', state.displayName);
   if (picked) {
     storage.setItem('signup:collegeId', picked.id);
@@ -158,7 +155,7 @@ export function saveWizardDraft(
 
 /** A pristine wizard — what a fresh arrival (or a full reset) looks like. */
 export function blankWizard(): WizardState {
-  return { phase: 'college', collegeId: null, email: '', username: '', displayName: '' };
+  return { phase: 'college', collegeId: null, email: '', displayName: '' };
 }
 
 /**

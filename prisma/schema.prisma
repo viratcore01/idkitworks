@@ -50,6 +50,13 @@ model User {
   // username check/compare must use mode: 'insensitive' to match.
   username      String   @unique
   displayName   String   @map("display_name")
+  // The handle is chosen ONCE in "Complete Your Profile" — never in the
+  // signup wizard (email and Google alike auto-generate a placeholder there).
+  // false = the row still holds its generated placeholder and the owner must
+  // pick a real handle; true = chosen (or a pre-existing account, backfilled
+  // true by migration 0006) and locked for life. Profile setup is incomplete
+  // until this flips, so the funnel cannot be finished on a placeholder.
+  usernameChosen Boolean @default(true) @map("username_chosen")
   avatarUrl     String?  @map("avatar_url")
   bio           String?
   collegeId     String?  @map("college_id")

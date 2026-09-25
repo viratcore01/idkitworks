@@ -72,28 +72,42 @@ test('reserved: the list is not empty and contains no unusable entries', () => {
   }
 });
 
-// ─────────────────── typed signup closes the impersonation hole ─────────────
+// ─────────── profile setup closes the impersonation hole ───────────────────
+// The handle is chosen ONCE in Complete Your Profile (never at signup): the
+// same shape + reserved + uniqueness gates as the old wizard, enforced here.
 
-test('SECURITY: typed signup refuses a reserved handle (it used to be claimable)', async () => {
-  const { db, svc } = setup();
+test('SECURITY: profile setup refuses a reserved handle', async () => {
+  const { db, svc } = setup({ users: [makeUser({ id: 'u1', usernameChosen: false })] });
   for (const username of ['admin', 'Admin', 'support', 'skola', 'moderator1']) {
-    const err = await rejectsWithStatus(
-      () => svc.signup({ collegeId: COLLEGE_ID, email: `${username}@ipec.org.in`, username, displayName: 'Someone' }),
-      400,
-      'USERNAME_RESERVED',
-    );
+    const err = await rejectsWithStatus(() => svc.updateProfile('u1', { username }), 400, 'USERNAME_RESERVED');
     assert.match(err.message, /reserved/i);
   }
-  assert.equal(db.rows('user').length, 0, 'nothing is created for a reserved handle');
+  assert.equal(db.rows('user')[0].usernameChosen, false, 'nothing is finalized for a reserved handle');
 });
 
-test('typed signup still accepts an ordinary handle', async () => {
-  const { svc } = setup();
-  const result = await svc.signup({ collegeId: COLLEGE_ID, email: DOMAIN_EMAIL, username: 'student_1', displayName: 'Test Student' });
-  assert.equal(result.user.username, 'student_1');
+test('profile setup accepts an ordinary handle exactly once, then locks it for life', async () => {
+  const { db, svc } = setup({ users: [makeUser({ id: 'u1', usernameChosen: false })] });
+  const result = await svc.updateProfile('u1', { username: 'Student_1' });
+  assert.equal(result.username, 'student_1', 'the choice is stored normalized');
+  assert.equal(result.usernameChosen, true);
+  assert.equal(db.rows('user')[0].usernameChosen, true);
+
+  // A second, different handle is refused…
+  await rejectsWithStatus(() => svc.updateProfile('u1', { username: 'somethingelse' }), 403);
+  // …while resubmitting the chosen one is a harmless no-op (stale forms).
+  await svc.updateProfile('u1', { username: 'student_1' });
+  assert.equal(db.rows('user')[0].username, 'student_1');
 });
 
-// ─────────────────────── live availability (the wizard's check) ─────────────
+test('profile setup refuses a taken handle, case-insensitively, and creates no row', async () => {
+  const { db, svc } = setup({
+    users: [makeUser({ id: 'u1', usernameChosen: false }), makeUser({ id: 'u2', username: 'Taken' })],
+  });
+  await rejectsWithStatus(() => svc.updateProfile('u1', { username: 'TAKEN' }), 409);
+  assert.equal(db.rows('user').length, 2, 'a taken handle duplicates nothing');
+});
+
+// ─────────────────── live availability (profile setup's check) ─────────────
 
 test('availability: a free handle is available and reserves nothing', async () => {
   const { db, svc } = setup();

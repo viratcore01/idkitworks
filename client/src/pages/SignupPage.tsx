@@ -2,22 +2,23 @@ import { safeLocalStorage, safeSessionStorage } from '@/utils/safeStorage';
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Rocket, PartyPopper, Hourglass, GraduationCap, MailCheck, KeyRound, Mail, ArrowLeft, ShieldCheck, Lock, Check, X, Loader2 } from 'lucide-react';
+import { Rocket, PartyPopper, Hourglass, GraduationCap, MailCheck, KeyRound, Mail, ArrowLeft, ShieldCheck, Lock } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import CollegeSelect, { CollegeOption } from '@/components/common/CollegeSelect';
 import GoogleButton from '@/components/common/GoogleButton';
 import { verificationApi } from '@/services/verification';
-import { checkUsername } from '@/services/username';
 import { nextStep } from '@/utils/funnel';
 import { goBack, isVerifiedIdentity, canSignOut, clearWizardDraft, saveWizardDraft, COLLEGE_STORAGE_KEYS, stepIndex, type Phase, type WizardState } from '@/utils/signupFlow';
-import { sanitizeUsernameInput, localUsernameStatus, usernameFeedback, blocksSubmit, type UsernameStatus } from '@/utils/username';
 import toast from 'react-hot-toast';
 
 /**
  * Signup funnel — ONE page, ONE email typing:
  *   1. College        — anchors everything (domain shown, e.g. @ipec.org.in).
- *   2. Identity       — college email + name + username (checked live), or
+ *   2. Identity       — college email + name (checked live), or
  *                       Continue with Google (auto-verifies on domain match).
+ *                       The username is NOT picked here: every path mints a
+ *                       placeholder and the owner chooses it once, in
+ *                       Complete Your Profile.
  *   3. Code           — the 6-digit OTP, sent to the email ABOVE. The address
  *                       is shown read-only: it was typed once, and it is the
  *                       thing being proven. "Edit details" goes back, and a
@@ -57,7 +58,6 @@ export default function SignupPage() {
   });
   const [formData, setFormData] = useState({
     email: safeSessionStorage.getItem('signup:email') || '',
-    username: safeSessionStorage.getItem('signup:username') || '',
     displayName: safeSessionStorage.getItem('signup:displayName') || '',
   });
   const [college, setCollege] = useState<CollegeOption | null>(() => {
@@ -81,13 +81,11 @@ export default function SignupPage() {
   const [otp, setOtp] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>(() => localUsernameStatus(safeSessionStorage.getItem('signup:username') || ''));
   const [cooldown, setCooldown] = useState(() => {
     const until = Number(safeSessionStorage.getItem('signup:cooldownUntil') || 0);
     return Math.max(0, Math.ceil((until - Date.now()) / 1000));
   });
   const submittingRef = useRef(false); // ref guard: double-taps beat React re-render
-  const usernameSeqRef = useRef(0); // stale-answer guard for the live check
   const cooldownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const signup = useAuthStore((s) => s.signup);
   const setInitialPassword = useAuthStore((s) => s.setInitialPassword);
@@ -100,7 +98,6 @@ export default function SignupPage() {
   // Deliberate backs bypass this by clearing storage (see handleBack).
   useEffect(() => { safeSessionStorage.setItem('signup:phase', phase); }, [phase]);
   useEffect(() => { safeSessionStorage.setItem('signup:email', formData.email); }, [formData.email]);
-  useEffect(() => { safeSessionStorage.setItem('signup:username', formData.username); }, [formData.username]);
   useEffect(() => { safeSessionStorage.setItem('signup:displayName', formData.displayName); }, [formData.displayName]);
   useEffect(() => {
     if (college) {
@@ -113,39 +110,6 @@ export default function SignupPage() {
     }
   }, [college]);
   useEffect(() => () => { if (cooldownTimer.current) clearInterval(cooldownTimer.current); }, []);
-
-  /**
-   * Live handle availability.
-   *
-   * Shape and reserved words are answered locally (instant, no request); only
-   * "is it claimed?" needs the server, so it is debounced and any answer that
-   * arrives for a value the user has since changed is dropped (the sequence
-   * guard) — otherwise a slow response could label a good handle "taken".
-   */
-  useEffect(() => {
-    const username = formData.username.trim().toLowerCase();
-    const local = localUsernameStatus(username);
-    if (local !== 'ok') {
-      setUsernameStatus(local === 'empty' ? 'idle' : local);
-      return;
-    }
-    setUsernameStatus('checking');
-    const seq = ++usernameSeqRef.current;
-    const timer = setTimeout(async () => {
-      try {
-        const result = await checkUsername(username);
-        if (seq !== usernameSeqRef.current) return;
-        if (result.available) setUsernameStatus('available');
-        else setUsernameStatus(result.reason === 'reserved' ? 'reserved' : 'taken');
-      } catch {
-        if (seq !== usernameSeqRef.current) return;
-        // A failed CHECK is not a verdict: keep the button usable and let the
-        // submit (whose unique index is the truth) decide.
-        setUsernameStatus('unavailable');
-      }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [formData.username]);
 
   const update = (field: string, value: any) => setFormData((d) => ({ ...d, [field]: value }));
 
@@ -208,7 +172,6 @@ export default function SignupPage() {
       phase,
       collegeId: college?.id ?? null,
       email: formData.email,
-      username: formData.username,
       displayName: formData.displayName,
     });
     if (result.kind === 'exit') {
@@ -223,7 +186,7 @@ export default function SignupPage() {
     // user still sees on screen must also survive a reload.
     clearWizardStorage();
     saveWizardDraft(next, picked, sessionStorage);
-    setFormData({ email: next.email, username: next.username, displayName: next.displayName });
+    setFormData({ email: next.email, displayName: next.displayName });
     setCollege(picked);
     setOtp('');
     setPassword('');
@@ -289,7 +252,6 @@ export default function SignupPage() {
       await signup({
         collegeId,
         email,
-        username: formData.username.trim().toLowerCase(),
         displayName: formData.displayName.trim(),
       });
 
@@ -393,14 +355,14 @@ export default function SignupPage() {
     if (domain && !v.endsWith(`@${domain}`)) return false;
     return true;
   })();
-  const usernameOk = localUsernameStatus(formData.username) === 'ok' && !blocksSubmit(usernameStatus);
+  // Handles are chosen later, in Complete Your Profile — identity here is
+  // email + name only.
   const identityOk =
     emailOk &&
-    usernameOk &&
     formData.displayName.trim().length >= 2 &&
+    formData.displayName.trim().length <= 50 &&
     !emailSuggestion;
   const activeStep = stepIndex(phase);
-  const handle = usernameFeedback(usernameStatus, formData.username);
 
   return (
     <div>
@@ -534,46 +496,6 @@ export default function SignupPage() {
             </p>
           </div>
 
-          <div>
-            <label htmlFor="signup-username" className="block font-display text-sm font-semibold mb-1.5">Username *</label>
-            <div className="relative">
-              <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-display">@</span>
-              <input
-                id="signup-username"
-                type="text"
-                className="nb-input pl-8 pr-9"
-                placeholder="coolstudent"
-                value={formData.username}
-                onChange={(e) => update('username', sanitizeUsernameInput(e.target.value))}
-                required
-                autoComplete="username"
-                aria-invalid={blocksSubmit(usernameStatus) || undefined}
-                aria-describedby="signup-username-status"
-              />
-              {usernameStatus === 'checking' && (
-                <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-400" aria-hidden="true" />
-              )}
-              {usernameStatus === 'available' && (
-                <Check size={15} strokeWidth={3} className="absolute right-3 top-1/2 -translate-y-1/2 text-green-600" aria-hidden="true" />
-              )}
-              {blocksSubmit(usernameStatus) && (
-                <X size={15} strokeWidth={3} className="absolute right-3 top-1/2 -translate-y-1/2 text-nb-pink" aria-hidden="true" />
-              )}
-            </div>
-            <p
-              id="signup-username-status"
-              role="status"
-              aria-live="polite"
-              className={`text-xs mt-1 ${
-                handle?.tone === 'bad' ? 'text-nb-pink font-semibold'
-                  : handle?.tone === 'ok' ? 'text-green-700 font-semibold'
-                    : 'text-gray-500'
-              }`}
-            >
-              {handle?.text ?? <>Your handle — also fixed for life. We check it as you type.</>}
-            </p>
-          </div>
-
           <button
             type="button"
             onClick={handleSubmit}
@@ -597,23 +519,19 @@ export default function SignupPage() {
           <GoogleButton
             mode="signup"
             collegeId={college!.id}
-            identity={{ username: formData.username.trim().toLowerCase(), displayName: formData.displayName.trim() }}
+            identity={{ displayName: formData.displayName.trim() }}
             validateIdentity={() => {
-              // Same identity the email path requires: Google must never mint a
-              // random handle over values the user already chose (both lock for
-              // life). Invalid → abort with a message, stay on this form.
+              // Same name the email path requires: Google must never mint an
+              // account with a name the user didn't type (it locks for life).
+              // The handle is picked later, in Complete Your Profile.
               if (formData.displayName.trim().length < 2 || formData.displayName.trim().length > 50)
                 return 'Type your name above first — it is fixed for life once your account is created';
-              if (!usernameOk) {
-                const fb = usernameFeedback(usernameStatus, formData.username);
-                return fb?.text || 'Pick a valid username above first — it is fixed for life once your account is created';
-              }
               return null;
             }}
             onSuccess={goApp}
           />
           <p className="text-xs font-body text-gray-500 text-center">
-            Uses the username and name you typed above with your <span className="font-semibold">@{domain}</span> Google account — and skips the code entirely.
+            Uses the name you typed above with your <span className="font-semibold">@{domain}</span> Google account — and skips the code entirely. You&apos;ll pick your username in the next step.
           </p>
         </div>
       )}

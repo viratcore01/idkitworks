@@ -21,7 +21,6 @@ function setup(seed: FakeDbOptions = {}) {
 const validSignup = {
   collegeId: COLLEGE_ID,
   email: DOMAIN_EMAIL,
-  username: 'student',
   displayName: 'Test Student',
 };
 
@@ -34,9 +33,6 @@ test('signup rejects malformed payloads before touching the database', async () 
     {},
     { ...validSignup, collegeId: '' },
     { ...validSignup, email: 'not-an-email' },
-    { ...validSignup, username: 'ab' }, // too short
-    { ...validSignup, username: 'has space' },
-    { ...validSignup, username: 'a'.repeat(21) },
     { ...validSignup, displayName: 'x' }, // too short
     { ...validSignup, displayName: 'a'.repeat(51) },
   ];
@@ -109,16 +105,26 @@ test('signup creates a passwordless, unverified account and issues a session', a
   assert.equal(isPasswordSet(row.passwordHash), false, 'stored hash must be an unusable placeholder');
   assert.equal(row.collegeEmail, DOMAIN_EMAIL, 'the pending college email is remembered for resend/status');
   assert.equal(row.collegeEmailVerified, false);
+  assert.ok(/^[a-z0-9_]{3,20}$/.test(row.username), `a placeholder handle is minted: ${row.username}`);
+  assert.equal(row.usernameChosen, false, 'the real handle is picked later, in profile setup');
+  assert.equal(result.user.usernameChosen, false);
   assert.equal(db.rows('refreshToken').length, 1, 'a refresh session row is stored');
 });
 
-test('signup normalizes email and username casing', async () => {
+test('signup ignores a client-sent username (legacy callers) and still mints a placeholder', async () => {
+  // Old app versions POSTed a username with signup; the server owns the handle
+  // now, so the field is ignored — never trusted, never a 400.
+  const { db, svc } = setup();
+  const result = await (svc.signup as any)({ ...validSignup, username: 'admin' });
+  assert.ok(result.accessToken);
+  assert.notEqual(db.rows('user')[0].username, 'admin', 'a smuggled handle never lands on the row');
+  assert.equal(db.rows('user')[0].usernameChosen, false);
+});
+
+test('signup normalizes email casing', async () => {
   const { svc } = setup();
-  const result = await svc.signup({ ...validSignup, email: 'Student@IPEC.org.in', username: 'StuDent' });
+  const result = await svc.signup({ ...validSignup, email: 'Student@IPEC.org.in' });
   assert.equal(result.user.email, 'student@ipec.org.in');
-  assert.equal(result.user.username, 'StuDent', 'the display form is preserved…');
-  const { db } = setup({ users: [makeUser({ username: 'student' })] });
-  assert.equal(db.rows('user')[0].username, 'student', '…while comparisons stay case-insensitive');
 });
 
 // ─────────────────────────── signup: conflicts ──────────────────────────────
@@ -128,9 +134,15 @@ test('signup refuses an email that belongs to a real (password-bearing) account'
   await rejectsWithStatus(() => svc.signup(validSignup), 409);
 });
 
-test('signup refuses a taken username, case-insensitively', async () => {
-  const { svc } = setup({ users: [makeUser({ email: 'someone@ipec.org.in', username: 'Student' })] });
-  await rejectsWithStatus(() => svc.signup(validSignup), 409);
+test('signup never 409s on a handle: a colliding placeholder is suffixed, not refused', async () => {
+  // The handle is generated, so somebody holding the stem must not block the
+  // signup — the generator just moves to a suffixed candidate.
+  const { db, svc } = setup({
+    users: [makeUser({ email: 'someone@ipec.org.in', username: 'taken', collegeEmail: 'someone@ipec.org.in' })],
+  });
+  const result = await svc.signup({ ...validSignup, displayName: 'Taken' });
+  assert.ok(result.accessToken);
+  assert.match(db.rows('user')[1].username, /^taken\d{3}$/);
 });
 
 test('signup refuses a college email already claimed by another account', async () => {
@@ -168,7 +180,10 @@ test('RESUME: a corrected email re-points the pending account (pre-verification 
   const { db, svc } = setup({
     users: [makeUser({ email: DOMAIN_EMAIL, username: 'student', collegeEmail: DOMAIN_EMAIL, passwordHash: PLACEHOLDER })],
   });
-  await svc.signup({ ...validSignup, email: 'newstudent@ipec.org.in' });
+  // The wizard holds the session minted at creation, so the service resumes
+  // the caller's own draft (the second call carries the first call's user id,
+  // exactly like the client's Bearer token does).
+  await svc.signup({ ...validSignup, email: 'newstudent@ipec.org.in' }, 'user-1');
 
   const row = db.rows('user')[0];
   assert.equal(row.email, 'newstudent@ipec.org.in');
@@ -185,7 +200,7 @@ test('RESUME: a DRAFT may move to another college — the "wrong college, start 
     colleges: [makeCollege(), makeCollege({ id: 'college-2', name: 'Other College', emailDomain: 'other.edu' })],
     users: [makeUser({ email: DOMAIN_EMAIL, username: 'student', collegeId: 'college-2', collegeEmail: DOMAIN_EMAIL, passwordHash: PLACEHOLDER })],
   });
-  const result = await svc.signup({ ...validSignup, collegeId: 'college-2', email: 'student@other.edu' });
+  const result = await svc.signup({ ...validSignup, collegeId: 'college-2', email: 'student@other.edu' }, 'user-1');
 
   assert.equal(result.user.collegeId, 'college-2');
   assert.equal(db.rows('user').length, 1, 'a move never creates a second row');
@@ -201,8 +216,11 @@ test('RESUME: a move is refused once the inbox is PROVEN (that is not a wizard a
       collegeEmailVerified: true, verificationStatus: 'VERIFIED', passwordHash: PLACEHOLDER,
     })],
   });
-  await rejectsWithStatus(() => svc.signup({ ...validSignup, collegeId: 'college-2', email: 'student@other.edu' }), 409);
+  // Same inbox, still holding the proven row's session: the proven account is
+  // never re-claimed — not even by its own wizard coming back around.
+  await rejectsWithStatus(() => svc.signup(validSignup, 'verified'), 409, 'ALREADY_VERIFIED');
   assert.equal(db.rows('user')[0].collegeId, COLLEGE_ID, 'the proven boundary never moves');
+  assert.equal(db.rows('user').length, 1, 'no second row either');
 });
 
 test('RESUME: a college-LESS account adopts the college the wizard collected (redo the college step)', async () => {
@@ -223,7 +241,7 @@ test('RESUME: a college-LESS account adopts the college the wizard collected (re
   // And it STAYS movable while nothing is proven: redoing the wizard for another
   // campus adopts the new pick (still no session for a stranger, still one
   // account, still a fresh code required).
-  await svc.signup({ ...validSignup, collegeId: 'college-2', email: 'student@other.edu' });
+  await svc.signup({ ...validSignup, collegeId: 'college-2', email: 'student@other.edu' }, 'user-1');
   assert.equal(db.rows('user').length, 1);
   assert.equal(db.rows('user')[0].collegeId, 'college-2');
   assert.equal(db.rows('user')[0].collegeEmailVerified, false);
@@ -275,7 +293,7 @@ test('housekeeping purges abandoned signups older than 7 days, never real accoun
       makeUser({ id: 'recent', email: 'c@ipec.org.in', username: 'ccc', collegeEmail: 'c@ipec.org.in', passwordHash: PLACEHOLDER, createdAt: new Date(Date.now() - 60_000) }),
     ],
   });
-  await svc.signup({ ...validSignup, email: 'd@ipec.org.in', username: 'ddd' });
+  await svc.signup({ ...validSignup, email: 'd@ipec.org.in' });
 
   const ids = db.rows('user').map((u) => u.id);
   assert.equal(ids.includes('abandoned'), false, 'stale passwordless signup is reclaimed');

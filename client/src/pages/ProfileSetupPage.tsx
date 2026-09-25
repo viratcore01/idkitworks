@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, PartyPopper, Hourglass, Camera, Plus, X, GraduationCap, ArrowLeft, Lock } from 'lucide-react';
+import { Sparkles, PartyPopper, Hourglass, Camera, Plus, X, GraduationCap, ArrowLeft, Lock, Check, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { nextStep, hasCollege } from '@/utils/funnel';
 import { canSignOut, clearWizardDraft } from '@/utils/signupFlow';
+import { sanitizeUsernameInput, localUsernameStatus, usernameFeedback, blocksSubmit, type UsernameStatus } from '@/utils/username';
+import { checkUsername } from '@/services/username';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
 import { type CollegeOption } from '@/components/common/CollegeSelect';
@@ -36,9 +38,19 @@ export default function ProfileSetupPage() {
  // filled exactly once, here. nameLocked matters most — a Google token with no
  // `name` claim now parks an empty string (no invented "viratcore01"), and this
  // is the one screen where that gap can be filled.
- const nameLocked = !!(user?.displayName && user.displayName.trim().length > 0);
- const dobLocked = !!user?.dateOfBirth;
- const genderLocked = !!user?.gender && user.gender !== 'UNKNOWN';
+  const nameLocked = !!(user?.displayName && user.displayName.trim().length > 0);
+  const dobLocked = !!user?.dateOfBirth;
+  const genderLocked = !!user?.gender && user.gender !== 'UNKNOWN';
+  // The handle is chosen ONCE, here, by every path (email + Google signup mint
+  // a placeholder). After the choice it locks exactly like the name.
+  const needsUsername = user?.usernameChosen === false;
+  const [username, setUsername] = useState(user?.username || '');
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>('idle');
+  const usernameSeqRef = useRef(0);
+  // Keeping the generated placeholder COUNTS as choosing: saving it flips the
+  // lock without renaming, so it must never read as "taken" (it is taken — by
+  // this very account, which the server's self-excluding check knows).
+  const usernameUnchanged = username.trim().toLowerCase() === String(user?.username || '').trim().toLowerCase();
  const [formData, setFormData] = useState({
  collegeId: user?.college?.id || '',
  displayName: user?.displayName || '',
@@ -110,8 +122,45 @@ export default function ProfileSetupPage() {
  }
  };
 
- // Preview URLs are memory: release them when the screen goes away.
- useEffect(() => () => { for (const s of stagedRef.current) URL.revokeObjectURL(s.url); }, []);
+  // Preview URLs are memory: release them when the screen goes away.
+  useEffect(() => () => { for (const s of stagedRef.current) URL.revokeObjectURL(s.url); }, []);
+
+  /**
+   * Live handle availability — same rules as the old wizard field, now owned
+   * by this screen. Shape and reserved words are answered locally (instant);
+   * only "is it claimed?" needs the server, debounced, with stale answers
+   * dropped (the sequence guard). An UNCHANGED placeholder skips the check
+   * entirely: it belongs to this account, so "taken" would be a lie.
+   */
+  useEffect(() => {
+    if (!needsUsername || usernameUnchanged) return;
+    const typed = username.trim().toLowerCase();
+    const local = localUsernameStatus(typed);
+    if (local !== 'ok') {
+      setUsernameStatus(local === 'empty' ? 'idle' : local);
+      return;
+    }
+    setUsernameStatus('checking');
+    const seq = ++usernameSeqRef.current;
+    const timer = setTimeout(async () => {
+      try {
+        const result = await checkUsername(typed);
+        if (seq !== usernameSeqRef.current) return;
+        if (result.available) setUsernameStatus('available');
+        else setUsernameStatus(result.reason === 'reserved' ? 'reserved' : 'taken');
+      } catch {
+        if (seq !== usernameSeqRef.current) return;
+        // A failed CHECK is not a verdict: keep going and let the save (whose
+        // unique index is the truth) decide.
+        setUsernameStatus('unavailable');
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [username, needsUsername, usernameUnchanged]);
+
+  const usernameOk = !needsUsername || usernameUnchanged ||
+    (localUsernameStatus(username) === 'ok' && !blocksSubmit(usernameStatus));
+  const usernameHandle = usernameFeedback(usernameStatus, username);
 
  /**
  * Leave the profile form. Nothing on it is written — staged picks are dropped
@@ -157,11 +206,14 @@ export default function ProfileSetupPage() {
   // 2. The profile itself. Locked fields are NOT sent: the server refuses any
   //    change to them (403), so echoing them back is at best a no-op and at
   //    worst a confusing failure. No collegeId either — the wizard owns that.
-  await updateProfile({
-    course: formData.course,
-    year: formData.year,
-    bio: formData.bio,
-    ...(genderLocked ? {} : { gender: formData.gender }),
+   await updateProfile({
+     course: formData.course,
+     year: formData.year,
+     bio: formData.bio,
+     // The one-time handle choice (this screen owns it now): sent even when
+     // unchanged, so keeping the placeholder still flips the lock.
+     ...(needsUsername ? { username: username.trim().toLowerCase() } : {}),
+     ...(genderLocked ? {} : { gender: formData.gender }),
     ...(dobLocked ? {} : { dateOfBirth: formData.dateOfBirth }),
     ...(nameLocked ? {} : { displayName: formData.displayName.trim() }),
     interestIds: formData.interestIds,
@@ -276,8 +328,67 @@ export default function ProfileSetupPage() {
  </p>
  </div>
 
-  <form onSubmit={handleSubmit} className="nb-card p-4 sm:p-6 space-y-4 min-w-0">
-  <div>
+   <form onSubmit={handleSubmit} className="nb-card p-4 sm:p-6 space-y-4 min-w-0">
+   {needsUsername ? (
+   <div>
+   <label htmlFor="setup-username" className="block font-display text-sm font-semibold mb-1.5">Username * <span className="font-normal text-gray-500">(choose once)</span></label>
+   <div className="relative">
+   <span aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-display">@</span>
+   <input
+   id="setup-username"
+   type="text"
+   className="nb-input pl-8 pr-9"
+   placeholder="coolstudent"
+   value={username}
+   onChange={(e) => setUsername(sanitizeUsernameInput(e.target.value))}
+   required
+   autoComplete="username"
+   aria-invalid={blocksSubmit(usernameStatus) || undefined}
+   aria-describedby="setup-username-status"
+   />
+   {usernameStatus === 'checking' && (
+   <Loader2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-gray-400" aria-hidden="true" />
+   )}
+   {usernameStatus === 'available' && (
+   <Check size={15} strokeWidth={3} className="absolute right-3 top-1/2 -translate-y-1/2 text-green-600" aria-hidden="true" />
+   )}
+   {blocksSubmit(usernameStatus) && (
+   <X size={15} strokeWidth={3} className="absolute right-3 top-1/2 -translate-y-1/2 text-nb-pink" aria-hidden="true" />
+   )}
+   </div>
+   <p
+   id="setup-username-status"
+   role="status"
+   aria-live="polite"
+   className={`text-xs mt-1 ${
+   usernameHandle?.tone === 'bad' ? 'text-nb-pink font-semibold'
+   : usernameHandle?.tone === 'ok' ? 'text-green-700 font-semibold'
+   : 'text-gray-500'
+   }`}
+   >
+   {usernameUnchanged
+   ? <>This temporary handle is reserved for you — keep it or pick a new one. Either way it locks forever once you save.</>
+   : (usernameHandle?.text ?? <>Your public handle — permanent. We check it as you type.</>)}
+   </p>
+   </div>
+   ) : (
+   <div>
+   <label htmlFor="setup-username-locked" className="block font-display text-sm font-semibold mb-1.5">Username (locked)</label>
+   <input
+   id="setup-username-locked"
+   type="text"
+   className="nb-input bg-gray-50 text-gray-500"
+   value={user?.username || ''}
+   readOnly
+   disabled
+   aria-readonly="true"
+   />
+   <p className="text-xs text-gray-500 mt-1">
+   Chosen once in setup and fixed for the life of the account.
+   </p>
+   </div>
+   )}
+   <div>
   <label htmlFor="setup-college" className="block font-display text-sm font-semibold mb-1.5">College (locked)</label>
   <input
   id="setup-college"
@@ -490,7 +601,7 @@ export default function ProfileSetupPage() {
 
   <button
   type="submit"
-  disabled={isLoading || needsCollege}
+  disabled={isLoading || needsCollege || !usernameOk}
   aria-busy={isLoading}
   className="nb-btn-primary w-full text-center disabled:opacity-50 disabled:cursor-not-allowed"
   >

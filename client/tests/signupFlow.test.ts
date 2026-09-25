@@ -24,7 +24,6 @@ const atPassword: WizardState = {
   phase: 'password',
   collegeId: 'c1',
   email: 'student@ipec.org.in',
-  username: 'student',
   displayName: 'Student',
 };
 
@@ -41,7 +40,6 @@ test('back from the password screen jumps to step 1 and wipes the typed identity
   assert.equal(next.collegeId, 'c1', 'the pick stays visible so it can be reviewed');
   // A restart asks for the address again instead of silently reusing it.
   assert.equal(next.email, '');
-  assert.equal(next.username, '');
   assert.equal(next.displayName, '');
 });
 
@@ -51,7 +49,6 @@ test('back from the code screen reopens the SAME form, values and all', () => {
   const next = stateOf(goBack({ ...atPassword, phase: 'otp' }));
   assert.equal(next.phase, 'identity');
   assert.equal(next.email, 'student@ipec.org.in');
-  assert.equal(next.username, 'student');
   assert.equal(next.displayName, 'Student');
   assert.equal(next.collegeId, 'c1');
 });
@@ -102,7 +99,7 @@ test('stepIndex orders the funnel college → identity → otp → password', ()
 });
 
 test('blankWizard is a pristine step 1', () => {
-  assert.deepEqual(blankWizard(), { phase: 'college', collegeId: null, email: '', username: '', displayName: '' });
+  assert.deepEqual(blankWizard(), { phase: 'college', collegeId: null, email: '', displayName: '' });
 });
 
 // ─────────────────── re-submitting an identity that is already proven ────────
@@ -164,11 +161,10 @@ test('saveWizardDraft writes the surviving state back after an explicit clear', 
   };
   const pick = { id: 'c1', name: 'College One', shortName: 'C1', emailDomain: 'ipec.org.in' };
 
-  saveWizardDraft({ phase: 'identity', collegeId: 'c1', email: 'student@ipec.org.in', username: 'student', displayName: 'Student' }, pick, storage);
+  saveWizardDraft({ phase: 'identity', collegeId: 'c1', email: 'student@ipec.org.in', displayName: 'Student' }, pick, storage);
 
   assert.equal(store.get('signup:phase'), 'identity');
   assert.equal(store.get('signup:email'), 'student@ipec.org.in', 'the value that survived must survive a reload too');
-  assert.equal(store.get('signup:username'), 'student');
   assert.equal(store.get('signup:displayName'), 'Student');
   assert.equal(store.get('signup:collegeId'), 'c1');
   assert.equal(store.get('signup:collegeDomain'), 'ipec.org.in');
@@ -193,7 +189,10 @@ test('saveWizardDraft with no college clears the college keys', () => {
 
 test('the key list covers every field the wizard persists', () => {
   // Guards against a new persisted field being added without being cleared.
-  for (const key of ['signup:phase', 'signup:email', 'signup:username', 'signup:displayName', 'signup:collegeId', 'signup:cooldownUntil']) {
+  // (The username is deliberately NOT a wizard field: it is chosen once, in
+  // Complete Your Profile, so no signup:* key may ever resurrect one.)
+  for (const key of ['signup:phase', 'signup:email', 'signup:displayName', 'signup:collegeId', 'signup:cooldownUntil']) {
     assert.ok((WIZARD_STORAGE_KEYS as readonly string[]).includes(key), `${key} missing from WIZARD_STORAGE_KEYS`);
   }
+  assert.ok(!(WIZARD_STORAGE_KEYS as readonly string[]).includes('signup:username'), 'the wizard must not persist a username');
 });

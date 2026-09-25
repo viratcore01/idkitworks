@@ -227,7 +227,7 @@ test('SECURITY: a redeemed reset code cannot be replayed', async () => {
 test('END TO END: the full funnel account can be recovered after forgetting its password', async () => {
   const { db, svc } = setup();
   // Sign up through the funnel, verify, set a password.
-  const session = await svc.signup({ collegeId: COLLEGE_ID, email: EMAIL, username: 'student', displayName: 'Test Student' });
+  const session = await svc.signup({ collegeId: COLLEGE_ID, email: EMAIL, displayName: 'Test Student' });
   const id = session.user.id;
   db.rows('user')[0].collegeEmailVerified = true;
   db.rows('user')[0].verificationStatus = 'VERIFIED';

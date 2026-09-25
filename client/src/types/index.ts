@@ -35,6 +35,9 @@ export interface User {
   /** Auth-method flags (from /me): Google-only accounts have no password to change — only to set. */
   hasGoogle?: boolean;
   hasPassword?: boolean;
+  /** False while the row still holds its generated placeholder handle: the
+   *  owner picks the real one once, in Complete Your Profile. */
+  usernameChosen?: boolean;
   /** Funnel key: college + course present (server-computed). */
   isProfileSetup?: boolean;
 }

@@ -3,6 +3,7 @@ import { AuthService } from '../services/auth.service';
 import { AuthRequest } from '../types';
 import { sendError } from '../utils/http-error';
 import { checkEmail } from '../utils/email-validation';
+import { verifyAccessToken } from '../utils/jwt';
 import { googleAuth } from '../services/google-auth.service';
 
 const authService = new AuthService();
@@ -11,8 +12,20 @@ export class AuthController {
   /** Funnel start: college + identity, no password (set post-verification). */
   async signup(req: Request, res: Response) {
     try {
-      const { collegeId, email, username, displayName } = req.body;
-      const result = await authService.signup({ collegeId, email, username, displayName });
+      const { collegeId, email, displayName } = req.body;
+      // Optional resume: a returning wizard still holds the session minted
+      // when its draft was created (the client attaches it automatically).
+      // When it identifies an unfinished draft, the service continues that
+      // row — a corrected email or a redone college step resumes instead of
+      // orphaning. Missing/invalid tokens behave like logged-out calls.
+      let resumeUserId: string | undefined;
+      const header = req.headers.authorization;
+      if (header && header.startsWith('Bearer ')) {
+        try {
+          resumeUserId = (verifyAccessToken(header.split(' ')[1]) as any)?.userId;
+        } catch { /* logged-out equivalent */ }
+      }
+      const result = await authService.signup({ collegeId, email, displayName }, resumeUserId);
       res.status(201).json(result);
     } catch (error: any) {
       const status = error.status || (error.message.includes('already') ? 409 : 400);
@@ -54,15 +67,13 @@ export class AuthController {
       const collegeId = typeof req.body?.collegeId === 'string' && req.body.collegeId
         ? req.body.collegeId
         : undefined;
-      // Wizard-typed identity (signup wizard only): the username + display name
-      // the user chose BEFORE tapping Google. Honored for new accounts with the
-      // same validation as email signup — never silently replaced by a random
-      // handle. Absent = legacy path (auto-generate, as the login button does).
-      const rawUsername = typeof req.body?.username === 'string' ? req.body.username : undefined;
+      // Wizard-typed display name (signup wizard only): honored for new
+      // accounts with the same validation as email signup. The handle is
+      // never taken from the client — it is generated at creation and chosen
+      // once in profile setup. Absent = legacy path (Google claim, as the
+      // login button does).
       const rawDisplayName = typeof req.body?.displayName === 'string' ? req.body.displayName : undefined;
-      const identity = rawUsername !== undefined || rawDisplayName !== undefined
-        ? { username: rawUsername, displayName: rawDisplayName }
-        : undefined;
+      const identity = rawDisplayName !== undefined ? { displayName: rawDisplayName } : undefined;
       const result = await googleAuth(idToken, collegeId, identity);
       res.json(result);
     } catch (error: any) {

@@ -29,11 +29,12 @@ declare global {
  * button but hands the fresh ID token to the caller instead of logging in —
  * used by Settings to prove Google-account ownership before setting a first
  * password. No navigation happens in this mode.
- * - Signup-wizard mode (`identity` + `validateIdentity`): the username + name
- * the user already typed are sent along and used for the new account (same
- * validation as email signup) instead of a generated handle the user never
- * chose. The validator runs FIRST — a bad/incomplete identity aborts before
- * Google even opens, so the user fixes it on the form they can see.
+ * - Signup-wizard mode (`identity` + `validateIdentity`): the name the user
+ * already typed is sent along and used for the new account (same validation
+ * as email signup) instead of the Google claim. The handle is never sent:
+ * every path mints a placeholder and the owner picks it in profile setup.
+ * The validator runs FIRST — a bad/incomplete name aborts before Google even
+ * opens, so the user fixes it on the form they can see.
  */
 export default function GoogleButton({ mode, onCredential, collegeId, onSuccess, identity, validateIdentity }: {
   mode: 'login' | 'signup' | 'verify';
@@ -42,8 +43,8 @@ export default function GoogleButton({ mode, onCredential, collegeId, onSuccess,
   collegeId?: string;
   /** Funnel override: called with (created) instead of the default /home navigation. */
   onSuccess?: (created: boolean) => void;
-  /** Wizard-typed username + name: honored for new accounts, never generated over. */
-  identity?: { username?: string; displayName?: string };
+  /** Wizard-typed name: honored for new accounts, never generated over. */
+  identity?: { displayName?: string };
   /** Runs before Google opens; return an error message to abort and show it. */
   validateIdentity?: () => string | null;
 }) {
@@ -109,9 +110,9 @@ export default function GoogleButton({ mode, onCredential, collegeId, onSuccess,
   client_id: clientId,
    callback: async (response: { credential?: string }) => {
    if (!response?.credential || busy) return;
-   // Signup wizard: the typed identity must be valid BEFORE Google opens —
+   // Signup wizard: the typed name must be valid BEFORE Google opens —
    // aborting here keeps the user on the form they can fix, instead of
-   // minting an account with a handle they never chose.
+   // minting an account with a name they never chose.
    if (validateIdentityRef.current) {
    const problem = validateIdentityRef.current();
    if (problem) {
