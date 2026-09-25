@@ -126,20 +126,38 @@ function StaffRoute({ children }: { children: React.ReactNode }) {
  */
 function RouteCycleWatcher() {
   const location = useLocation();
-  useEffect(() => { recordNavigation(); }, [location.pathname]);
+  useEffect(() => { recordNavigation(location.pathname); }, [location.pathname]);
   return null;
 }
 
+/**
+ * The loop breaker's dead end — and its way out.
+ *
+ * A reload alone cannot fix a loop fed by stored session state (the guard
+ * ping-pong re-fires on boot), so this screen SIGNS OUT first: logout clears
+ * tokens + user, which removes the very disagreement the guards were circling
+ * on. The app then mounts clean at /login. Signed-out users with no session
+ * get the plain reload button — for them the loop was always transient.
+ */
 function CycleDeadEnd() {
+  const logout = useAuthStore((s) => s.logout);
+  const [healing, setHealing] = useState(false);
+  const heal = async () => {
+    setHealing(true);
+    try { await logout(); } catch { /* clearing locally is enough */ }
+    window.location.href = '/login';
+  };
   return (
     <div className="min-h-screen nb-canvas-surface flex items-center justify-center p-6">
       <div className="text-center max-w-xs">
         <Logo size={64} className="mx-auto" />
         <p className="mt-4 font-display font-bold text-lg">The app got stuck redirecting</p>
         <p className="mt-2 font-body text-sm text-gray-500">
-          A routing loop was just stopped. Reload the page — it will come back clean.
+          A routing loop was just stopped. Continue below — it will open clean.
         </p>
-        <button onClick={() => window.location.reload()} className="nb-btn-orange mt-5">Reload</button>
+        <button onClick={heal} disabled={healing} className="nb-btn-orange mt-5 disabled:opacity-50">
+          {healing ? 'One moment…' : 'Continue to sign in'}
+        </button>
       </div>
     </div>
   );

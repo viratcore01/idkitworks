@@ -36,13 +36,25 @@ export function hasCollege(user: User | null | undefined): boolean {
  * demands the same email a second time.
  *
  * "Done" therefore means the account can stand on its own: it has a way back
- * in (password or Google) AND no open funnel step in front of it. Anything
- * else stays in the funnel's hands.
+ * in (password or Google), no open funnel step in front of it, AND its college
+ * email is verified. Verification is not optional here: an unverified account
+ * that PublicRoute calls "done" gets evicted to /home, where CollegeRoute
+ * bounces it straight back to /signup — an infinite guard ping-pong (the
+ * redirect loop that hung the tab white on 2026-09-25). The two guards must
+ * never disagree about the same account.
+ *
+ * The verification check below is the EXACT mirror of nextStep's ("status is
+ * VERIFIED OR the OTP flag is true"). Mirror-or-bust: any semantic drift
+ * between the two is precisely the guard disagreement that becomes a loop.
+ * A just-verified account (flag true, status string still UNVERIFIED) counts
+ * as done — the flag is the faster truth; the status refreshes a beat later.
  */
 export function funnelDone(user: User | null | undefined): boolean {
   if (!user) return false;
   const hasWayIn = user.hasPassword === true || user.hasGoogle === true;
-  return hasCollege(user) && hasWayIn && !!user.isProfileSetup;
+  if (!hasCollege(user) || !hasWayIn || !user.isProfileSetup) return false;
+  const verified = user.verificationStatus === 'VERIFIED' || user.collegeEmailVerified === true;
+  return verified;
 }
 
 export function nextStep(user: User | null | undefined): string {

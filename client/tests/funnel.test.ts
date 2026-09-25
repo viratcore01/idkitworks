@@ -159,6 +159,58 @@ test('a fully onboarded account is done and gets bounced off auth pages', () => 
   assert.equal(funnelDone({ ...base, ...onboarded, hasPassword: false, hasGoogle: true }), true);
 });
 
+// ── The redirect-loop regression: the guards must never disagree ──
+// The 2026-09-25 white tab: a Google account with college + profile done but
+// OTP never completed. funnelDone (old) said "done" → PublicRoute evicted it
+// from /signup to /home; CollegeRoute said "unverified" → bounced it back to
+// /signup. Two guards, two answers, forever — Chrome throttled the navigations
+// and the tab hung white. THE RULE: funnelDone must return false for EVERY
+// account shape that nextStep would send to /signup, or the ping-pong returns.
+
+test('the loop shape: college + profile done but UNVERIFIED is NOT done', () => {
+  // This exact shape hung the tab. It must stay mid-funnel (the wizard's OTP).
+  assert.equal(
+    funnelDone({ ...base, ...onboarded, hasGoogle: true, isProfileSetup: true, verificationStatus: 'UNVERIFIED', collegeEmailVerified: false }),
+    false,
+  );
+});
+
+test('funnelDone and nextStep agree on every account shape (loop impossible)', () => {
+  // THE INVARIANT: whenever nextStep says "/signup", funnelDone must say
+  // "not done" — otherwise PublicRoute and CollegeRoute fight over the user.
+  const shapes: Partial<User>[] = [
+    midFunnel,
+    { ...onboarded, hasGoogle: true, isProfileSetup: true, verificationStatus: 'UNVERIFIED' },
+    { ...onboarded, hasGoogle: true, isProfileSetup: true, collegeEmailVerified: false },
+    { ...onboarded, hasGoogle: true, isProfileSetup: true, verificationStatus: 'PENDING' },
+    { ...onboarded, verificationStatus: 'UNVERIFIED', hasPassword: true, isProfileSetup: true },
+  ];
+  for (const shape of shapes) {
+    if (nextStep({ ...base, ...shape }) === '/signup') {
+      assert.equal(funnelDone({ ...base, ...shape }), false, `loop shape: ${JSON.stringify(shape)}`);
+    }
+  }
+});
+
+test('the OTP flag outranks a lagging verificationStatus (just-verified stays done)', () => {
+  // Flag true + status UNVERIFIED = the beat between verify-success and the
+  // status refresh; the account is genuinely verified and must count as done.
+  assert.equal(
+    funnelDone({ ...base, ...onboarded, hasGoogle: true, isProfileSetup: true, verificationStatus: 'UNVERIFIED', collegeEmailVerified: true }),
+    true,
+  );
+});
+
+test('legacy verified accounts (status VERIFIED, flag never set) stay done', () => {
+  // Accounts verified before collegeEmailVerified existed have flag=false with
+  // status=VERIFIED. The status is the truth there — flag-false must NOT
+  // override it, or every legacy user gets bounced into the wizard on login.
+  // Same answer both functions give = the mirror holds in this direction too.
+  const legacy = { ...base, ...onboarded, hasGoogle: true, isProfileSetup: true, verificationStatus: 'VERIFIED' as const, collegeEmailVerified: false };
+  assert.equal(funnelDone(legacy), true);
+  assert.equal(nextStep(legacy), '/home');
+});
+
 test('profile details unfinished means not done, even with a password', () => {
   assert.equal(funnelDone({ ...base, ...onboarded, isProfileSetup: false }), false);
 });
