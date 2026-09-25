@@ -2,11 +2,14 @@
 # ═══════════════════════════════════════════════════════════════════════════
 # Zoclo VM update — the "just deploy the latest main" command.
 #
-#   bash deploy/vm-update.sh          # FROM THE VM (as root or via sudo)
+# Standard run — on the VM (as root or via passwordless sudo):
+#   bash deploy/vm-update.sh
 #
-# or from your machine, with the SSH key:
-#
-#   ssh -i <key> ubuntu@129.154.239.74 'curl -fsSL <raw-url> | sudo bash'
+# If the VM's GitHub deploy key is broken ("git fetch origin" fails), scp a
+# bundle of main from your machine and re-run — the script picks it up:
+#   git bundle create /tmp/zoclo.bundle main
+#   scp -i <key> /tmp/zoclo.bundle deploy/vm-update.sh ubuntu@129.154.239.74:/tmp/
+#   ssh -i <key> ubuntu@129.154.239.74 'bash /tmp/vm-update.sh'
 #
 # Pulls origin/main, installs, regenerates the Prisma client, builds the API,
 # applies migrations, restarts the systemd unit, then proves the API answers.
@@ -29,9 +32,22 @@ SERVICE=zoclo-api
 BASE_URL=http://127.0.0.1:5000
 log() { echo -e "\n\033[1;36m==> $* \033[0m"; }
 
-log "Hard-syncing $APP_DIR to origin/main"
+log "Fetching latest code"
 cd "$APP_DIR"
-git fetch origin
+if git fetch origin 2>/tmp/deploy-fetch.log; then
+  :
+else
+  echo "git fetch origin failed:"
+  cat /tmp/deploy-fetch.log
+  if [ -f /tmp/zoclo.bundle ]; then
+    log "Falling back to /tmp/zoclo.bundle (scp'd from your machine)"
+    git fetch /tmp/zoclo.bundle 'refs/heads/main:refs/remotes/origin/main' \
+      || { echo "BUNDLE FETCH FAILED"; exit 1; }
+  else
+    echo "No /tmp/zoclo.bundle either — ABORTING rather than resetting to a stale origin/main."
+    exit 1
+  fi
+fi
 BEFORE=$(git rev-parse --short HEAD)
 git reset --hard origin/main
 AFTER=$(git rev-parse --short HEAD)
