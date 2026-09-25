@@ -21,6 +21,39 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // ── Boot watchdog: no more silent white screens ────────────────────
+      // Captures every startup error; if React never mounts (parse failure
+      // on an old browser, a failed chunk, a crash before render), paints
+      // the reason on screen instead of leaving a blank page.
+      (function () {
+        var errors = [];
+        window.addEventListener('error', function (e) {
+          errors.push((e.message || 'Script error') + (e.filename ? ' @ ' + e.filename.split('/').pop() : ''));
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          errors.push('Promise: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)));
+        });
+        var checks = 0;
+        var timer = setInterval(function () {
+          var root = document.getElementById('root');
+          if (root && root.childElementCount > 0) { clearInterval(timer); return; }
+          if (++checks < 6) return;
+          clearInterval(timer);
+          var detail = errors.length
+            ? '<pre style="text-align:left;background:#fff;border:2px solid #0F172A;padding:10px;overflow:auto;font-size:12px;max-height:180px">' + errors.slice(0, 5).map(function (s) { return s.replace(/</g, '&lt;'); }).join('\n') + '</pre>'
+            : '<p style="font-size:13px">No error was captured — the JavaScript bundle may not be supported by this browser.</p>';
+          var box = document.createElement('div');
+          box.setAttribute('style', 'position:fixed;inset:0;background:#FAF7F2;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,sans-serif;color:#0F172A');
+          box.innerHTML = '<div style="max-width:420px;border:3px solid #0F172A;box-shadow:6px 6px 0 #0F172A;background:#fff;padding:24px">'
+            + '<h1 style="font-size:18px;margin:0 0 8px">Zoclo couldn\'t start</h1>'
+            + '<p style="font-size:13px;margin:0 0 12px">This usually means the browser is outdated. Update it — or open this site in another browser (Chrome, Edge, Safari or Firefox, any recent version).</p>'
+            + detail
+            + '</div>';
+          document.body.appendChild(box);
+        }, 1000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
