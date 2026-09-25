@@ -12,7 +12,7 @@ import { prisma } from './config/prisma';
 import { subscribe } from './config/bus';
 import { STORAGE_DRIVER } from './config/storage';
 import { logCostGuardState } from './config/cost-guard';
-import { logMailTransport } from './utils/email';
+import { logMailTransport, emailTransportName } from './utils/email';
 
 // Routes
 import authRoutes from './routes/auth.routes';
@@ -196,7 +196,10 @@ app.use('/api/auth/password/forgot', passwordResetLimiter);
 // few minutes from cron-job.org / UptimeRobot / GitHub Actions to keep the
 // Render free instance awake. Must stay <5ms and never touch Prisma.
 // Also advertises which auth methods are configured — the client reads this
-// to decide whether to render the Google button.
+// to decide whether to render the Google button — and which mail transport
+// is live, so "OTP not arriving" is diagnosable with one curl instead of
+// guessing between revoked Gmail tokens, a missing app password, or
+// credentials that were never set (each has a different fix).
 const bootTime = Date.now();
 app.get('/api/health', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -205,6 +208,7 @@ app.get('/api/health', (_req, res) => {
     timestamp: new Date().toISOString(),
     uptimeSec: Math.floor((Date.now() - bootTime) / 1000),
     auth: { google: !!env.GOOGLE_CLIENT_ID, googleClientId: env.GOOGLE_CLIENT_ID || undefined },
+    mail: { transport: emailTransportName() },
   });
 });
 

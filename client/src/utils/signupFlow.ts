@@ -180,11 +180,30 @@ export function isVerifiedIdentity(
 /**
  * Can this account be signed out without being locked out of itself?
  *
- * Password is compulsory for EVERYONE (Google included): the only safe way
- * back in is a password. A passwordless account — even with Google linked —
- * is sent to the password step instead of the exit, so the password can
- * never be skipped by signing out and returning via Google.
+ * Password is compulsory for EVERYONE, but "no password YET" is not "stranded":
+ * only a VERIFIED account with no password is held — an email code to the
+ * verified inbox re-opens it (forgot-password), so the trap would be a dead end
+ * by design. Google-linked accounts (fresh token proves ownership) and
+ * UNVERIFIED wizard drafts (no secret has ever been issued, nothing to be
+ * locked out of) are both free to go. The comment that used to live here —
+ * "even with Google linked" — described the verified case only: a Google LINK
+ * on an unverified draft is not an exit-proof door until the inbox is proven,
+ * and blocking the draft's exit just stranded people mid-signup.
  */
-export function canSignOut(user: { hasPassword?: boolean | null; hasGoogle?: boolean | null } | null | undefined): boolean {
-  return !!user && user.hasPassword === true;
+export function canSignOut(user: {
+  hasPassword?: boolean | null;
+  hasGoogle?: boolean | null;
+  collegeEmailVerified?: boolean | null;
+} | null | undefined): boolean {
+  if (!user) return false;
+  if (user.hasPassword === true) return true;
+  // Unfinished signup draft (never verified): there is no secret yet — the
+  // account is re-claimable by anyone who resumes the wizard, so leaving costs
+  // nothing. Only an EXPLICIT false counts: a user object with the flag MISSING
+  // (old cached /me, server drift) is unknown, and unknown holds — the same
+  // conservative answer the pre-fix rule gave.
+  if (user.collegeEmailVerified === false) return true;
+  // Verified (or unknown-verified) with no password: only an ownership proof
+  // may open the door.
+  return user.hasGoogle === true;
 }

@@ -124,13 +124,25 @@ test('isVerifiedIdentity: a different college, a different address or an unprove
 
 // ─────────────────────────── signing out safely ─────────────────────────────
 
-test('canSignOut: only an account with a password can sign out (password compulsory, Google alone is not enough)', () => {
+test('canSignOut: only a VERIFIED account without password or Google is held (a code to the proven inbox re-opens it)', () => {
+  // A real password always wins.
   assert.equal(canSignOut({ hasPassword: true, hasGoogle: false }), true);
   assert.equal(canSignOut({ hasPassword: true, hasGoogle: true }), true);
-  assert.equal(canSignOut({ hasPassword: false, hasGoogle: true }), false, 'Google alone must not skip the password');
-  assert.equal(canSignOut({ hasPassword: false, hasGoogle: false }), false, 'would be stranded forever');
-  assert.equal(canSignOut({ hasPassword: false }), false);
-  assert.equal(canSignOut({}), false);
+
+  // VERIFIED passwordless accounts are the trap case: Google ownership OR
+  // nothing (email code to the proven inbox is the only rescue).
+  assert.equal(canSignOut({ hasPassword: false, hasGoogle: true, collegeEmailVerified: true }), true, 'a fresh Google token proves ownership');
+  assert.equal(canSignOut({ hasPassword: false, hasGoogle: false, collegeEmailVerified: true }), false, 'verified + no recovery door = stranded forever');
+  assert.equal(canSignOut({ hasPassword: false, collegeEmailVerified: true }), false);
+
+  // UNVERIFIED wizard drafts must go free: nothing is proven yet, so there is
+  // nothing to be locked out of. Blocking this press stranded every user in
+  // the middle of Create Account with a toast instead of a way back.
+  assert.equal(canSignOut({ hasPassword: false, hasGoogle: true, collegeEmailVerified: false }), true, 'draft with a Google link leaves too');
+  assert.equal(canSignOut({ hasPassword: false, hasGoogle: false, collegeEmailVerified: false }), true, 'the mid-signup "back" case');
+  assert.equal(canSignOut({ hasPassword: false }), false, 'missing verification flag = unknown state → hold (stale cache; a reload refreshes it)');
+
+  assert.equal(canSignOut({}), false, 'no user, no exit');
   assert.equal(canSignOut(null), false);
   assert.equal(canSignOut(undefined), false);
 });
