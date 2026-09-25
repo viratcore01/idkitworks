@@ -9,10 +9,14 @@
  *
  * Supported (deliberately narrow, matching real call sites):
  *   where:  OR / AND / NOT, scalar equality, { equals, mode: 'insensitive' },
- *           { in }, { gt/gte/lt/lte }, { not }, null checks, Date compare
- *   ops:    findFirst, findMany, findUnique, create, createMany, update,
- *           updateMany, delete, deleteMany, count
- *   misc:   orderBy, take, select (top-level), include (explicit relation map)
+ *           { in / notIn }, { gt/gte/lt/lte }, { not }, null checks, Date compare,
+ *           scalar-list { has / hasSome / hasEvery / isEmpty },
+ *           relation { some / every / none } + to-one nesting
+ *           (user.photos/receivedLikes/matchesA-B/blockedUsers-blockedBy,
+ *           matchLike.sender, match.userAObj/userBObj)
+ *   ops:    findFirst, findMany, findUnique, create, createMany, upsert,
+ *           update, updateMany, delete, deleteMany, count
+ *   misc:   orderBy, skip, take, select (top-level), include (explicit relation map)
  */
 
 type Row = Record<string, any>;
@@ -46,17 +50,79 @@ function cmp(a: any, b: any): number {
   return av > bv ? 1 : -1;
 }
 
-function matchesWhere(row: Row, where: any): boolean {
+/**
+ * Relation map for WHERE-filters the services actually use:
+ *   to-many:  `photos: { some: {} }`, `receivedLikes: { none: { senderId } }`,
+ *             `matchesA/B`, `blockedUsers/blockedBy: { none: ... }`
+ *   to-one:   `sender: {...}` (matchLike), `userAObj/userBObj: {...}` (match)
+ * Scalar-list ops (`relationshipGoals: { hasSome / isEmpty }`) are handled
+ * generically for any array-valued field.
+ */
+type RelDef = { table: string; fk: string; single?: boolean };
+const RELATIONS: Record<string, Record<string, RelDef>> = {
+  user: {
+    photos: { table: 'userPhoto', fk: 'userId' },
+    receivedLikes: { table: 'matchLike', fk: 'receiverId' },
+    matchesA: { table: 'match', fk: 'userA' },
+    matchesB: { table: 'match', fk: 'userB' },
+    blockedUsers: { table: 'block', fk: 'blockerId' },
+    blockedBy: { table: 'block', fk: 'blockedId' },
+  },
+  matchLike: {
+    sender: { table: 'user', fk: 'senderId', single: true },
+  },
+  match: {
+    userAObj: { table: 'user', fk: 'userA', single: true },
+    userBObj: { table: 'user', fk: 'userB', single: true },
+  },
+};
+
+interface MatchCtx {
+  db: FakeDb;
+  model: string;
+}
+
+function matchesWhere(row: Row, where: any, ctx?: MatchCtx): boolean {
   if (!where) return true;
   return Object.entries(where).every(([key, cond]: [string, any]) => {
-    if (key === 'OR') return (cond as any[]).some((c) => matchesWhere(row, c));
-    if (key === 'AND') return (cond as any[]).every((c) => matchesWhere(row, c));
-    if (key === 'NOT') return !matchesWhere(row, cond);
+    if (key === 'OR') return (cond as any[]).some((c) => matchesWhere(row, c, ctx));
+    if (key === 'AND') return (cond as any[]).every((c) => matchesWhere(row, c, ctx));
+    // NOT takes an object or an array (getMatches blocks out blocked exes with
+    // a list): an array excludes the row when ANY clause matches.
+    if (key === 'NOT') {
+      return Array.isArray(cond)
+        ? (cond as any[]).every((c) => !matchesWhere(row, c, ctx))
+        : !matchesWhere(row, cond, ctx);
+    }
+    // Relation filters (only with a model context; without one they stay
+    // non-matching, exactly like before this support existed).
+    const rel = ctx && RELATIONS[ctx.model]?.[key];
+    if (rel) {
+      if (rel.single) {
+        const target = ctx!.db.rows(rel.table).find((r) => r.id === row[rel.fk]) ?? null;
+        if (!target) return false;
+        return matchesWhere(target, cond, { db: ctx!.db, model: rel.table });
+      }
+      const related = ctx!.db.rows(rel.table).filter((r) => r[rel.fk] === row.id);
+      if (cond && typeof cond === 'object' && !Array.isArray(cond)) {
+        if ('some' in cond) return related.some((r) => matchesWhere(r, cond.some, { db: ctx!.db, model: rel.table }));
+        if ('every' in cond) return related.every((r) => matchesWhere(r, cond.every, { db: ctx!.db, model: rel.table }));
+        if ('none' in cond) return !related.some((r) => matchesWhere(r, cond.none, { db: ctx!.db, model: rel.table }));
+      }
+      return false;
+    }
     const value = row[key];
     if (cond === null) return value === null || value === undefined;
     if (cond instanceof Date) return value instanceof Date && value.getTime() === cond.getTime();
     if (typeof cond !== 'object') return value === cond;
     if (Array.isArray(cond)) return Array.isArray(value) && cond.every((v) => value.includes(v));
+    // Scalar-list ops (e.g. relationshipGoals: { hasSome / isEmpty }).
+    if (Array.isArray(value)) {
+      if ('hasSome' in cond) return (cond.hasSome as any[]).some((v) => value.includes(v));
+      if ('hasEvery' in cond) return (cond.hasEvery as any[]).every((v) => value.includes(v));
+      if ('has' in cond) return value.includes(cond.has);
+      if ('isEmpty' in cond) return (value.length === 0) === !!cond.isEmpty;
+    }
     if ('equals' in cond) {
       if (cond.mode === 'insensitive' && typeof cond.equals === 'string') {
         return String(value ?? '').toLowerCase() === cond.equals.toLowerCase();
@@ -64,11 +130,19 @@ function matchesWhere(row: Row, where: any): boolean {
       return value === cond.equals;
     }
     if ('in' in cond) return (cond.in as any[]).includes(value);
+    if ('notIn' in cond) return !(cond.notIn as any[]).includes(value);
     if ('not' in cond) return value !== cond.not;
-    if ('gt' in cond) return value != null && cmp(value, cond.gt) > 0;
-    if ('gte' in cond) return value != null && cmp(value, cond.gte) >= 0;
-    if ('lt' in cond) return value != null && cmp(value, cond.lt) < 0;
-    if ('lte' in cond) return value != null && cmp(value, cond.lte) <= 0;
+    // Range bounds compose conjunctively: { gte, lte } must satisfy BOTH.
+    // (Checking only the first present operator silently turned every
+    // age range into a lower bound — the deck's segregation looked broken.)
+    if ('gt' in cond || 'gte' in cond || 'lt' in cond || 'lte' in cond) {
+      if (value == null) return false;
+      if ('gt' in cond && !(cmp(value, cond.gt) > 0)) return false;
+      if ('gte' in cond && !(cmp(value, cond.gte) >= 0)) return false;
+      if ('lt' in cond && !(cmp(value, cond.lt) < 0)) return false;
+      if ('lte' in cond && !(cmp(value, cond.lte) <= 0)) return false;
+      return true;
+    }
     return false;
   });
 }
@@ -145,6 +219,9 @@ const COLUMN_DEFAULTS: Record<string, Row> = {
     updatedAt: new Date(),
   },
   emailOtp: { attempts: 0, purpose: 'COLLEGE_EMAIL_VERIFY', usedAt: null },
+  // The real client fills @defaults on INSERT (Match.status ACTIVE, …);
+  // without them created rows carry `undefined` and read as filter misses.
+  match: { status: 'ACTIVE' },
 };
 
 export class FakeDb {
@@ -234,6 +311,13 @@ export class FakeDb {
         out.photos = this.rows('userPhoto').filter((p) => p.userId === row.id);
       } else if (model === 'user' && key === 'matchPreference') {
         out.matchPreference = this.rows('matchPreference').find((m) => m.userId === row.id) ?? null;
+      } else if (model === 'matchLike' && key === 'sender') {
+        const target = this.rows('user').find((u) => u.id === row.senderId) ?? null;
+        out.sender = target ? this.finalize('user', target, { select: (spec as any)?.select }) : null;
+      } else if (model === 'match' && (key === 'userAObj' || key === 'userBObj')) {
+        const idKey = key === 'userAObj' ? 'userA' : 'userB';
+        const target = this.rows('user').find((u) => u.id === row[idKey]) ?? null;
+        out[key] = target ? this.finalize('user', target, { select: (spec as any)?.select }) : null;
       } else if (key === 'user') {
         const nested = this.rows('user').find((u) => u.id === row.userId) ?? null;
         const nestedSelect = (spec as any)?.select;
@@ -253,6 +337,7 @@ export class FakeDb {
         return dir === 'desc' ? -c : c;
       });
     }
+    if (typeof args?.skip === 'number' && args.skip > 0) out = out.slice(args.skip);
     if (typeof args?.take === 'number') out = out.slice(0, args.take);
     return out;
   }
@@ -280,19 +365,19 @@ export class FakeDb {
     return {
       async findFirst(args: any = {}) {
         const where = db.uniqueWhere(model, args);
-        const hit = db.applyOrderAndTake(rows().filter((r) => matchesWhere(r, where)), args)[0] ?? null;
+        const hit = db.applyOrderAndTake(rows().filter((r) => matchesWhere(r, where, { db, model })), args)[0] ?? null;
         return db.finalize(model, hit, args);
       },
 
       async findMany(args: any = {}) {
         const where = db.uniqueWhere(model, args);
-        const list = db.applyOrderAndTake(rows().filter((r) => matchesWhere(r, where)), args);
+        const list = db.applyOrderAndTake(rows().filter((r) => matchesWhere(r, where, { db, model })), args);
         return list.map((r) => db.finalize(model, r, args));
       },
 
       async findUnique(args: any = {}) {
         const where = db.uniqueWhere(model, args);
-        const hit = rows().find((r) => matchesWhere(r, where)) ?? null;
+        const hit = rows().find((r) => matchesWhere(r, where, { db, model })) ?? null;
         return db.finalize(model, hit, args);
       },
 
@@ -317,9 +402,35 @@ export class FakeDb {
         return { count: items.length };
       },
 
+      async upsert(args: any = {}) {
+        const where = db.uniqueWhere(model, args);
+        const row = rows().find((r) => matchesWhere(r, where, { db, model }));
+        if (row) {
+          Object.assign(row, db.applyNestedWrites(row.id, args.update ?? {}));
+          return db.finalize(model, row, args);
+        }
+        // Create path: unique scalars usually live in `where` (compound keys
+        // flatten there), the rest in `create` — merge both, create wins.
+        const base: Row = {};
+        for (const [k, v] of Object.entries(where)) {
+          if (typeof v !== 'object' || v instanceof Date) base[k] = v;
+        }
+        const data: Row = { ...(args.create ?? {}) };
+        const id = data.id ?? (base as any).id ?? db.nextId(model);
+        const fresh: Row = {
+          ...(COLUMN_DEFAULTS[model] ?? {}),
+          id,
+          createdAt: data.createdAt ?? new Date(),
+          ...base,
+          ...db.applyNestedWrites(id, data),
+        };
+        rows().push(fresh);
+        return db.finalize(model, fresh, args);
+      },
+
       async update(args: any = {}) {
         const where = db.uniqueWhere(model, args);
-        const row = rows().find((r) => matchesWhere(r, where));
+        const row = rows().find((r) => matchesWhere(r, where, { db, model }));
         if (!row) throw Object.assign(new Error('Record not found'), { code: 'P2025' });
         Object.assign(row, db.applyNestedWrites(row.id, args.data ?? {}));
         return db.finalize(model, row, args);
@@ -327,14 +438,14 @@ export class FakeDb {
 
       async updateMany(args: any = {}) {
         const where = db.uniqueWhere(model, args);
-        const hits = rows().filter((r) => matchesWhere(r, where));
+        const hits = rows().filter((r) => matchesWhere(r, where, { db, model }));
         for (const row of hits) Object.assign(row, args.data ?? {});
         return { count: hits.length };
       },
 
       async delete(args: any = {}) {
         const where = db.uniqueWhere(model, args);
-        const idx = rows().findIndex((r) => matchesWhere(r, where));
+        const idx = rows().findIndex((r) => matchesWhere(r, where, { db, model }));
         if (idx === -1) throw Object.assign(new Error('Record not found'), { code: 'P2025' });
         const [removed] = rows().splice(idx, 1);
         return removed;
@@ -343,7 +454,7 @@ export class FakeDb {
       async deleteMany(args: any = {}) {
         const where = db.uniqueWhere(model, args);
         const table = rows();
-        const keep = args?.where ? table.filter((r) => !matchesWhere(r, where)) : [];
+        const keep = args?.where ? table.filter((r) => !matchesWhere(r, where, { db, model })) : [];
         const count = table.length - keep.length;
         table.length = 0;
         table.push(...keep);
@@ -352,7 +463,7 @@ export class FakeDb {
 
       async count(args: any = {}) {
         const where = db.uniqueWhere(model, args);
-        return rows().filter((r) => matchesWhere(r, where)).length;
+        return rows().filter((r) => matchesWhere(r, where, { db, model })).length;
       },
     };
   }

@@ -123,3 +123,10 @@ export function invalidateUserFeed(userId: string): void {
 export function cacheStats(): { entries: number; tags: number } {
   return { entries: store.size, tags: tagIndex.size };
 }
+
+/** Drop everything. Test-only: deck keys persist across cases in one process. */
+export function clear(): void {
+  store.clear();
+  tagIndex.clear();
+  keyTags.clear();
+}

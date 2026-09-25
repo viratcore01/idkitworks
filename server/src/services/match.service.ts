@@ -57,6 +57,10 @@ const DECK_SELECT = {
   course: true,
   year: true,
   gender: true,
+  // createdAt is NOT display data — it powers the recency boost in
+  // computeRelevanceScore. Dropping it from the select silently zeroes that
+  // term (undefined reads as "no boost"), so it must stay selected.
+  createdAt: true,
   dateOfBirth: true,      college: { select: { id: true, name: true, shortName: true } },
       interests: { include: { interest: true } },
       photos: { select: { id: true, slot: true }, orderBy: { slot: 'asc' as const } },
@@ -109,8 +113,10 @@ function computeRelevanceScore(viewer: any, candidate: any, viewerInterestIds: S
   }
   score += sharedInterests * 8;
 
-  // Same course (exact match) = +12
-  if (viewer.course && candidate.course && viewer.course === candidate.course) {
+  // Same course (exact match, case-insensitive — "CSE" vs "cse" is a typing
+  // difference, not a different department) = +12
+  if (viewer.course && candidate.course &&
+      String(viewer.course).trim().toLowerCase() === String(candidate.course).trim().toLowerCase()) {
     score += 12;
   }
 
@@ -145,17 +151,19 @@ function computeRelevanceScore(viewer: any, candidate: any, viewerInterestIds: S
  */
 function waitingSenderFilter(userId: string, collegeId: string, viewerDOB: Date | null) {
   const viewerMinor = isMinor(viewerDOB);
-  // Minors only see minors (dob > 18 years ago), adults only see adults (dob <= 18 years ago)
+  // Minors only see minors (dob > 18 years ago), adults only see adults (dob <= 18 years ago).
+  // Missing DOB = treated as adult (conservative default for safety): minors
+  // only ever see provable minors, while adults also see rows with no DOB.
   const today = new Date();
   const eighteenCutoff = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
-  const ageFilter = viewerMinor
+  const ageClause = viewerMinor
     ? { dateOfBirth: { gt: eighteenCutoff } } // minor: only show people born AFTER cutoff (< 18)
-    : { dateOfBirth: { lte: eighteenCutoff } }; // adult: only show people born ON OR BEFORE cutoff (>= 18)
+    : { OR: [{ dateOfBirth: { lte: eighteenCutoff } }, { dateOfBirth: null }] }; // adult: >= 18, or unknown
 
   return {
     isActive: true,
     collegeId,
-    ...ageFilter,
+    AND: [ageClause],
     // Viewer hasn't answered this sender either way.
     receivedLikes: { none: { senderId: userId } },
     // No ACTIVE match between viewer and sender.
@@ -285,21 +293,30 @@ export class MatchService {
     // This overrides ALL preferences. Missing DOB = treated as adult (safety).
     // ═══════════════════════════════════════════════════════════════
     const viewerIsMinor = isMinor(viewer.dateOfBirth);
+    // The preferred range is [dobLower, dobUpper] (oldest → youngest birth).
+    // Segregation INTERSECTS it — never inverts it:
+    // - minor viewer: floor at 18 (exclusive — exactly-18 is an adult), so
+    //   [max(dobLower, just-after-cutoff), dobUpper];
+    // - adult viewer: cap at 18 (inclusive), so [dobLower, min(dobUpper, cutoff)].
+    // (The old code had floor and cap swapped: adults saw only ~18-year-olds
+    // and minors saw adults. The tests pin both directions now.)
     let ageFilter: any;
     if (viewerIsMinor) {
-      // Viewer is a minor: only show other minors (age < 18)
-      // 18th birthday = today - 18 years. Must be BORN AFTER this date to be < 18.
+      // Viewer is a minor: only show other minors (age < 18) — born strictly
+      // AFTER the 18th-birthday cutoff. A preference already inside the minor
+      // range (e.g. 16-17) keeps its own floor.
       const eighteenCutoff = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
-      // Merge with existing age range: effective upper bound is min(dobUpper, eighteenCutoff)
-      const effectiveUpper = dobUpper < eighteenCutoff ? dobUpper : eighteenCutoff;
-      ageFilter = { gte: dobLower, lte: effectiveUpper };
+      ageFilter = dobLower > eighteenCutoff
+        ? { gte: dobLower, lte: dobUpper }
+        : { gt: eighteenCutoff, lte: dobUpper };
     } else {
-      // Viewer is an adult (>= 18 or no DOB): only show adults (age >= 18)
-      // Must be born ON OR BEFORE the 18th-birthday cutoff.
+      // Viewer is an adult (>= 18 or no DOB): only show adults (age >= 18) —
+      // born ON OR BEFORE the 18th-birthday cutoff. A preference already
+      // inside the adult range (e.g. 20-24) keeps its own cap.
       const eighteenCutoff = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
-      // Merge with existing age range: effective lower bound is max(dobLower, eighteenCutoff)
-      const effectiveLower = dobLower > eighteenCutoff ? dobLower : eighteenCutoff;
-      ageFilter = { gte: effectiveLower, lte: dobUpper };
+      ageFilter = dobUpper < eighteenCutoff
+        ? { gte: dobLower, lte: dobUpper }
+        : { gte: dobLower, lte: eighteenCutoff };
     }
 
     const where: any = {
@@ -309,11 +326,19 @@ export class MatchService {
       // collegePreference cross-college loophole is removed — it can never widen
       // the pool beyond the viewer's own college.
       collegeId: viewer.collegeId,
-      dateOfBirth: ageFilter,
       // Only show people who have at least one photo — a photo-less card is
       // useless in a swipe deck (and every real app hides them).
       photos: { some: {} },
     };
+    // DOB + goals compose via AND so neither OR swallows the other (a
+    // top-level `where.OR` would REPLACE sibling-AND semantics — each OR
+    // therefore lives inside this AND). Missing DOB counts as adult: minors
+    // only see provable minors, adults also see rows with no DOB on file.
+    const and: any[] = [
+      viewerIsMinor
+        ? { dateOfBirth: ageFilter }
+        : { OR: [{ dateOfBirth: ageFilter }, { dateOfBirth: null }] },
+    ];
 
     const wantedGender = pref?.genderPreference || 'EVERYONE';
     if (wantedGender !== 'EVERYONE') {
@@ -333,13 +358,14 @@ export class MatchService {
     const myGoals = viewer.relationshipGoals?.length ? viewer.relationshipGoals : (pref?.openToGoals ?? []);
     if (myGoals.length) {
       // OR scope = (their goals overlap mine) OR (they listed no goal at all).
-      // NOTE: Prisma's top-level `where.OR` REPLACES sibling-AND semantics —
-      // the hasSome condition must live INSIDE this OR, not beside it.
-      where.OR = [
-        { relationshipGoals: { hasSome: myGoals } },
-        { relationshipGoals: { isEmpty: true } },
-      ];
+      and.push({
+        OR: [
+          { relationshipGoals: { hasSome: myGoals } },
+          { relationshipGoals: { isEmpty: true } },
+        ],
+      });
     }
+    if (and.length) where.AND = and;
     // NOTE: there is deliberately NO shared-interest dealbreaker. Shared
     // interests are display-only (the "N shared interests" chip on each card,
     // still computed below) — the deck already reflects the profile + discovery
@@ -721,9 +747,11 @@ export class MatchService {
     const viewerMinor = isMinor(viewer.dateOfBirth);
     const today = new Date();
     const eighteenCutoff = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
-    const ageFilter = viewerMinor
+    // Missing DOB = adult, same rule as the deck: minors only see provable
+    // minors, adults also see partners with no DOB on file.
+    const partnerAgeClause = viewerMinor
       ? { dateOfBirth: { gt: eighteenCutoff } } // minor: partner must be minor
-      : { dateOfBirth: { lte: eighteenCutoff } }; // adult: partner must be adult
+      : { OR: [{ dateOfBirth: { lte: eighteenCutoff } }, { dateOfBirth: null }] }; // adult: partner adult or unknown
 
     const matches = await prisma.match.findMany({
       where: {
@@ -731,8 +759,8 @@ export class MatchService {
         OR: [{ userA: userId }, { userB: userId }],
         // PRODUCT RULE: matches can only ever be same-college pairs (enforced at
         // creation); this filter also hides any legacy cross-college rows.
-        userAObj: { collegeId: viewer.collegeId, ...ageFilter },
-        userBObj: { collegeId: viewer.collegeId, ...ageFilter },
+        userAObj: { collegeId: viewer.collegeId, ...partnerAgeClause },
+        userBObj: { collegeId: viewer.collegeId, ...partnerAgeClause },
         // BLOCK WALL: a blocked ex (either direction, either side) leaves the
         // matches list. Messaging + conversation creation already refuse
         // blocked pairs — without this the list showed a Chat door into a
