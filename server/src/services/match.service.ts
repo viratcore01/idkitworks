@@ -229,12 +229,15 @@ export class MatchService {
     // Like/pass/rewind/unmatch/block change exclusion sets WITHOUT changing
     // the fingerprint, so those paths call invalidateDeckForUser() explicitly.
     const myGoalsFp = [...(viewer.relationshipGoals?.length ? viewer.relationshipGoals : (pref?.openToGoals ?? []))].sort();
+    const prefYears: number[] = Array.isArray((pref as any)?.years)
+      ? (pref as any).years
+      : legacyYears((pref as any)?.minYear);
     const fp = fingerprint([
       viewer.collegeId,
       pref?.ageRangeMin ?? 16,
       pref?.ageRangeMax ?? 60,
       pref?.genderPreference || 'EVERYONE',
-      pref?.minYear,
+      prefYears.join(','),
       myGoalsFp.join(','),
       [...viewerInterestIds].sort().join(','),
       viewerPhotoCount,
@@ -346,9 +349,11 @@ export class MatchService {
     }
 
     // ── DEALBREAKERS (each opted-in by the viewer; off by default) ──
-    // Minimum year (seniors-only etc.). Users with no year set can't prove it — excluded.
-    if (pref?.minYear != null) {
-      where.year = { gte: pref.minYear };
+    // Study years (multi-select, empty = Any). A set candidate must prove
+    // membership — rows with no year are excluded by a set filter (Any still
+    // shows them).
+    if (prefYears.length) {
+      where.year = { in: prefYears };
     }
     // ── SYNC RULE: "Looking for" lives ON THE PROFILE (User.relationshipGoals).
     // The deck filter reads it directly — editing it in the profile or via the
@@ -940,6 +945,7 @@ export class MatchService {
     ageRangeMax?: number;
     genderPreference?: string;
     openToGoals?: string[];
+    years?: number[] | null;
     minYear?: number | null;
     collegePreference?: string;
   }) {
@@ -963,12 +969,27 @@ export class MatchService {
     if (openToGoals !== undefined) {
       await prisma.user.update({ where: { id: userId }, data: { relationshipGoals: openToGoals } });
     }
-    // Dealbreaker (year only — the shared-interest gate was removed; a stale
+    // Dealbreaker (years only — the shared-interest gate was removed; a stale
     // client sending sharedInterestMin is ignored gracefully, same as the
     // removed onlyVerified/collegePreference fields).
-    const minYear = data.minYear === null || data.minYear === undefined
-      ? null
-      : [1, 2, 3, 4, 5].includes(Number(data.minYear)) ? Number(data.minYear) : undefined;
+    // Years are a validated multi-select of study years 1-5: non-integers,
+    // out-of-range values and duplicates are dropped, never stored. Empty (or
+    // null) = Any year. A legacy minYear floor (old cached clients) converts
+    // to the equivalent set [N..5] so old tabs keep filtering, never widen.
+    let years: number[] | undefined;
+    if (Array.isArray(data.years)) {
+      years = [...new Set(
+        data.years.filter((y) => Number.isInteger(y) && (y as number) >= 1 && (y as number) <= 5) as number[],
+      )].sort((a, b) => a - b).slice(0, 5);
+    } else if (data.years === null) {
+      years = [];
+    } else if (data.minYear !== undefined) {
+      const floor = data.minYear === null ? null : Number(data.minYear);
+      years = floor === null || !Number.isInteger(floor) ? [] : [1, 2, 3, 4, 5].filter((y) => y >= floor);
+    }
+    // minYear is legacy storage only: mirrors the selection floor so any
+    // ancient reader still sees something sane. Never read as a filter.
+    const legacyMinYear = years !== undefined ? (years.length ? years[0] : null) : undefined;
 
     const finalMin = ageMin ?? undefined;
     const finalMax = ageMax ?? undefined;
@@ -986,7 +1007,8 @@ export class MatchService {
         ageRangeMax: finalMax,
         genderPreference: (genderPref as any) || 'EVERYONE',
         openToGoals: openToGoals || [],
-        ...(minYear !== undefined && { minYear }),
+        ...(years !== undefined && { years }),
+        ...(legacyMinYear !== undefined && { minYear: legacyMinYear }),
         collegePreference: collegePref, // always null — college scope is not optional
       },
       update: {
@@ -995,7 +1017,8 @@ export class MatchService {
         ...(finalMax !== undefined && { ageRangeMax: finalMax }),
         ...(genderPref && { genderPreference: genderPref as any }),
         ...(openToGoals !== undefined && { openToGoals }),
-        ...(minYear !== undefined && { minYear }),
+        ...(years !== undefined && { years }),
+        ...(legacyMinYear !== undefined && { minYear: legacyMinYear }),
         // Force any legacy cross-college preference back to null
         collegePreference: null,
       },
@@ -1016,13 +1039,16 @@ export class MatchService {
     // Return the SAME merged shape as getPreference (goals from the profile —
     // the single source of truth), so the client can update instantly without
     // a second GET round-trip.
+    const finalYears: number[] = years
+      ?? (Array.isArray((pref as any)?.years) ? (pref as any).years : legacyYears((pref as any)?.minYear));
     return {
       lookingFor: pref?.lookingFor ?? 'DATING',
       ageRangeMin: pref?.ageRangeMin ?? null,
       ageRangeMax: pref?.ageRangeMax ?? null,
       genderPreference: pref?.genderPreference ?? 'EVERYONE',
       openToGoals: openToGoals ?? (pref as any)?.openToGoals ?? [],
-      minYear: (pref as any)?.minYear ?? null,
+      years: finalYears,
+      minYear: finalYears.length ? finalYears[0] : null,
       collegePreference: null,
       visibility: (pref as any)?.visibility ?? true,
     };
@@ -1035,15 +1061,30 @@ export class MatchService {
       prisma.user.findUnique({ where: { id: userId }, select: { relationshipGoals: true } }),
     ]);
     const goals = user?.relationshipGoals ?? [];
+    const storedYears: number[] = Array.isArray((pref as any)?.years)
+      ? (pref as any).years
+      : legacyYears((pref as any)?.minYear);
     return {
       lookingFor: pref?.lookingFor ?? 'DATING',
       ageRangeMin: pref?.ageRangeMin ?? null,
       ageRangeMax: pref?.ageRangeMax ?? null,
       genderPreference: pref?.genderPreference ?? 'EVERYONE',
       openToGoals: goals,
-      minYear: pref?.minYear ?? null,
+      years: storedYears,
+      minYear: storedYears.length ? storedYears[0] : null,
       collegePreference: pref?.collegePreference ?? null,
-      visibility: pref?.visibility ?? true,
+      visibility: (pref as any)?.visibility ?? true,
     };
   }
+}
+
+/**
+ * Legacy single-floor → multi-select: a stored minYear N means [N..5].
+ * Pre-migration rows were backfilled by migration 0007, so this only ever
+ * fires for rows written outside it — fail-open (Any) on anything odd.
+ */
+function legacyYears(minYear: unknown): number[] {
+  const floor = typeof minYear === 'number' && Number.isInteger(minYear) ? minYear : NaN;
+  if (!Number.isFinite(floor)) return [];
+  return [1, 2, 3, 4, 5].filter((y) => y >= floor);
 }

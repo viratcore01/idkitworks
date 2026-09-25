@@ -260,6 +260,83 @@ test('gender preference narrows the deck', async () => {
   assert.deepEqual(deckIds(await svc.discover('viewer')), ['her']);
 });
 
+// ─────────────────── year dealbreaker (multi-select) ────────────────────
+
+test('years filter: only picked years enter the deck; year-less rows need Any', async () => {
+  const { svc } = setup({
+    users: [
+      person({ id: 'viewer' }),
+      person({ id: 'y1', year: 1, createdAt: daysAgo(1) }),
+      person({ id: 'y2', year: 2, createdAt: daysAgo(2) }),
+      person({ id: 'y3', year: 3, createdAt: daysAgo(3) }),
+      person({ id: 'y4', year: 4, createdAt: daysAgo(4) }),
+      person({ id: 'noyear', year: null }),
+    ],
+    userPhotos: [photo('viewer'), photo('y1'), photo('y2'), photo('y3'), photo('y4'), photo('noyear')],
+    matchPreferences: [{ userId: 'viewer', years: [2, 3] }],
+  });
+  // Newest-first within the picked set; year-less rows can't prove membership.
+  assert.deepEqual(deckIds(await svc.discover('viewer')), ['y2', 'y3']);
+});
+
+test('years Any ([]) shows every year, including year-less rows', async () => {
+  const { svc } = setup({
+    users: [
+      person({ id: 'viewer' }),
+      person({ id: 'y1', year: 1 }),
+      person({ id: 'y4', year: 4 }),
+      person({ id: 'noyear', year: null }),
+    ],
+    userPhotos: [photo('viewer'), photo('y1'), photo('y4'), photo('noyear')],
+    matchPreferences: [{ userId: 'viewer', years: [] }],
+  });
+  assert.deepEqual(deckIds(await svc.discover('viewer')).sort(), ['noyear', 'y1', 'y4']);
+});
+
+test('updatePreference stores a clean multi-select and echoes it back', async () => {
+  const { db, svc } = setup({ users: [person({ id: 'viewer' })] });
+  const saved: any = await svc.updatePreference('viewer', { years: [3, 1, 3, 99, 0, 2.5] as any });
+  assert.deepEqual(saved.years, [1, 3], 'dupes, out-of-range and non-integers are dropped');
+  assert.equal(saved.minYear, 1, 'the legacy mirror still reads the floor');
+  assert.deepEqual(db.rows('matchPreference')[0].years, [1, 3]);
+
+  const cleared: any = await svc.updatePreference('viewer', { years: [] });
+  assert.deepEqual(cleared.years, []);
+  const nulled: any = await svc.updatePreference('viewer', { years: null });
+  assert.deepEqual(nulled.years, [], 'null means Any');
+});
+
+test('legacy minYear input converts to the equivalent set (old cached clients keep filtering)', async () => {
+  const { db, svc } = setup({
+    users: [person({ id: 'viewer' }), person({ id: 'y1', year: 1 }), person({ id: 'y3', year: 3 })],
+    userPhotos: [photo('viewer'), photo('y1'), photo('y3')],
+  });
+  const saved: any = await svc.updatePreference('viewer', { minYear: 3 } as any);
+  assert.deepEqual(saved.years, [3, 4, 5]);
+  assert.deepEqual(deckIds(await svc.discover('viewer')), ['y3']);
+  assert.deepEqual(db.rows('matchPreference')[0].years, [3, 4, 5]);
+});
+
+test('getPreference backfills legacy minYear rows that predate the migration', async () => {
+  const { svc } = setup({
+    users: [person({ id: 'viewer' })],
+    matchPreferences: [{ userId: 'viewer', minYear: 2 }],
+  });
+  const prefs: any = await svc.getPreference('viewer');
+  assert.deepEqual(prefs.years, [2, 3, 4, 5]);
+});
+
+test('saving years immediately reshapes the deck (fingerprint + invalidation)', async () => {
+  const { svc } = setup({
+    users: [person({ id: 'viewer' }), person({ id: 'y1', year: 1 }), person({ id: 'y2', year: 2 })],
+    userPhotos: [photo('viewer'), photo('y1'), photo('y2')],
+  });
+  assert.deepEqual(deckIds(await svc.discover('viewer')).sort(), ['y1', 'y2']);
+  await svc.updatePreference('viewer', { years: [2] });
+  // No stale page may survive the save: the very next read is filtered.
+  assert.deepEqual(deckIds(await svc.discover('viewer')), ['y2']);
+});
+
 // ───────────────────────────── actions ──────────────────────────────────
 
 test('one-sided like stores the row, notifies once, and reports no match', async () => {

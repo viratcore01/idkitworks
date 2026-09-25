@@ -295,7 +295,11 @@ model MatchPreference {
   // unless the viewer opts in — intent is a preference, not a wall.
   openToGoals        String[] @default([]) @map("open_to_goals")
   // DEALBREAKERS — hard filters the viewer opts into:
-  minYear            Int?     @map("min_year") // null = any year
+  // years: which study years may enter the deck (multi-select). Empty list =
+  // any year (1-5; candidates with no year set are then visible too, but a
+  // non-empty list hides them — they can't prove membership).
+  years              Int[]    @default([]) @map("years")
+  minYear            Int?     @map("min_year") // LEGACY: single-floor predecessor of years — kept for back-compat, converted on write, never read as a deck filter
   sharedInterestMin  Int      @default(0) @map("shared_interest_min") // LEGACY: shared-interest dealbreaker removed — column kept for back-compat, never read as a deck filter
   locationPreference String?  @map("location_preference")
   collegePreference  String?  @map("college_preference")

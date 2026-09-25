@@ -41,17 +41,22 @@ const GOAL_CHIP: Record<string, string> = {
  NOT_SURE: 'bg-nb-lilac text-ink',
 };
 
+/** Study years offered as deck-filter chips (Any = no year filter). */
+const YEAR_CHIPS = [1, 2, 3, 4];
+
 export default function MatchesPage() {
  const [view, setView] = useState<View>('discover');
  const [deckPage, setDeckPage] = useState(0);
  const [matchBanner, setMatchBanner] = useState<{ name: string; username: string; criteria?: { goals: string[]; interests: { id: string; name: string }[] } } | null>(null);
  const [showPrefs, setShowPrefs] = useState(false);
- const [prefs, setPrefs] = useState({
- genderPreference: 'EVERYONE',
- ageRangeMin: 16,
- ageRangeMax: 60,
-openToGoals: [] as string[],
-minYear: null as number | null,
+  const [prefs, setPrefs] = useState({
+  genderPreference: 'EVERYONE',
+  ageRangeMin: 16,
+  ageRangeMax: 60,
+  openToGoals: [] as string[],
+  // Multi-select study years, [] = Any year (no filter). Replaces the old
+  // single minYear floor — the server filters the deck on exactly this set.
+  years: [] as number[],
 });
  const [photoIdx, setPhotoIdx] = useState(0);
  const queryClient = useQueryClient();
@@ -141,7 +146,11 @@ genderPreference: savedPrefs.genderPreference || 'EVERYONE',
 ageRangeMin: savedPrefs.ageRangeMin ?? 16,
 ageRangeMax: savedPrefs.ageRangeMax ?? 60,
 openToGoals: savedPrefs.openToGoals || [],
-minYear: savedPrefs.minYear ?? null,
+// Server always answers years[] (backfilled from any legacy floor); a stale
+// minYear-only payload still maps to the equivalent set, never to nothing.
+years: Array.isArray(savedPrefs.years)
+? savedPrefs.years.filter((y: any) => YEAR_CHIPS.includes(y))
+: (savedPrefs.minYear != null ? YEAR_CHIPS.filter((y) => y >= savedPrefs.minYear) : []),
 });
 }, [savedPrefs]);
 
@@ -320,10 +329,14 @@ openToGoals: prefs.openToGoals,
 onSuccess: (saved) => {
 toast.success('Preferences saved');
 // Server returns the merged preference shape — seed the cache instantly
-// so reopening Filters never flashes stale values, then refetch the deck
-// from page 0. Matches / likes-you / stats are untouched by filters.
+// so reopening Filters never flashes stale values. Then DROP every cached
+// deck page (they were fetched under the old filters — showing them while
+// the refetch lands reads as "filters did nothing") and restart from page 0
+// so the freshly filtered deck — and matches — show immediately.
+// Matches / likes-you / stats are untouched by filters.
 if (saved) queryClient.setQueryData(['match-preferences'], saved);
 setShowPrefs(false);
+queryClient.removeQueries({ queryKey: ['match-discover'] });
 setDeckPage(0);
 refreshAfterPrefsSave();
 },
@@ -340,7 +353,9 @@ genderPreference: savedPrefs.genderPreference || 'EVERYONE',
 ageRangeMin: savedPrefs.ageRangeMin ?? 16,
 ageRangeMax: savedPrefs.ageRangeMax ?? 60,
 openToGoals: savedPrefs.openToGoals || [],
-minYear: savedPrefs.minYear ?? null,
+years: Array.isArray(savedPrefs.years)
+? savedPrefs.years.filter((y: any) => YEAR_CHIPS.includes(y))
+: (savedPrefs.minYear != null ? YEAR_CHIPS.filter((y) => y >= savedPrefs.minYear) : []),
 });
 }
 setShowPrefs(true);
@@ -525,21 +540,44 @@ setShowPrefs(true);
  </span>
  </p>
 
- {/* ── Dealbreakers ── */}
- <label className="block font-display font-semibold text-sm mb-2">Dealbreakers</label>
-  <div className="space-y-2 mb-4 min-w-0">
-  <div className="flex items-center gap-2 flex-wrap">
-  <span className="font-body text-xs text-gray-600 shrink-0">Year</span>
- {[null, 1, 2, 3, 4].map((y) => (
- <button
- key={String(y)}
- onClick={() => setPrefs((p) => ({ ...p, minYear: y }))}
- className={`nb-btn text-xs px-2.5 py-1 ${prefs.minYear === y ? 'bg-nb-violet text-white' : 'bg-white'}`}
- >
- {y === null ? 'Any' : `${y}+`}
- </button>
- ))}
- </div>
+  {/* ── Dealbreakers ── */}
+  <label className="block font-display font-semibold text-sm mb-2">Dealbreakers</label>
+   <div className="space-y-2 mb-4 min-w-0">
+   <div>
+   <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Study years">
+   <span className="font-body text-xs text-gray-600 shrink-0">Year</span>
+  <button
+  onClick={() => setPrefs((p) => ({ ...p, years: [] }))}
+  aria-pressed={prefs.years.length === 0}
+  className={`nb-btn text-xs px-2.5 py-1 ${prefs.years.length === 0 ? 'bg-nb-violet text-white' : 'bg-white'}`}
+  >
+  Any
+  </button>
+  {YEAR_CHIPS.map((y) => {
+  const on = prefs.years.includes(y);
+  return (
+  <button
+  key={y}
+  onClick={() => setPrefs((p) => ({
+  ...p,
+  // Multi-select: tapping a year toggles just it. Tapping Any clears the
+  // whole set (empty = no year filter) — the two can never mix.
+  years: on ? p.years.filter((x) => x !== y) : [...p.years, y].sort((a, b) => a - b),
+  }))}
+  aria-pressed={on}
+  className={`nb-btn text-xs px-2.5 py-1 ${on ? 'bg-nb-violet text-white' : 'bg-white'}`}
+  >
+  {y}
+  </button>
+  );
+  })}
+  </div>
+  <p className="text-xs text-gray-500 font-body mt-1">
+  {prefs.years.length === 0
+  ? 'Any year can appear in your deck. '
+  : `Only year${prefs.years.length > 1 ? 's' : ''} ${prefs.years.join(', ')} will show up. `}
+  </p>
+  </div>
 {/* Shared-interest dealbreaker removed: shared interests are display-only now
 (the chip on each card) — the deck already reflects profile + discovery prefs. */}
  </div>

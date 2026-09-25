@@ -482,6 +482,7 @@ export function install(db: FakeDb, prisma: any): void {
     'college', 'user', 'refreshToken', 'emailOtp', 'interest', 'userInterest', 'userPhoto',
     'post', 'comment', 'notification', 'report', 'block', 'matchLike', 'match',
     'message', 'conversationMember', 'conversation', 'savedPost', 'postLike',
+    'matchPreference',
   ];
   for (const model of models) {
     if (!prisma[model]) {
