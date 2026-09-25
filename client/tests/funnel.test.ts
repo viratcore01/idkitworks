@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextStep } from '../src/utils/funnel';
+import { nextStep, hasCollege } from '../src/utils/funnel';
 import type { User } from '../src/types';
 
 /**
@@ -86,6 +86,25 @@ test('an absent hasPassword flag does not bounce the user (Google-only accounts)
 
 test('an absent isProfileSetup flag errs toward showing the setup screen', () => {
   assert.equal(step({ ...onboarded, isProfileSetup: undefined }), '/setup-profile');
+});
+
+test('hasCollege treats either signal as "already chosen"', () => {
+  assert.equal(hasCollege(null), false);
+  assert.equal(hasCollege(undefined), false);
+  assert.equal(hasCollege(base), false);
+  // The two payloads disagree by design (the auth responses carry collegeId,
+  // /auth/me also carries the object). Neither may be read as "no college"
+  // while the other says otherwise — that is how a locked field turns back into
+  // an editable picker mid-signup.
+  assert.equal(hasCollege({ ...base, collegeId: 'c1', college: null }), true);
+  assert.equal(hasCollege({ ...base, collegeId: null, college: COLLEGE }), true);
+  assert.equal(hasCollege({ ...base, collegeId: undefined, college: COLLEGE }), true);
+});
+
+test('an account with a college is never routed to the college step again', () => {
+  const withCollege = { ...base, collegeId: 'c1', college: COLLEGE };
+  assert.equal(hasCollege(withCollege), true);
+  assert.notEqual(nextStep(withCollege), '/signup');
 });
 
 test('no route is ever returned without a leading slash', () => {

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import BrandLoader from '@/components/common/BrandLoader';
 import Logo from '@/components/common/Logo';
 import { useAuthStore } from '@/store/auth.store';
+import { hasCollege } from '@/utils/funnel';
 import AuthLayout from '@/layouts/AuthLayout';
 import AppLayout from '@/layouts/AppLayout';
 // PERF: every page is a separate chunk — first paint ships the shell only,
@@ -74,9 +75,14 @@ function VerifiedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const { user, isAuthenticated, isLoading } = useAuthStore();
   if (isLoading) return <LoadingScreen />;
-  if (isAuthenticated) return <Navigate to="/home" />;
+  // A signed-in account with NO college is not "back in the app" — it is still
+  // mid-funnel (a Google sign-in from the login page creates exactly that), and
+  // the wizard's college step is where it gets fixed. Bouncing it to /home would
+  // loop: /home → CollegeRoute → /setup-profile → "choose your college" → /signup
+  // → here → /home → …
+  if (isAuthenticated && hasCollege(user)) return <Navigate to="/home" />;
   return <>{children}</>;
 }
 

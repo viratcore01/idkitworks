@@ -184,6 +184,29 @@ test('RESUME: refuses when the pending row belongs to a different college', asyn
   await rejectsWithStatus(() => svc.signup(validSignup), 409);
 });
 
+test('RESUME: a college-LESS account adopts the college the wizard collected (redo the college step)', async () => {
+  // Pre-funnel rows exist with no college and no password. "Going back to the
+  // college step" is the only screen that can fix them, so the wizard must be
+  // able to fill the empty college — while a row that already HAS one still
+  // refuses to move (asserted below).
+  const { db, svc } = setup({
+    colleges: [makeCollege(), makeCollege({ id: 'college-2', name: 'Other College', emailDomain: 'other.edu' })],
+    users: [makeUser({ email: DOMAIN_EMAIL, username: 'student', collegeId: null, collegeEmail: null, passwordHash: PLACEHOLDER })],
+  });
+  const result = await svc.signup(validSignup);
+
+  assert.ok(result.accessToken);
+  assert.equal(result.user.collegeId, COLLEGE_ID, 'the wizard pick is adopted');
+  assert.equal(db.rows('user').length, 1, 'still one account, never a duplicate');
+
+  // And it locks from there: redoing the wizard for another campus is refused.
+  await rejectsWithStatus(
+    () => svc.signup({ ...validSignup, collegeId: 'college-2', email: 'student@other.edu' }),
+    409,
+  );
+  assert.equal(db.rows('user')[0].collegeId, COLLEGE_ID);
+});
+
 test('RESUME: a verified account can never be resumed (no session for an existing secret)', async () => {
   const { svc } = setup({
     users: [makeUser({ email: DOMAIN_EMAIL, username: 'student', collegeEmailVerified: true, verificationStatus: 'VERIFIED', passwordHash: PLACEHOLDER })],

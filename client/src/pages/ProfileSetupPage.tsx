@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, PartyPopper, Hourglass, Camera, Plus, X } from 'lucide-react';
+import { Sparkles, PartyPopper, Hourglass, Camera, Plus, X, GraduationCap, ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
-import { nextStep } from '@/utils/funnel';
+import { nextStep, hasCollege } from '@/utils/funnel';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/services/api';
-import CollegeSelect, { type CollegeOption } from '@/components/common/CollegeSelect';
+import { type CollegeOption } from '@/components/common/CollegeSelect';
 import { photoSrc, usePhotoVersion } from '@/utils/photo';
 import ImageEditorModal from '@/components/common/ImageEditorModal';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
 
 export default function ProfileSetupPage() {
- const { user, updateProfile, fetchMe, refreshUser } = useAuthStore();
+ const { user, updateProfile, fetchMe, refreshUser, logout } = useAuthStore();
  const navigate = useNavigate();
  const photoVersion = usePhotoVersion(); // token rotation → thumbnails reload
  // College is the account's permanent home (locked like name/DOB/gender —
@@ -21,15 +21,16 @@ export default function ProfileSetupPage() {
  const college: CollegeOption | null = user?.college
    ? { id: user.college.id, name: user.college.name, shortName: user.college.shortName, city: user.college.city, state: user.college.state }
    : null;
- // Accounts that arrive WITHOUT a college — "Sign in with Google" from the
- // login page creates exactly that, and every app route is college-gated.
- // They were previously trapped: this screen showed an empty, disabled college
- // field and refused to save, so the user could never reach the feed (and the
- // funnel kept routing them straight back here). They now pick their college
- // ONCE, right here; the server locks it the moment the account has one.
- const needsCollege = !user?.collegeId;
- const [pickedCollege, setPickedCollege] = useState<CollegeOption | null>(null);
- const chosenCollege = college ?? pickedCollege;
+ // College is NEVER editable here — not for a new signup, not for anyone.
+ // It was chosen in the wizard, before the account existed, and the server
+ // locks it the moment the account does. Offering a picker on this screen
+ // would let someone silently land in a different campus than the one they
+ // signed up for, which is the one thing the college boundary must prevent.
+ //
+ // An account with NO college at all ("Sign in with Google" from the login
+ // page creates exactly that) does not get a picker either: it goes back to the
+ // wizard and redoes the college step — see the blocked screen below.
+ const needsCollege = !hasCollege(user);
  const [formData, setFormData] = useState({
  collegeId: user?.college?.id || '',
  course: user?.course || '',
@@ -89,19 +90,14 @@ export default function ProfileSetupPage() {
 
  const handleSubmit = async (e: React.FormEvent) => {
  e.preventDefault();
- // PRODUCT RULE: every gate below depends on having a college, so setup
- // cannot complete without one. Existing accounts can't change theirs
- // (server-enforced); college-less accounts must choose one here.
- if (needsCollege && !pickedCollege) {
- toast.error('Pick your college to continue');
- return;
- }
+ // No college → this screen is not the place to fix it (see the blocked state).
+ if (needsCollege) return;
  setIsLoading(true);
  try {
-  // collegeId is sent ONLY when the account has none — for everyone else it
-  // is locked, and the server answers a move attempt with a 403.
+  // No collegeId is ever sent from here: the college was locked at signup and
+  // the server refuses a move (403) — it can only be set by the wizard, which
+  // is why the no-college case sends the user back there.
   await updateProfile({
-    ...(needsCollege && pickedCollege ? { collegeId: pickedCollege.id } : {}),
     course: formData.course,
     year: formData.year,
     bio: formData.bio,
@@ -123,6 +119,48 @@ export default function ProfileSetupPage() {
  }
  };
 
+ // ── Blocked: no college on the account ────────────────────
+ //
+ // This state only exists for accounts that reached us WITHOUT going through
+ // the wizard's college step ("Sign in with Google" on the login page is the
+ // common one). The college is never chosen outside the wizard, so the answer
+ // is to go back and start over — not to bolt a picker onto the last screen of
+ // onboarding, which is how someone could quietly end up in the wrong campus.
+ if (needsCollege) {
+ return (
+ <div className="min-h-screen nb-canvas-surface flex items-center justify-center p-4">
+ <div className="w-full max-w-lg">
+ <div className="nb-card p-6 text-center">
+ <div className="mx-auto w-16 h-16 bg-nb-violet/15 flex items-center justify-center">
+ <GraduationCap size={30} strokeWidth={2.5} className="text-nb-violet" />
+ </div>
+ <h1 className="mt-4 text-2xl font-display font-bold">Pick your college first</h1>
+ <p className="mt-2 font-body text-sm text-gray-500">
+ Your account doesn&apos;t have a college yet, and your college is what decides everything you see — the feed,
+ matches and chats never cross campuses. So it&apos;s chosen in the first step of signup, once, before the rest of
+ the profile.
+ </p>
+ <p className="mt-3 font-body text-sm text-gray-500">
+ Go back to signup, choose your college and continue — you&apos;ll land right back here.
+ </p>
+ <button
+ onClick={() => navigate('/signup')}
+ className="nb-btn-primary w-full mt-6"
+ >
+ <ArrowLeft size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" /> Go back to choose my college
+ </button>
+ <button
+ onClick={async () => { await logout(); navigate('/login', { replace: true }); }}
+ className="nb-btn-ghost w-full mt-2 text-sm"
+ >
+ Sign out
+ </button>
+ </div>
+ </div>
+ </div>
+ );
+ }
+
  return (
  <div className="min-h-screen nb-canvas-surface flex items-center justify-center p-4">
  <div className="w-full max-w-lg">
@@ -138,24 +176,6 @@ export default function ProfileSetupPage() {
  </div>
 
   <form onSubmit={handleSubmit} className="nb-card p-4 sm:p-6 space-y-4 min-w-0">
-  {needsCollege ? (
-  <div>
-  <label htmlFor="setup-college" className="block font-display text-sm font-semibold mb-1.5">Your college *</label>
-  <CollegeSelect
-  value={pickedCollege}
-  onChange={(c) => setPickedCollege(c)}
-  placeholder="Search e.g. IIT Delhi, VIT, SRM…"
-  />
-  <p className="text-xs text-gray-500 mt-1">
-  Your college is your world here — everything you see stays inside it. Double-check the pick: it locks the moment you save.
-  </p>
-  {pickedCollege && !pickedCollege.emailDomain && (
-  <p role="alert" className="text-xs mt-2 font-semibold text-nb-pink">
-  {pickedCollege.name} isn&apos;t onboarded for verification yet — pick another campus or contact support.
-  </p>
-  )}
-  </div>
-  ) : (
   <div>
   <label htmlFor="setup-college" className="block font-display text-sm font-semibold mb-1.5">College (locked)</label>
   <input
@@ -168,9 +188,10 @@ export default function ProfileSetupPage() {
   disabled
   aria-readonly="true"
   />
-  <p className="text-xs text-gray-500 mt-1">Your college is fixed for the life of the account — posts, matches and chats never cross campuses.</p>
+  <p className="text-xs text-gray-500 mt-1">
+  Chosen in step 1 of signup and fixed for the life of the account — posts, matches and chats never cross campuses.
+  </p>
   </div>
-  )}
 
   <div>
   <label htmlFor="setup-course" className="block font-display text-sm font-semibold mb-1.5">Course / Branch *</label>
@@ -333,7 +354,7 @@ export default function ProfileSetupPage() {
 
   <button
   type="submit"
-  disabled={isLoading || (needsCollege && !pickedCollege)}
+  disabled={isLoading || needsCollege}
   aria-busy={isLoading}
   className="nb-btn-primary w-full text-center disabled:opacity-50 disabled:cursor-not-allowed"
   >
@@ -343,9 +364,6 @@ export default function ProfileSetupPage() {
  <><PartyPopper size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Complete Setup</>
  )}
  </button>
- {needsCollege && !pickedCollege && (
- <p className="text-xs font-body text-gray-500 text-center">Search above and pick your college — Complete Setup unlocks once selected.</p>
- )}
  </form>
  </div>
  {editing && (

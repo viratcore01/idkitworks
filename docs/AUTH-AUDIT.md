@@ -72,17 +72,32 @@ this marginal, but the fix is free.
 **Fix:** `crypto.randomInt(100_000, 1_000_000)` in one shared `server/src/utils/otp.ts`
 (which also owns the constant-time comparison, previously duplicated per service).
 
-### F4 · MEDIUM — accounts without a college could never finish onboarding
+### F4 · MEDIUM — the college step was both a dead end and, later, an editable field
 
-"Sign in with Google" on the login page creates an account with **no** college. Every app
-route is college-gated, so the funnel sent them to `/setup-profile` — which showed an empty,
-**disabled** college field and refused to save ("No college on your account — restart signup
-or contact support"). The user was trapped in a loop with no way forward, and it was
+Two bugs, found in sequence, both about where the college can be set.
+
+**(a) Dead end.** "Sign in with Google" on the login page creates an account with **no**
+college. Every app route is college-gated, so the funnel sent them to `/setup-profile` —
+which showed an empty, **disabled** college field and refused to save ("No college on your
+account — restart signup or contact support"). The user was trapped in a loop, and it was
 invisible to anyone testing via the signup wizard (which always supplies a college).
-**Fix:** when the account has no college, `ProfileSetupPage` shows the college picker and
-sends the choice once; every other account keeps the read-only locked field. The server
-already allowed a first assignment and refuses later moves, so no server change was needed.
-Test: covered by *"LOCK: the college cannot be moved once set, but can be filled when empty"*.
+
+**(b) The first fix was wrong.** Making that screen show a *college picker* closed the dead
+end but re-opened a worse one: the last screen of onboarding let an account choose a
+different campus than the one it signed up with, which is exactly what the college boundary
+exists to prevent (a college-less account could pick anything, unchecked).
+
+**Fix (final):** the college is **never editable outside the wizard**. `ProfileSetupPage`
+always renders it read-only, and an account with no college gets a blocked screen that sends
+it back to the wizard's college step to start over — with the wizard now able to fill an
+EMPTY college (`signup` resume, mirroring the `updateProfile` rule) while still refusing any
+move between colleges. Both signals (`collegeId` *or* the `college` object) count as
+"already chosen" via `hasCollege()`, so a payload that happens to omit one can never turn a
+locked field back into a picker; `PublicRoute` also lets that mid-funnel account reach
+`/signup` instead of looping through `/home`.
+Tests: *"RESUME: a college-LESS account adopts the college the wizard collected"*,
+*"LOCK: the college cannot be moved once set, but can be filled when empty"*,
+*"hasCollege treats either signal as \"already chosen\""*.
 
 ### F5 · MEDIUM — 409 responses depended on the wording of an error message
 
@@ -229,4 +244,7 @@ domain mismatch); a college-scoped signup only ever fills an empty college.
   account exists; add a test that asserts the two responses are `deepEqual`.
 - Never trust the client for identity fields: the lock checks live in
   `AuthService.updateProfile`, and every attempt to bypass them has a test.
+- The college is chosen in exactly one place (the wizard's first step) and rendered read-only
+  everywhere else. If a screen seems to need a picker, the account is missing its college and
+  belongs back at that step.
 - One source for one-time codes: `utils/otp.ts` (generation + comparison).

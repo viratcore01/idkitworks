@@ -201,7 +201,13 @@ export class AuthService {
         // only thing it unlocks is requesting an OTP to this same inbox).
         // Same-college only: moving a pending row across colleges happens via
         // the pre-verification college change, not by restarting here.
-        if (existingUser.collegeId !== input.collegeId) {
+        // A MOVE between colleges is never a restart — that is the locked
+        // boundary and needs the explicit support path. An EMPTY college is the
+        // opposite: it is precisely what the wizard's college step exists to
+        // fill ("Sign in with Google" on the login page creates such a row), so
+        // redoing the wizard adopts the pick instead of 409-ing the user out of
+        // the only screen that can fix them.
+        if (existingUser.collegeId && existingUser.collegeId !== input.collegeId) {
           const e: any = new Error('This email already started signup for another college — log in to continue it');
           e.status = 409; throw e;
         }
@@ -220,10 +226,11 @@ export class AuthService {
         // account at it after a dedicated clash check. Pre-verification the
         // account is worth exactly one OTP to its own inbox, so re-pointing
         // = re-owning — verification (an inbox-proof event) is what locks it.
-        const updateData: { username: string; displayName: string; email?: string; collegeEmail?: string } = {
+        const updateData: { username: string; displayName: string; email?: string; collegeEmail?: string; collegeId?: string } = {
           username: input.username,
           displayName: input.displayName.trim(),
         };
+        if (!existingUser.collegeId) updateData.collegeId = input.collegeId;
         if (existingUser.email !== email) {
           const emailClash = await prisma.user.findFirst({
             where: { OR: [{ email }, { collegeEmail: email }], NOT: { id: existingUser.id } },
