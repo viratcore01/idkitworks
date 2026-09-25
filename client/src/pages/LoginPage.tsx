@@ -5,7 +5,6 @@ import { useAuthStore } from '@/store/auth.store';
 import { nextStep } from '@/utils/funnel';
 import PasswordInput from '@/components/common/PasswordInput';
 import GoogleButton from '@/components/common/GoogleButton';
-import InstallButton from '@/components/common/InstallButton';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
@@ -111,11 +110,6 @@ export default function LoginPage() {
 
  <div className="mt-5">
  <GoogleButton mode="login" />
- </div>
-
- {/* Install as app — one click fires the browser's native install dialog */}
- <div className="mt-4">
- <InstallButton variant="secondary" forceVisible className="w-full justify-center" />
  </div>
 
  <div className="mt-6 text-center">

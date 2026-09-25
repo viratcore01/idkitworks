@@ -15,14 +15,18 @@ if (import.meta.env.DEV) {
   import('./utils/layoutAudit');
 }
 
-// PWA installability: Chromium browsers require a service worker with a
-// fetch handler before they'll offer the native one-click install dialog.
-// public/sw.js is network-first (never serves stale content while online).
+// PWA installability: Chromium only offers the native one-click install dialog
+// — the one that mints a WebAPK, giving Android a real app icon with NO
+// browser badge — when a service worker with a fetch handler is ACTIVE at the
+// moment the install criteria are checked. Registering at module eval (module
+// scripts run after DOM parse, so this is safe and earliest) instead of on
+// window.load: a load-time registration races the installability check and
+// loses on first visits, silently downgrading installs to badge-carrying
+// "Add to Home screen" shortcuts. public/sw.js is network-first (never
+// serves stale content while online).
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
-      /* install prompt is a bonus; the app works without it */
-    });
+  navigator.serviceWorker.register('/sw.js').catch(() => {
+    /* install prompt is a bonus; the app works without it */
   });
 }
 

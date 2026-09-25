@@ -23,6 +23,12 @@
       "purpose": "any"
     },
     {
+      "src": "/icons/zoclo-icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
       "src": "/icons/zoclo-icon-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
@@ -32,7 +38,7 @@
       "src": "zoclo-favicon.png",
       "sizes": "64x64",
       "type": "image/png",
- "purpose": "any"
+      "purpose": "any"
     }
   ],
   "categories": ["social", "lifestyle", "education"],
