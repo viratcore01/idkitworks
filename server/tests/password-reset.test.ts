@@ -90,6 +90,53 @@ test('SECURITY: a Google-only account gets no reset code (no second door into it
   assert.equal(db.rows('emailOtp').length, 0, 'but nothing was sent');
 });
 
+test('SECURITY: a passwordless Google row whose college inbox is NOT the login address gets nothing', async () => {
+  // Even with a verified college inbox, the reset would mail the LOGIN
+  // address (the Google one) — a door this account never opted into. Refused.
+  const { db, svc } = setup({
+    users: [makeUser({ email: 'personal@gmail.com', collegeEmail: EMAIL, collegeEmailVerified: true, passwordHash: PLACEHOLDER, googleId: 'g-1' })],
+  });
+  await svc.requestPasswordReset('personal@gmail.com');
+  assert.equal(db.rows('emailOtp').length, 0);
+});
+
+test('a VERIFIED but passwordless college account DOES get a reset code at its proven inbox', async () => {
+  // The stranded funnel user: verified the inbox, then skipped the password
+  // step. There is no other way back in, so the reset code must go out.
+  const { db, svc } = setup({
+    users: [makeUser({
+      email: EMAIL, collegeEmail: EMAIL, collegeEmailVerified: true,
+      verificationStatus: 'VERIFIED', passwordHash: PLACEHOLDER,
+    })],
+  });
+  const result = await svc.requestPasswordReset(EMAIL);
+  assert.equal(result.sent, true);
+  assert.equal(db.rows('emailOtp').length, 1, 'the stranded account can recover');
+  assert.equal(db.rows('emailOtp')[0].email, EMAIL, 'the code lands on the verified inbox');
+});
+
+test('END TO END: verify-then-skip-password is recoverable via forgot-password', async () => {
+  const { db, svc } = setup();
+  // Funnel signup → verify → skip the password step (the wizard's "Skip for
+  // now"). This is the account users get locked out of.
+  const session = await svc.signup({ collegeId: COLLEGE_ID, email: EMAIL, displayName: 'Test Student' });
+  db.rows('user')[0].collegeEmailVerified = true;
+  db.rows('user')[0].verificationStatus = 'VERIFIED';
+
+  // No password: login cannot succeed, and the wizard refuses to re-claim it.
+  assert.equal(await svc.login(EMAIL, 'anything-goes').then(() => true, () => false), false);
+  await rejectsWithStatus(() => svc.signup({ collegeId: COLLEGE_ID, email: EMAIL, displayName: 'Test Student' }), 409, 'ALREADY_VERIFIED');
+
+  // Forgot-password is the way back: code to the verified inbox, set a
+  // password, and sign in.
+  await svc.requestPasswordReset(EMAIL);
+  const code = liveResetCode(db);
+  await svc.resetPassword(EMAIL, code, 'freshly-recovered-pass');
+  const back = await svc.login(EMAIL, 'freshly-recovered-pass');
+  assert.equal(back.user.id, session.user.id);
+  assert.equal(back.user.hasPassword, true);
+});
+
 test('a deactivated account gets no reset code', async () => {
   const { db, svc } = setup({ users: [makeUser({ isActive: false })] });
   await svc.requestPasswordReset(EMAIL);

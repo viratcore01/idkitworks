@@ -241,7 +241,13 @@ export class AuthService {
       // a dead-end "already in use".
       if (verified) {
         if (!hasPw && sameInbox) {
-          const e: any = new Error('This college email is already verified — continue where you left off');
+          // The wizard can continue this account with the session it holds.
+          // A logged-OUT visitor (fresh browser, expired session) has no
+          // session to continue with — the message must name the way back in,
+          // or a verified-but-passwordless user reads a dead end.
+          const e: any = new Error(
+            'This college email is already verified — continue where you left off, or use “Forgot password” to set a password and sign in',
+          );
           e.status = 409; e.code = 'ALREADY_VERIFIED'; throw e;
         }
         conflict('Email already in use');
@@ -445,16 +451,36 @@ export class AuthService {
           { username: { equals: id, mode: 'insensitive' } },
         ],
       },
-      select: { id: true, email: true, collegeEmail: true, passwordHash: true, isActive: true, collegeId: true },
+      select: { id: true, email: true, collegeEmail: true, collegeEmailVerified: true, passwordHash: true, isActive: true, collegeId: true },
     });
     if (!user || !user.isActive) return generic;
 
-    // Google-only accounts have no password to reset: minting a first password
-    // is a separate action that requires a FRESH Google ID token
-    // (setPasswordViaGoogle). Doing it from an email code would quietly open a
-    // second, weaker door into those accounts. Skipped — and, per the
-    // trade-off above, indistinguishable from a send.
-    if (!isPasswordSet(user.passwordHash)) return generic;
+    const hasPassword = isPasswordSet(user.passwordHash);
+
+    // No password to reset is NOT the same as no way back in.
+    //
+    // The funnel lets a user verify their college inbox and then SKIP the
+    // password step ("Skip for now"). That account's passwordHash is only an
+    // unguessable placeholder, so login can never match it, and signup refuses
+    // to re-claim a proven account (409 ALREADY_VERIFIED). With no reset code
+    // those users are locked out of their own account forever — the exact
+    // "stuck at login" report.
+    //
+    // The one exception: the account's LOGIN identity IS its verified college
+    // inbox. That inbox is the very proof the account was built on, so mailing
+    // the code there is the same ownership ceremony, not a weaker door. It only
+    // ever goes to `user.email`, and only when that address is the verified
+    // one.
+    //
+    // Google-only / unverified rows still get nothing: they have no verified
+    // college inbox, and minting a first password for them requires a FRESH
+    // Google ID token (setPasswordViaGoogle), never an email code. Per the
+    // trade-off above, all of this stays indistinguishable from a send.
+    const provenCollegeInbox =
+      user.collegeEmailVerified === true &&
+      !!user.collegeEmail &&
+      user.email.trim().toLowerCase() === user.collegeEmail.trim().toLowerCase();
+    if (!hasPassword && !provenCollegeInbox) return generic;
 
     const windowStart = new Date(Date.now() - RESET_TTL_MINUTES * 60 * 1000);
     const recent = await prisma.emailOtp.count({
