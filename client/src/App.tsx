@@ -4,7 +4,7 @@ import { recordNavigation, cycleTripped } from '@/utils/redirectGuard';
 import BrandLoader from '@/components/common/BrandLoader';
 import Logo from '@/components/common/Logo';
 import { useAuthStore } from '@/store/auth.store';
-import { funnelDone, nextStep } from '@/utils/funnel';
+import { funnelDone, nextStep, hasCollege, isFunnelVerified } from '@/utils/funnel';
 import AuthLayout from '@/layouts/AuthLayout';
 import AppLayout from '@/layouts/AppLayout';
 // PERF: every page is a separate chunk — first paint ships the shell only,
@@ -52,15 +52,21 @@ function CollegeRoute({ children }: { children: React.ReactNode }) {
  const { user, isAuthenticated, isLoading } = useAuthStore();
  if (isLoading) return <LoadingScreen />;
  if (cycleTripped()) return <CycleDeadEnd />;
- if (!isAuthenticated) return <Navigate to="/login" />;
- if (cycleTripped()) return <CycleDeadEnd />;
- if (!user?.college) return <Navigate to="/setup-profile" replace />;
- const isStaff = user.role === 'admin' || user.role === 'super_admin';
- if (!isStaff && user.verificationStatus !== 'VERIFIED') {
- if (cycleTripped()) return <CycleDeadEnd />;
- return <Navigate to="/signup" replace />;
- }
- return <>{children}</>;
+  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (cycleTripped()) return <CycleDeadEnd />;
+  // hasCollege (id OR object): the login payload carries only collegeId until
+  // the first /auth/me refresh lands — checking the object alone would bounce
+  // a fully-placed user to profile setup on a failed refresh.
+  if (!user || !hasCollege(user)) return <Navigate to="/setup-profile" replace />;
+  const isStaff = user.role === 'admin' || user.role === 'super_admin';
+  // Single source of truth with the funnel router and the server gate —
+  // a just-verified account (flag true, status string lagging) must NOT be
+  // bounced back into the wizard it just left.
+  if (!isStaff && !isFunnelVerified(user)) {
+  if (cycleTripped()) return <CycleDeadEnd />;
+  return <Navigate to="/signup" replace />;
+  }
+  return <>{children}</>;
 }
 
 /**
@@ -74,7 +80,7 @@ function VerifiedRoute({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   if (isLoading) return <LoadingScreen />;
   const isStaff = user?.role === 'admin' || user?.role === 'super_admin';
-  if (user && !isStaff && user.verificationStatus !== 'VERIFIED' && location.pathname !== '/signup') {
+  if (user && !isStaff && !isFunnelVerified(user) && location.pathname !== '/signup') {
     if (cycleTripped()) return <CycleDeadEnd />;
     return <Navigate to="/signup" replace />;
   }

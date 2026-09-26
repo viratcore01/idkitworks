@@ -99,6 +99,7 @@ interface AuthTokens {
     collegeEmailVerified: boolean;
     verificationStatus: string;
     hasPassword: boolean;
+    hasGoogle: boolean;
     usernameChosen: boolean;
   };
 }
@@ -133,6 +134,11 @@ function createAuthResponse(user: any, accessToken: string, refreshToken: string
       // Funnel routing needs this immediately (no extra /me round-trip):
       // placeholder hashes (funnel/Google accounts) read as "no password".
       hasPassword: isPasswordSet(user.passwordHash),
+      // Which doors exist, straight from the row: login/signup/google all
+      // share this payload, and the client's exit rules (canSignOut) need
+      // the Google link BEFORE the first /auth/me refresh lands — a failed
+      // refresh must not make a Google user look stranded.
+      hasGoogle: !!user.googleId,
     },
   };
 }

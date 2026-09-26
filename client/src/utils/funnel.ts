@@ -10,6 +10,22 @@ import type { User } from '@/types';
  * A missing/undefined flag is treated as "step needed" (safe direction).
  */
 /**
+ * The ONE definition of "verified" for the whole client — and it must match
+ * the server's setInitialPassword gate exactly (flag OR status). Every guard
+ * (CollegeRoute, VerifiedRoute, PasswordRoute via nextStep), every page gate
+ * (SetupPasswordPage), and funnelDone must use THIS and nothing else:
+ * mirror-or-bust, because any semantic drift between two checks of the same
+ * account is precisely the disagreement that strands users on a screen whose
+ * header promises what the next call refuses.
+ *
+ * Fail-closed on missing data: an absent flag never reads as verified.
+ */
+export function isFunnelVerified(user: User | null | undefined): boolean {
+  if (!user) return false;
+  return user.verificationStatus === 'VERIFIED' || user.collegeEmailVerified === true;
+}
+
+/**
  * Does this account already have its college?
  *
  * The college is chosen ONCE, in the wizard, before the account exists — after
@@ -56,8 +72,7 @@ export function funnelDone(user: User | null | undefined): boolean {
   // the normal email funnel (college → verification → password → profile).
   const hasWayIn = user.hasPassword === true;
   if (!hasCollege(user) || !hasWayIn || !user.isProfileSetup) return false;
-  const verified = user.verificationStatus === 'VERIFIED' || user.collegeEmailVerified === true;
-  return verified;
+  return isFunnelVerified(user);
 }
 
 export function nextStep(user: User | null | undefined): string {
@@ -66,7 +81,7 @@ export function nextStep(user: User | null | undefined): string {
   if (!hasCollege(user)) return '/setup-profile';
   // Not verified → the signup wizard, which resumes straight at its OTP step
   // (the standalone verification page no longer exists).
-  if (user.verificationStatus !== 'VERIFIED' && !user.collegeEmailVerified) return '/signup';
+  if (!isFunnelVerified(user)) return '/signup';
   // Verified but passwordless → set the first password. COMPULSORY, no
   // skipping — Google users go through the exact same step as email users.
   // Anything but an explicit true bounces (fail closed: a missing flag must

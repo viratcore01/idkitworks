@@ -4,7 +4,7 @@ import { KeyRound, PartyPopper, Hourglass } from 'lucide-react';
 import Logo from '@/components/common/Logo';
 import PasswordInput from '@/components/common/PasswordInput';
 import { useAuthStore } from '@/store/auth.store';
-import { nextStep } from '@/utils/funnel';
+import { nextStep, isFunnelVerified } from '@/utils/funnel';
 import toast from 'react-hot-toast';
 
 /**
@@ -28,7 +28,8 @@ export default function SetupPasswordPage() {
   // during render is a React anti-pattern that warns, re-renders, and can loop.
   // A stray remount used to be able to bounce the user between screens forever.
   const hasNothingToDoHere = !!user && user.hasPassword === true;
- const isUnverified = !!user && user.verificationStatus !== 'VERIFIED' && !user.collegeEmailVerified;
+  // Same single source as the funnel router, the guards, and the server gate.
+  const isUnverified = !!user && !isFunnelVerified(user);
 
  useEffect(() => {
    if (!user) return;

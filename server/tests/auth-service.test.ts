@@ -388,6 +388,20 @@ test('login mints a working session for correct credentials', async () => {
   assert.equal(result.user.id, id);
 });
 
+test('auth payloads carry hasGoogle so the client knows every way back in', async () => {
+  const { svc } = setup();
+  const plain: any = await svc.signup(validSignup);
+  assert.equal(plain.user.hasGoogle, false, 'fresh email signup links nothing');
+
+  const hash = await hashPassword('real-password-1');
+  const { svc: svc2 } = setup({
+    users: [makeUser({ id: 'guser', email: 'guser@ipec.org.in', username: 'guser', googleId: 'g-123', passwordHash: hash })],
+  });
+  const linked = await svc2.login('guser@ipec.org.in', 'real-password-1');
+  assert.equal(linked.user.hasGoogle, true, 'a Google-linked row must say so on login');
+  assert.equal(linked.user.hasPassword, true);
+});
+
 test('SECURITY: unknown identifier and wrong password return the identical error (no enumeration oracle)', async () => {
   const { db, svc } = setup({ users: [makeUser()] });
   await db.delegate('user'); // no-op, keeps lint quiet about unused db

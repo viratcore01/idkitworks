@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextStep, hasCollege, funnelDone } from '../src/utils/funnel';
+import { nextStep, hasCollege, funnelDone, isFunnelVerified } from '../src/utils/funnel';
 import type { User } from '../src/types';
 
 /**
@@ -222,4 +222,32 @@ test('profile details unfinished means not done, even with a password', () => {
 test('signed out is trivially not done', () => {
   assert.equal(funnelDone(null), false);
   assert.equal(funnelDone(undefined), false);
+});
+
+test('isFunnelVerified: the single definition every guard, page and the server mirror', () => {
+  assert.equal(isFunnelVerified(null), false);
+  assert.equal(isFunnelVerified(undefined), false);
+  assert.equal(isFunnelVerified(base), false);
+  assert.equal(isFunnelVerified({ ...base, collegeEmailVerified: true }), true);
+  assert.equal(isFunnelVerified({ ...base, verificationStatus: 'VERIFIED' }), true);
+  // Legacy split-brain (founder/admin-created): VERIFIED without the flag.
+  assert.equal(isFunnelVerified({ ...base, verificationStatus: 'VERIFIED', collegeEmailVerified: false }), true);
+  // Fail-closed on missing data: absent flags never read as verified.
+  assert.equal(isFunnelVerified({ ...base, verificationStatus: undefined, collegeEmailVerified: undefined }), false);
+});
+
+test('legacy split-brain routes to the password step, never the wizard (server agreement)', () => {
+  // status VERIFIED + flag false, passwordless: the server's setInitialPassword
+  // accepts exactly this shape, so the funnel must offer the password screen.
+  const split = {
+    collegeId: 'c1',
+    college: COLLEGE,
+    verificationStatus: 'VERIFIED' as const,
+    collegeEmailVerified: false,
+    hasPassword: false,
+    isProfileSetup: false,
+  };
+  assert.equal(step(split), '/setup-password');
+  // Same split with a password but no profile: setup-profile, never /signup.
+  assert.equal(step({ ...split, hasPassword: true }), '/setup-profile');
 });
