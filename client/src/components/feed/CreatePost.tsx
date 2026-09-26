@@ -1,9 +1,11 @@
 import { Ghost, Megaphone, FileText, HelpCircle, type LucideIcon } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth.store';
 import api from '@/services/api';
 import Avatar from '@/components/common/Avatar';
+import MentionSuggestions from '@/components/common/MentionSuggestions';
+import { useMentionAutocomplete } from '@/hooks/useMentionAutocomplete';
 import toast from 'react-hot-toast';
 
 type PostType = 'NORMAL' | 'CONFESSION' | 'QUESTION';
@@ -24,6 +26,10 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
   const [isAnonymous, setIsAnonymous] = useState(false);
   const { user, isIncognito } = useAuthStore();
   const queryClient = useQueryClient();
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // @mention autocomplete — the suggestion panel floats above the box.
+  const mention = useMentionAutocomplete({ value: content, inputRef: textareaRef, onChange: setContent });
 
   // Tab = composer type. If the user typed something under one tab and
   // switches to another, the draft stays but the new tab's rules apply.
@@ -95,7 +101,20 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
           )}
 
           <div className="flex-1 min-w-0">
-            <textarea
+            <div className="relative" ref={mention.containerRef}>
+              {mention.open && (
+                <MentionSuggestions
+                  query={mention.query}
+                  items={mention.items}
+                  loading={mention.loading}
+                  failed={mention.failed}
+                  highlight={mention.highlight}
+                  onHighlight={mention.setHighlight}
+                  onPick={mention.pick}
+                />
+              )}
+              <textarea
+              ref={textareaRef}
               className="w-full border-nb-2 border-ink p-3 font-body text-base sm:text-sm resize-none focus:outline-none focus:ring-2 focus:ring-nb-violet min-h-[80px] max-h-[40vh] bg-white"
               placeholder={
                 type === 'CONFESSION'
@@ -104,11 +123,22 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
                   ? 'Ask a question...'
                   : effectiveAnonymous
                   ? 'Posting anonymously...'
-                  : "What's happening?"
+                  : "What's happening? (type @ to mention someone)"
               }
               value={content}
-              onChange={(e) => setContent(e.target.value)}
-            />
+              onChange={(e) => {
+                setContent(e.target.value);
+                mention.sync(e.target.value, e.target.selectionStart ?? e.target.value.length);
+              }}
+              onClick={() => mention.sync()}
+              onKeyUp={() => mention.sync()}
+              onKeyDown={(e) => {
+                if (mention.handleKeyDown(e)) return;
+              }}
+              aria-expanded={mention.open}
+              aria-controls={mention.open ? 'mention-listbox' : undefined}
+              />
+            </div>
 
             <div className="flex items-center justify-between gap-2 mt-3 flex-wrap">
               <div className="flex items-center gap-2 flex-wrap min-w-0">

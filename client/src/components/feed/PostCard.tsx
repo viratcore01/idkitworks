@@ -8,6 +8,7 @@ import Avatar from '@/components/common/Avatar';
 import { Post } from '@/types';
 import { formatDistanceToNow } from '@/utils/date';
 import CommentRow from '@/components/feed/CommentRow';
+import MentionText from '@/components/common/MentionText';
 
 interface Props {
  post: Post;
@@ -153,7 +154,7 @@ export default function PostCard({ post, detailView = false, activeTab = 'all' }
  role={detailView ? undefined : 'link'}
  aria-label={detailView ? undefined : 'Open post'}
  >
-  <p className="font-body text-sm leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere">{post.content}</p>
+   <p className="font-body text-sm leading-relaxed whitespace-pre-wrap break-words overflow-wrap-anywhere"><MentionText text={post.content} /></p>
  </div>
 
   {/* Media */}

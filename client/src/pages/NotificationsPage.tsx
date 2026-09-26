@@ -34,7 +34,7 @@ function textFor(type: NotificationType, actorName: string): string {
 }
 
 /** Where a notification leads, and the verb the CTA uses. */
-type Target = { kind: 'post' | 'chat' | 'none'; cta?: string };
+type Target = { kind: 'post' | 'chat' | 'none'; cta?: string; commentId?: string };
 
 /**
  * Every notification type maps to a REAL destination.
@@ -50,7 +50,13 @@ function targetFor(n: Notification): Target {
     return conversationId ? { kind: 'chat', cta: 'Open chat' } : { kind: 'none' };
   }
   if (n.type === 'MATCH') return { kind: 'chat', cta: 'Say hi' };
-  if (n.postId) return { kind: 'post', cta: 'View post' };
+  // MENTIONs in a comment carry commentId — deep-link to that exact comment.
+  // Every other post-bound type (LIKE/COMMENT/…) lands on the post itself.
+  if (n.postId) {
+    return n.type === 'MENTION' && n.commentId
+      ? { kind: 'post', cta: 'View comment', commentId: n.commentId }
+      : { kind: 'post', cta: 'View post' };
+  }
   return { kind: 'none' };
 }
 
@@ -109,7 +115,7 @@ export default function NotificationsPage() {
     if (!n.isRead) markOneRead(n.id);
     try {
       if (target.kind === 'post') {
-        navigate(`/post/${n.postId}`);
+        navigate(target.commentId ? `/post/${n.postId}?comment=${target.commentId}` : `/post/${n.postId}`);
         return;
       }
       // MATCH notifications carry no conversation: threads are created lazily
@@ -161,7 +167,7 @@ export default function NotificationsPage() {
         <EmptyState
           icon={<Bell strokeWidth={2.5} />}
           title="Nothing yet"
-          description="When someone likes your post, comments, or matches with you — it'll show up here."
+           description="When someone likes your post, comments, mentions you, or matches with you — it'll show up here."
         />
       ) : (
         <>

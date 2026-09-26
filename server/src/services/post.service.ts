@@ -10,6 +10,7 @@ import {
   invalidateUserFeed,
 } from '../config/cache';
 import { publish } from '../config/bus';
+import { notifyMentions } from './mention.service';
 import { Prisma } from '@prisma/client';
 
 interface CreatePostInput {
@@ -89,6 +90,15 @@ export class PostService {
     // post must never cross the wire, not even to its own author (the client
     // keys ownership off isMine).
     publish('feed:new', { collegeId: author.collegeId, postId: post.id });
+    // @mentions in the post body notify the mentioned users (same-college,
+    // unblocked only — anyone else couldn't see the notification anyway).
+    await notifyMentions({
+      content,
+      authorId,
+      authorCollegeId: author.collegeId,
+      isAnonymous: !!post.isAnonymous,
+      postId: post.id,
+    });
     if (post.isAnonymous) {
       return {
         ...post,
@@ -445,6 +455,19 @@ export class PostService {
       invalidateUnreadCount(notifyUserId);
       publish('notification:new', { userIds: [notifyUserId] });
     }
+
+    // @mentions in the comment body notify the mentioned users — except the
+    // primary COMMENT/COMMENT_REPLY recipient above, who is already notified
+    // for this same action with a deeper link.
+    await notifyMentions({
+      content: trimmed,
+      authorId,
+      authorCollegeId: actorCollegeId ?? livePost.author?.collegeId ?? null,
+      isAnonymous,
+      postId,
+      commentId: comment.id,
+      excludeUserIds: notifyUserId ? [notifyUserId] : [],
+    });
 
     // PRIVACY: an anonymous reply must not de-anonymize itself in its own response.
     return { ...anonymizeComment(comment), isMine: true };

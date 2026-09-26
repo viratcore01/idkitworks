@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Ghost } from 'lucide-react';
 import Avatar from '@/components/common/Avatar';
+import MentionText from '@/components/common/MentionText';
 import { Comment } from '@/types';
 import { formatDistanceToNow } from '@/utils/date';
 
@@ -26,9 +27,9 @@ export default function CommentRow({
   const body = (
   <>
   <span className="font-display font-semibold text-ink break-words">{name}</span>{' '}
-  <span className={`font-body text-gray-600 break-words overflow-wrap-anywhere ${clamped ? 'line-clamp-1' : ''}`}>
-  {comment.content}
-  </span>
+   <span className={`font-body text-gray-600 break-words overflow-wrap-anywhere ${clamped ? 'line-clamp-1' : ''}`}>
+   <MentionText text={comment.content} linkClassName="text-nb-violet font-semibold hover:underline break-words" />
+   </span>
   {edited && <span className="text-xs italic text-gray-500 ml-1 whitespace-nowrap">· edited</span>}
   </>
   );

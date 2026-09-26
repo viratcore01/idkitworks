@@ -1,5 +1,5 @@
 import { safeLocalStorage, safeSessionStorage } from '@/utils/safeStorage';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Ghost, MessageCircle, Reply, X, MoreVertical, Pencil, Trash2, Check } from 'lucide-react';
@@ -9,6 +9,8 @@ import PostCard from '@/components/feed/PostCard';
 import LoadingSpinner from '@/components/common/LoadingSpinner';
 import EmptyState from '@/components/common/EmptyState';
 import CommentRow from '@/components/feed/CommentRow';
+import MentionSuggestions from '@/components/common/MentionSuggestions';
+import { useMentionAutocomplete } from '@/hooks/useMentionAutocomplete';
 import { useAuthStore } from '@/store/auth.store';
 import { Post, Comment } from '@/types';
 
@@ -30,9 +32,13 @@ export default function PostDetailPage() {
  const [menuFor, setMenuFor] = useState<string | null>(null);
  const [editingId, setEditingId] = useState<string | null>(null);
  const [editText, setEditText] = useState('');
- const commentInputRef = useRef<HTMLInputElement>(null);
- const editInputRef = useRef<HTMLInputElement>(null);
- const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const commentInputRef = useRef<HTMLInputElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [searchParams] = useSearchParams();
+
+  // @mention autocomplete in the comment box — panel floats above the field.
+  const mention = useMentionAutocomplete({ value: commentText, inputRef: commentInputRef, onChange: setCommentText });
  const replyClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
  const goingBackRef = useRef(false);
 
@@ -85,8 +91,30 @@ export default function PostDetailPage() {
  roots.push(c);
  }
  }
- return { threads: roots, replyCount: replies };
- }, [commentsData]);
+  return { threads: roots, replyCount: replies };
+  }, [commentsData]);
+
+  // Deep link from a MENTION notification: /post/:id?comment=:commentId
+  // scrolls to that exact comment (auto-paging a few times if needed).
+  const mentionTarget = searchParams.get('comment');
+  const mentionJumped = useRef(false);
+  const mentionPages = useRef(0);
+  useEffect(() => {
+  if (!mentionTarget || mentionJumped.current || commentsLoading) return;
+  if (document.getElementById(`comment-${mentionTarget}`)) {
+  mentionJumped.current = true;
+  const id = mentionTarget;
+  setTimeout(() => jumpToComment(id), 150);
+  return;
+  }
+  if (hasNextPage && !isFetchingNextPage && mentionPages.current < 3) {
+  mentionPages.current++;
+  fetchNextPage();
+  return;
+  }
+  // Not on any reachable page (deleted or out of range) — stop hunting.
+  mentionJumped.current = true;
+  }, [mentionTarget, commentsLoading, commentsData, hasNextPage, isFetchingNextPage]);
 
  const commentMutation = useMutation({
  mutationFn: () =>
@@ -379,23 +407,44 @@ export default function PostDetailPage() {
  </button>
  </div>
  )}
-  <div className="flex gap-2 min-w-0">
-  <input
-  ref={commentInputRef}
-  className="nb-input text-base sm:text-sm py-2 flex-1 min-w-0"
- placeholder={
- replyTo
- ? `Reply to ${replyTo.isAnonymous || !replyTo.author ? 'Anonymous Student' : replyTo.author!.displayName}...`
- : isIncognito
- ? 'Commenting anonymously...'
- : 'Write a comment... (double-click a comment to reply)'
- }
- value={commentText}
- onChange={(e) => setCommentText(e.target.value)}
- onKeyDown={(e) => {
- if (e.key === 'Enter' && commentText.trim()) commentMutation.mutate();
- }}
- />
+   <div className="flex gap-2 min-w-0">
+   <div className="relative flex-1 min-w-0" ref={mention.containerRef}>
+   {mention.open && (
+   <MentionSuggestions
+   query={mention.query}
+   items={mention.items}
+   loading={mention.loading}
+   failed={mention.failed}
+   highlight={mention.highlight}
+   onHighlight={mention.setHighlight}
+   onPick={mention.pick}
+   />
+   )}
+   <input
+   ref={commentInputRef}
+   className="nb-input text-base sm:text-sm py-2 w-full min-w-0"
+   placeholder={
+   replyTo
+   ? `Reply to ${replyTo.isAnonymous || !replyTo.author ? 'Anonymous Student' : replyTo.author!.displayName}...`
+   : isIncognito
+   ? 'Commenting anonymously... (type @ to mention)'
+   : 'Write a comment... (double-click a comment to reply, @ to mention)'
+   }
+   value={commentText}
+   onChange={(e) => {
+   setCommentText(e.target.value);
+   mention.sync(e.target.value, e.target.selectionStart ?? e.target.value.length);
+   }}
+   onClick={() => mention.sync()}
+   onKeyUp={() => mention.sync()}
+   onKeyDown={(e) => {
+   if (mention.handleKeyDown(e)) return;
+   if (e.key === 'Enter' && commentText.trim()) commentMutation.mutate();
+   }}
+   aria-expanded={mention.open}
+   aria-controls={mention.open ? 'mention-listbox' : undefined}
+   />
+   </div>
  <button
  onClick={() => commentText.trim() && commentMutation.mutate()}
  disabled={!commentText.trim() || commentMutation.isPending}
