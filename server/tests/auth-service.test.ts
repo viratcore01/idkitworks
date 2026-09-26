@@ -254,6 +254,33 @@ test('RESUME: a verified account can never be resumed (no session for an existin
   await rejectsWithStatus(() => svc.signup(validSignup), 409);
 });
 
+test('RESUME: a password-bearing but unverified account continues with its OWN session (no login → signup → "in use" loop)', async () => {
+  // The loop: signup 409s "Email already in use" → user logs in fine → the
+  // funnel bounces them into the wizard → the wizard asks for the email →
+  // 409 again, forever (the OTP send sits behind this call). With their own
+  // session the wizard must continue to the OTP step instead.
+  // NOTE: makeUser's default hash is a real $2a bcrypt (password-bearing)
+  // with UNVERIFIED status — exactly the legacy shape.
+  const { db, svc } = setup({
+    users: [makeUser({ id: 'legacy', email: DOMAIN_EMAIL, username: 'student' })],
+  });
+  const res: any = await svc.signup(validSignup, 'legacy');
+  assert.equal(res.user.id, 'legacy', 'same row continues, no duplicate');
+  assert.ok(res.accessToken, 'a fresh session is issued for the row');
+  assert.equal(db.rows('user').length, 1);
+  assert.equal(db.rows('refreshToken').length, 1);
+});
+
+test('SECURITY: a stranger’s session (or none) still 409s on a password-bearing unverified row', async () => {
+  const { db, svc } = setup({
+    users: [makeUser({ id: 'legacy', email: DOMAIN_EMAIL, username: 'student' })],
+  });
+  await rejectsWithStatus(() => svc.signup(validSignup), 409);
+  await rejectsWithStatus(() => svc.signup(validSignup, 'someone-else'), 409);
+  assert.equal(db.rows('refreshToken').length, 0, 'no session is minted for strangers');
+  assert.equal(db.rows('user').length, 1);
+});
+
 test('SECURITY: a VERIFIED but passwordless account is never re-claimed by a fresh signup', async () => {
   // The dangerous case: the row exists, its inbox is proven, and no password
   // was set yet — so if signup handed out a session here, anyone who merely

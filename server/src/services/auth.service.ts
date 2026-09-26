@@ -303,6 +303,20 @@ export class AuthService {
 
       // A password exists but the inbox was never proven (legacy row): a real
       // account — the password, not this request, owns it.
+      //
+      // ...unless the request carries THAT ROW's own session: the owner just
+      // logged in and the funnel bounced them back into the wizard, which
+      // asks for the email and would 409 on it — a login → signup → "email
+      // in use" loop with no forward path (the OTP send sits behind this
+      // call). The session could only have been minted by password login,
+      // Google inbox proof, or a refresh of those, so it IS ownership: hand
+      // back a fresh session for the same row and let the wizard continue to
+      // the OTP step. Grants nothing new (they already hold a session for
+      // this row). Strangers — no session, or a session for a DIFFERENT row
+      // — still get the exact same 409 as before: no oracle change.
+      if (resumeUserId && resumeUserId === existingUser.id) {
+        return this.issueSession(existingUser);
+      }
       conflict('Email already in use');
     }
 
