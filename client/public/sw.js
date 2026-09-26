@@ -6,20 +6,32 @@
 // v6: main.tsx now registers the SW at module eval (was window.load) so the
 // SW is ACTIVE before Chrome checks install criteria — that's what makes
 // Android mint a WebAPK (clean icon) instead of a badge-carrying shortcut.
+// v7: stop precaching `/` + `/index.html`. Those are navigations — they go
+// stale the instant Vercel deploys, and serving the precached copy (even
+// only offline) is what reopened the "previous wrong build" inside the
+// installed app. Precache only versioned/static files (manifest + icons);
+// navigations stay NETWORK-FIRST with no stale precache to fall back to.
 //
 // Strategy: NETWORK-FIRST for everything, cache only as the offline
 // fallback. We deliberately never serve from cache while online, so users
 // always get the newest build the moment Vercel deploys (the app's own
 // dead-chunk reload logic keeps working exactly as before).
-const SHELL = 'zoclo-shell-v6';
+const SHELL = 'zoclo-shell-v7';
+
+const PRECACHE = [
+  '/manifest.json',
+  '/icons/zoclo-icon.png',
+  '/icons/zoclo-icon-192.png',
+  '/icons/zoclo-icon-maskable.png',
+  '/icons/zoclo-icon-maskable-192.png',
+  '/icons/apple-touch-icon.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(SHELL)
-      .then((cache) =>
-        cache.addAll(['/', '/index.html', '/manifest.json', '/icons/zoclo-icon.png', '/icons/zoclo-icon-192.png', '/icons/apple-touch-icon.png'])
-      )
+      .then((cache) => cache.addAll(PRECACHE))
       .then(() => self.skipWaiting())
   );
 });
@@ -33,15 +45,31 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+function cacheable(response) {
+  return response && response.ok && (response.type === 'basic' || response.type === 'default');
+}
+
 self.addEventListener('fetch', (event) => {
   // Never touch non-GET or cross-origin traffic (API, Google, CDN).
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Navigations: network first; offline → the cached app shell.
+  // Navigations (/, /login, …): network first so the installed app always
+  // opens the newest deploy. Offline → whatever navigation we cached during
+  // a previous online visit (never a stale install-time precache).
   if (event.request.mode === 'navigate') {
-    event.respondWith(fetch(event.request).catch(() => caches.match('/index.html')));
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (cacheable(response)) {
+            const copy = response.clone();
+            caches.open(SHELL).then((cache) => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request).then((hit) => hit || caches.match('/index.html')))
+    );
     return;
   }
 
@@ -50,8 +78,10 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        const copy = response.clone();
-        caches.open(SHELL).then((cache) => cache.put(event.request, copy));
+        if (cacheable(response)) {
+          const copy = response.clone();
+          caches.open(SHELL).then((cache) => cache.put(event.request, copy));
+        }
         return response;
       })
       .catch(() => caches.match(event.request))

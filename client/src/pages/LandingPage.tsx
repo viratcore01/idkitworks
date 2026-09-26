@@ -785,7 +785,7 @@ export default function LandingPage() {
   <a href="#features" className="nb-btn bg-white text-base px-6 py-3">
   See what's inside
   </a>
-  <InstallButton variant="secondary" forceVisible />
+  <InstallButton variant="secondary" />
   </div>
 
  <p className="mt-3 text-xs font-display font-semibold tracking-wide text-ink/55">

@@ -35,7 +35,7 @@
       "purpose": "maskable"
     },
     {
-      "src": "zoclo-favicon.png",
+      "src": "/zoclo-favicon.png",
       "sizes": "64x64",
       "type": "image/png",
       "purpose": "any"

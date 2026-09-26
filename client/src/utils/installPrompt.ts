@@ -37,18 +37,27 @@ export function isInstallAvailable(): boolean {
  * Fire the native browser install dialog. Returns the user's choice, or
  * 'unavailable' if no prompt was ever offered (then the caller shows its
  * fallback UI).
+ *
+ * NOTE: a captured event is single-use per spec — after prompt() the
+ * browser voids it and re-fires `beforeinstallprompt` on a later
+ * navigation if the site is still installable. So we clear `deferred`
+ * and notify listeners (button hides) instead of letting a second click
+ * fall through to a "Add to Home screen" shortcut (which opens with a
+ * URL bar instead of a real standalone WebAPK).
  */
 export async function promptInstall(): Promise<'accepted' | 'dismissed' | 'unavailable'> {
   if (!deferred) return 'unavailable';
   const event = deferred;
   deferred = null;
+  availabilityListeners.forEach((l) => l(false));
   try {
     await event.prompt();
     const { outcome } = await event.userChoice;
     return outcome;
   } catch {
-    // Some browsers void the parked event if the page context changed.
-    return 'dismissed';
+    // The parked event was voided (e.g. page context changed) — treat as
+    // "not ready", not as a dismissal, so the caller waits for a fresh event.
+    return 'unavailable';
   }
 }
 

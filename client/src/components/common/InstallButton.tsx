@@ -13,23 +13,29 @@ import {
  * (public/sw.js). They're in place, so on Chromium the click calls
  * promptInstall() and the OS dialog appears — no instructions box.
  *
+ * Deliberately renders ONLY when a native prompt is parked (or on iOS
+ * Safari, which has Add-to-Home-Screen steps and no API). Rendering at
+ * other times pushes users down the "⋮ → Add to Home screen" shortcut
+ * path, which installs a browser shortcut (opens with a URL bar, pinned
+ * to the build cached at creation time) instead of a real standalone
+ * WebAPK — the "sometimes proper app, sometimes old build with URL bar"
+ * flakiness. No prompt = no button = no fake install.
+ *
  * Graceful wait: the event can arrive a beat after the page paints (it
  * races the SW registration), so a click within the first ~1.5s waits for
  * it instead of instantly falling back.
  *
  * Fallbacks, only when the browser genuinely can't prompt:
  *  - iOS Safari → "Add to Home Screen" steps (Apple offers no API)
- *  - Firefox desktop → same, no install prompt API
  *  - Android Firefox → its menu does offer "Install" as PWA
+ *  - Firefox desktop → no install API at all (button stays hidden)
  */
 export default function InstallButton({
   className = '',
   variant = 'primary',
-  forceVisible = false,
 }: {
   className?: string;
   variant?: 'primary' | 'secondary' | 'ghost';
-  forceVisible?: boolean;
 } = {}) {
   const [canInstall, setCanInstall] = useState(isInstallAvailable());
   const [busy, setBusy] = useState(false);
@@ -51,7 +57,11 @@ export default function InstallButton({
       (window.navigator as { standalone?: boolean }).standalone === true);
   if (isStandalone) return null;
 
-  const shouldRender = forceVisible || canInstall || isIOS;
+  // Show ONLY when the native prompt is actually parked (or iOS, which
+  // has real Add-to-Home-Screen steps). Never force-visible: a visible
+  // button with no parked prompt can only produce a "Add to Home screen"
+  // shortcut — URL bar, stale cached build — instead of a WebAPK.
+  const shouldRender = canInstall || isIOS;
   if (!shouldRender) return null;
 
   const handleInstall = async () => {
@@ -125,11 +135,11 @@ export default function InstallButton({
       {showManual && (
         <Sheet
           onClose={() => setShowManual(false)}
-          title="One more step"
+          title="Install from your browser menu"
           steps={[
-            <>Your browser installed apps from its menu — tap <strong>⋮</strong> / <strong>⋯</strong></>,
-            <>Choose <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong></>,
-            <>Confirm — done, Zoclo now lives on your home screen</>,
+            <>Open this page in <strong>Chrome or Edge</strong> on Android/desktop</>,
+            <>Tap <strong>⋮</strong> / <strong>⋯</strong> and choose <strong>"Install app"</strong> (not just "Add to Home screen" — that makes a shortcut with a URL bar)</>,
+            <>Confirm — Zoclo then opens fullscreen with no address bar and auto-updates</>,
           ]}
         />
       )}
