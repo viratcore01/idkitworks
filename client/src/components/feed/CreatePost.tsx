@@ -71,7 +71,10 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
   };
 
   return (
-    <div className="nb-card p-3 sm:p-4 mb-3 sm:mb-4 animate-slide-up min-w-0 overflow-hidden">
+    <div className="nb-card p-3 sm:p-4 mb-3 sm:mb-4 animate-slide-up min-w-0">
+      {/* NOTE: no overflow-hidden here — the @mention panel floats above the
+          textarea and would be sliced in half by it. Children are padded, so
+          nothing needs edge-clipping. */}
       <div className="flex flex-col gap-3 min-w-0">
         {/* Context line — shows which section you're posting into */}
         <div className="flex items-center gap-1.5 text-xs font-display font-bold text-gray-500 flex-wrap min-w-0">
@@ -111,6 +114,7 @@ export default function CreatePost({ type = 'NORMAL' }: Props) {
                   highlight={mention.highlight}
                   onHighlight={mention.setHighlight}
                   onPick={mention.pick}
+                  placement={mention.placement}
                 />
               )}
               <textarea

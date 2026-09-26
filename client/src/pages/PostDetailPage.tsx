@@ -363,8 +363,10 @@ export default function PostDetailPage() {
  {/* The post */}
  <PostCard post={typedPost} detailView />
 
-  {/* Comments — own white surface so text reads on white, not on the doodle canvas */}
-  <div className="mt-4 nb-card bg-white p-3 sm:p-5 min-w-0 overflow-hidden" id="post-comments">
+   {/* Comments — own white surface so text reads on white, not on the doodle canvas.
+   No overflow-hidden: the @mention panel floats above the composer and would
+   be sliced in half by it. */}
+   <div className="mt-4 nb-card bg-white p-3 sm:p-5 min-w-0" id="post-comments">
  <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2">
  <MessageCircle size={18} strokeWidth={2.5} /> Comments ({typedPost._count.comments})
  </h2>
@@ -418,6 +420,7 @@ export default function PostDetailPage() {
    highlight={mention.highlight}
    onHighlight={mention.setHighlight}
    onPick={mention.pick}
+   placement={mention.placement}
    />
    )}
    <input

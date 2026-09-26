@@ -3,13 +3,18 @@ import Avatar from '@/components/common/Avatar';
 import type { MentionSuggestion } from '@/hooks/useMentionAutocomplete';
 
 /**
- * The @mention pick-list. Rendered by the parent in an
- * `absolute bottom-full` slot so it floats ABOVE the field: no layout
- * push, no keyboard overlap, no covering the text being typed.
+ * The @mention pick-list. Rendered by the parent in an absolute slot that
+ * floats ABOVE the field by default (no layout push, no keyboard overlap,
+ * no covering the text being typed) and flips BELOW it when the field sits
+ * near the top of the viewport (`placement`).
  *
  * Panel contract: viewport-capped height with its own scroll (never grows
  * the page on a 360px phone), full-width rows with 44px+ tap targets,
  * mouseDown-select (beats input blur), full listbox keyboard semantics.
+ *
+ * ANCESTOR CONTRACT: no ancestor of the field may have `overflow-hidden`
+ * (or overflow-y auto/scroll) between the field and the viewport, or the
+ * panel gets sliced in half. `overflow-x: clip` ancestors are fine.
  */
 export default function MentionSuggestions({
   query,
@@ -19,6 +24,7 @@ export default function MentionSuggestions({
   highlight,
   onHighlight,
   onPick,
+  placement = 'above',
 }: {
   query: string;
   items: MentionSuggestion[];
@@ -27,13 +33,16 @@ export default function MentionSuggestions({
   highlight: number;
   onHighlight: (i: number) => void;
   onPick: (user: MentionSuggestion) => void;
+  placement?: 'above' | 'below';
 }) {
   return (
     <div
       id="mention-listbox"
       role="listbox"
       aria-label={query ? `People matching @${query}` : 'Mention someone'}
-      className="absolute bottom-full left-0 right-0 z-50 mb-2 nb-card bg-white p-1.5 shadow-nb-lg max-h-[38dvh] overflow-y-auto overscroll-contain min-w-0"
+      className={`absolute left-0 right-0 z-50 nb-card bg-white p-1.5 shadow-nb-lg max-h-[38dvh] overflow-y-auto overscroll-contain min-w-0 ${
+        placement === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
+      }`}
     >
       {query === '' ? (
         <p className="px-3 py-2.5 text-sm font-body text-gray-500 flex items-center gap-2">

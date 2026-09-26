@@ -38,6 +38,10 @@ export function useMentionAutocomplete(opts: {
   const [highlight, setHighlight] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const requestId = useRef(0);
+  // Panel side: above the field by default (never under the keyboard), but
+  // flipped below when the field sits near the top of the viewport and the
+  // panel would otherwise render off-screen (e.g. the feed composer).
+  const [placement, setPlacement] = useState<'above' | 'below'>('above');
 
   const open = token !== null;
 
@@ -102,6 +106,16 @@ export function useMentionAutocomplete(opts: {
   // feed behind it — it must never trap the user).
   useEffect(() => {
     if (!open) return;
+    // Pick the side with room: measure the field against the viewport each
+    // time the token changes (cheap — one rect read per keystroke).
+    const el = inputRef.current;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const need = Math.min(window.innerHeight * 0.38, 320);
+      const spaceAbove = rect.top;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setPlacement(spaceAbove >= need || spaceAbove >= spaceBelow ? 'above' : 'below');
+    }
     const onDown = (e: PointerEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setToken(null);
@@ -109,7 +123,7 @@ export function useMentionAutocomplete(opts: {
     };
     window.addEventListener('pointerdown', onDown);
     return () => window.removeEventListener('pointerdown', onDown);
-  }, [open ]);
+  }, [open, token?.query]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const close = useCallback(() => setToken(null), []);
 
@@ -173,6 +187,7 @@ export function useMentionAutocomplete(opts: {
   return {
     containerRef,
     open,
+    placement,
     query: token?.query ?? '',
     items,
     loading,
