@@ -392,12 +392,23 @@ export class AuthService {
 
   /**
    * SET the first password for a funnel account. Allowed ONLY when the
-   * college email is verified AND no password exists yet — session auth alone
+   * account is verified AND no password exists yet — session auth alone
    * is never enough (a stolen pre-verification session must not become
    * permanent ownership), and an existing password is never overwritten here
    * (changePassword owns that path). No session kill: the placeholder was
    * unguessable, so there is no stolen session to revoke — the owner sails
    * straight into profile setup.
+   *
+   * "Verified" is the funnel's own definition — collegeEmailVerified OR
+   * verificationStatus VERIFIED — mirrored exactly by nextStep/funnelDone
+   * and the setup-password page. The page renders (and the route guards
+   * force-route here) on that OR, so demanding the flag alone strands any
+   * row that is VERIFIED without it (founder-side/admin-created accounts,
+   * legacy rows) on a screen that says "Email verified" yet 403s every
+   * submit, with no way out. Both flags are verification-grade (OTP
+   * ceremony, Google inbox proof, or staff action); a stolen
+   * pre-verification session holds NEITHER, so the security property is
+   * unchanged.
    */
   async setInitialPassword(userId: string, newPassword: string): Promise<void> {
     if (typeof newPassword !== 'string' || newPassword.length < 8 || newPassword.length > 128) {
@@ -405,12 +416,12 @@ export class AuthService {
     }
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { collegeEmailVerified: true, passwordHash: true, isActive: true },
+      select: { collegeEmailVerified: true, verificationStatus: true, passwordHash: true, isActive: true },
     });
     if (!user || !user.isActive) {
       const e: any = new Error('Account unavailable'); e.status = 401; throw e;
     }
-    if (!user.collegeEmailVerified) {
+    if (!user.collegeEmailVerified && user.verificationStatus !== 'VERIFIED') {
       const e: any = new Error('Verify your college email first');
       e.status = 403; e.code = 'VERIFICATION_REQUIRED'; throw e;
     }

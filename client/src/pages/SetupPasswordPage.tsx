@@ -14,13 +14,15 @@ import toast from 'react-hot-toast';
  * COMPULSORY for everyone, Google sign-in included — no skipping.
  */
 export default function SetupPasswordPage() {
- const navigate = useNavigate();
- const user = useAuthStore((s) => s.user);
- const setInitialPassword = useAuthStore((s) => s.setInitialPassword);
- const [password, setPassword] = useState('');
- const [confirm, setConfirm] = useState('');
- const [busy, setBusy] = useState(false);
- const [error, setError] = useState('');
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const setInitialPassword = useAuthStore((s) => s.setInitialPassword);
+  const logout = useAuthStore((s) => s.logout);
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [error, setError] = useState('');
 
   // Redirects belong in an effect, not the render body: calling navigate()
   // during render is a React anti-pattern that warns, re-renders, and can loop.
@@ -61,13 +63,34 @@ export default function SetupPasswordPage() {
  await setInitialPassword(password);
  toast.success('Password set!');
  navigate(nextStep(useAuthStore.getState().user), { replace: true });
- } catch (err: any) {
- const msg = err.response?.data?.error || 'Could not set password';
- setError(msg); toast.error(msg);
- } finally {
- setBusy(false);
- }
- };
+  } catch (err: any) {
+  const code = err.response?.data?.code;
+  const msg = err.response?.data?.error || 'Could not set password';
+  // The server is the truth about verification: if it says the inbox still
+  // needs proof, send the user to the OTP step (a way FORWARD) instead of
+  // dead-ending on this screen with an error and no exit.
+  if (err.response?.status === 403 && code === 'VERIFICATION_REQUIRED') {
+  toast.error(msg);
+  navigate('/signup', { replace: true });
+  return;
+  }
+  setError(msg); toast.error(msg);
+  } finally {
+  setBusy(false);
+  }
+  };
+
+  /** Escape hatch: no funnel screen may ever be a cage. A wrong/stale session
+   *  (or an account someone else started) can always sign out to login. */
+  const signOut = async () => {
+  if (signingOut) return;
+  setSigningOut(true);
+  try {
+  await logout();
+  } finally {
+  navigate('/login', { replace: true });
+  }
+  };
 
  return (
  <div className="min-h-screen flex flex-col items-center justify-center p-4 nb-canvas-surface">
@@ -90,14 +113,22 @@ export default function SetupPasswordPage() {
  <PasswordInput id="setup-confirm" value={confirm} onChange={setConfirm} placeholder="Repeat password" autoComplete="new-password" required minLength={8} />
  </div>
  {error && <p role="alert" className="text-sm text-nb-pink font-semibold text-center">{error}</p>}
- <button type="submit" disabled={busy || password.length < 8 || confirm.length < 8} className="nb-btn-primary w-full text-center disabled:opacity-50">
- {busy ? (
- <><Hourglass size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Setting...</>
- ) : (
- <><PartyPopper size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Set password & continue</>
- )}
- </button>
+  <button type="submit" disabled={busy || password.length < 8 || confirm.length < 8} className="nb-btn-primary w-full text-center disabled:opacity-50">
+  {busy ? (
+  <><Hourglass size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Setting...</>
+  ) : (
+  <><PartyPopper size={14} strokeWidth={2.5} className="inline mr-1 -mt-0.5" />Set password & continue</>
+  )}
+  </button>
   </form>
+  <button
+  type="button"
+  onClick={signOut}
+  disabled={signingOut || busy}
+  className="mt-4 text-sm font-body text-gray-500 hover:text-ink underline underline-offset-2 disabled:opacity-50"
+  >
+  {signingOut ? 'Signing out…' : 'Wrong account? Sign out'}
+  </button>
   </div>
   </div>
   );
